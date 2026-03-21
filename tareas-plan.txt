@@ -1,0 +1,415 @@
+LISTA DE TAREAS PARA IMPLEMENTACIÓN COMPLETA DEL BACKEND
+
+1. PREPARACIÓN DEL PROYECTO BASE
+[ ] Inicializar proyecto backend en NestJS con TypeScript.
+[ ] Definir estructura modular del proyecto.
+[ ] Configurar variables de entorno por ambiente: local, dev, staging y producción.
+[ ] Configurar manejo centralizado de configuración.
+[ ] Integrar Prisma.
+[ ] Configurar conexión a MySQL 8.
+[ ] Configurar conexión a Redis.
+[ ] Configurar linting, formatting y convenciones de código.
+[ ] Configurar manejo de errores global.
+[ ] Configurar versionado global de API bajo /api/v1.
+[ ] Configurar estándar de respuesta para toda la API.
+[ ] Implementar generación y propagación de correlation_id en requests y jobs.
+
+2. CONVENCIONES GLOBALES DEL DOMINIO Y PERSISTENCIA
+[ ] Definir uso obligatorio de UUID v4 para entidades sincronizables.
+[ ] Asegurar almacenamiento UTC para toda fecha persistida.
+[ ] Asegurar salida ISO 8601 con milisegundos en la API.
+[ ] Implementar created_at, updated_at, deleted_at y row_version en todas las tablas sincronizables.
+[ ] Implementar soft delete como comportamiento por defecto.
+[ ] Implementar incremento automático de row_version en update y delete lógico.
+[ ] Implementar snapshots históricos en entidades operativas donde aplique.
+[ ] Definir política de retención para tablas técnicas.
+
+3. MODELO DE DATOS Y MIGRACIONES
+[ ] Traducir el DDL consolidado a schema Prisma.
+[ ] Crear migraciones iniciales.
+[ ] Validar índices, unique keys y foreign keys.
+[ ] Crear seeds iniciales para roles, permisos, áreas, turnos y usuario administrador.
+[ ] Crear seeds para perfiles de dispositivo si aplican.
+[ ] Validar charset y collation utf8mb4 / utf8mb4_unicode_ci.
+[ ] Probar creación limpia de base de datos desde cero.
+[ ] Probar migraciones incrementales sin intervención manual.
+
+4. MÓDULO DE AUTENTICACIÓN Y SESIONES
+[ ] Implementar POST /auth/login.
+[ ] Implementar POST /auth/refresh-token.
+[ ] Implementar POST /auth/logout.
+[ ] Implementar POST /auth/logout-all.
+[ ] Implementar GET /auth/me.
+[ ] Implementar GET /auth/sessions.
+[ ] Implementar DELETE /auth/sessions/:id.
+[ ] Implementar JWT access token con claims definidos.
+[ ] Asegurar que el turno no viaje como claim fijo.
+[ ] Implementar refresh token rotation obligatoria.
+[ ] Persistir refresh tokens con hash.
+[ ] Implementar revocación por sesión.
+[ ] Implementar revocación global por usuario.
+[ ] Registrar sesiones por dispositivo.
+[ ] Registrar IP, user agent, device id, device name, device type y device profile.
+[ ] Bloquear acceso de usuarios inactivos.
+
+5. AUTORIZACIÓN, RBAC Y RESTRICCIONES CONTEXTUALES
+[ ] Implementar guards RBAC por rol y permiso.
+[ ] Implementar restricciones por área asignada.
+[ ] Implementar restricciones por máquina permitida.
+[ ] Implementar restricciones por perfil de dispositivo.
+[ ] Implementar validación contextual para operarios.
+[ ] Implementar validación contextual para supervisores.
+[ ] Implementar denegación por usuario inactivo.
+[ ] Asegurar evaluación en dos niveles: permiso funcional + restricción contextual.
+
+6. SEGURIDAD OPERATIVA
+[ ] Implementar rate limiting por IP.
+[ ] Implementar rate limiting por usuario.
+[ ] Implementar rate limiting estricto para login.
+[ ] Implementar rate limiting para refresh token.
+[ ] Implementar rate limiting para sync push.
+[ ] Implementar rate limiting para importaciones.
+[ ] Asegurar protección de endpoints sensibles.
+[ ] Validar no exposición de modelos Prisma directamente al exterior.
+
+7. AUDITORÍA TÉCNICA Y TRAZABILIDAD
+[ ] Implementar interceptor global de auditoría.
+[ ] Auditar CREATE.
+[ ] Auditar UPDATE.
+[ ] Auditar DELETE lógico.
+[ ] Auditar LOGIN.
+[ ] Auditar LOGOUT.
+[ ] Auditar IMPORT.
+[ ] Auditar EXPORT.
+[ ] Persistir old_values y new_values cuando corresponda.
+[ ] Persistir usuario, sesión, entidad, entity_id, IP, user agent, correlation_id y timestamp.
+[ ] Asegurar que audit_logs sea append-only.
+[ ] Impedir modificación o eliminación de auditoría vía API.
+
+8. CATÁLOGOS ADMINISTRATIVOS
+[ ] Implementar CRUD de áreas.
+[ ] Implementar lectura de permisos.
+[ ] Implementar CRUD de roles.
+[ ] Implementar CRUD de usuarios.
+[ ] Implementar asignación de áreas a usuarios.
+[ ] Implementar CRUD de máquinas.
+[ ] Implementar CRUD de turnos.
+[ ] Implementar lectura y actualización de configuración del sistema.
+[ ] Validar soft delete e integridad referencial en catálogos.
+
+9. CÁLCULO DE TURNO Y REGLAS BASE DEL SISTEMA
+[ ] Implementar cálculo de turno desde shifts + system_config.
+[ ] Manejar turnos que crucen medianoche.
+[ ] Exponer turno calculado al dominio sin depender del JWT.
+[ ] Probar escenarios límite de cambio de turno.
+
+10. INFRAESTRUCTURA DE PROCESOS PESADOS
+[ ] Integrar BullMQ.
+[ ] Crear colas para importaciones.
+[ ] Crear colas para exportaciones.
+[ ] Crear colas para consolidación KPI.
+[ ] Crear colas para reprocesos.
+[ ] Crear colas para publicación de outbox.
+[ ] Implementar política de reintentos.
+[ ] Implementar política de jobs fallidos.
+[ ] Asegurar que procesos pesados no bloqueen requests HTTP.
+
+11. IMPORTACIONES MASIVAS DESDE EXCEL
+[ ] Implementar subida inicial de archivo.
+[ ] Crear registro import_job.
+[ ] Parsear archivo Excel.
+[ ] Guardar filas en tablas staging.
+[ ] Validar estructura de columnas.
+[ ] Validar reglas de negocio por fila.
+[ ] Generar preview de importación.
+[ ] Implementar confirmación explícita de importación.
+[ ] Ejecutar upsert por lote.
+[ ] Registrar resumen final.
+[ ] Auditar proceso completo.
+[ ] Soportar modo tolerante con filas inválidas parciales.
+[ ] Devolver errores detallados por fila.
+[ ] Permitir consulta de estado del job.
+[ ] Permitir consulta de filas procesadas.
+[ ] Permitir descarga de resultados.
+[ ] Implementar claves de negocio para upsert.
+[ ] No usar createMany + skipDuplicates como reemplazo de upsert real.
+
+12. MÓDULO DE ÓRDENES DE TRABAJO
+[ ] Implementar entidad work_orders.
+[ ] Implementar CRUD completo de órdenes de trabajo.
+[ ] Implementar importación de órdenes de trabajo.
+[ ] Implementar consulta de filas importadas.
+[ ] Implementar filtros page, pageSize, cursor, q, status, updatedSince, includeDeleted.
+[ ] Implementar full-text search.
+[ ] Implementar snapshots y raw payload.
+[ ] Implementar máquina de estados para OT.
+[ ] Validar transiciones de estado.
+[ ] Integrar auditoría y change tracking.
+
+13. MÓDULO DE INVENTARIO: CLISÉS
+[ ] Implementar entidad clises.
+[ ] Implementar CRUD completo de clisés.
+[ ] Implementar importación de clisés.
+[ ] Implementar consulta de filas importadas de clisés.
+[ ] Implementar historial de clisés.
+[ ] Implementar carga y consulta de clise_color_usage.
+[ ] Implementar acumulado de metros.
+[ ] Implementar snapshots y raw payload.
+[ ] Integrar auditoría, soft delete y row_version.
+
+14. MÓDULO DE INVENTARIO: TROQUELES
+[ ] Implementar entidad dies.
+[ ] Implementar CRUD completo de troqueles.
+[ ] Implementar importación de troqueles.
+[ ] Implementar consulta de filas importadas de troqueles.
+[ ] Implementar historial de troqueles.
+[ ] Implementar acumulado de metros.
+[ ] Integrar auditoría, soft delete y row_version.
+
+15. MÓDULO DE INVENTARIO: RELACIONES Y RACKS
+[ ] Implementar entidad clise_die_links.
+[ ] Implementar actualización de troqueles vinculados a un clisé.
+[ ] Implementar actualización de clisés vinculados a un troquel.
+[ ] Implementar entidad rack_configs.
+[ ] Implementar CRUD completo de racks.
+[ ] Validar unicidad y consistencia en relaciones.
+
+16. MÓDULO DE INVENTARIO: STOCK TERMINADO
+[ ] Implementar entidad stock_items.
+[ ] Implementar CRUD completo de stock.
+[ ] Implementar validación de pallet_id único cuando aplique.
+[ ] Implementar snapshots de OT, cliente y producto.
+[ ] Implementar estados del stock.
+[ ] Integrar filtros e índices operativos.
+
+17. MÓDULO DE CALIDAD
+[ ] Implementar entidad incidents.
+[ ] Implementar CRUD completo de incidencias.
+[ ] Implementar entidad capa_actions.
+[ ] Implementar CRUD completo de acciones CAPA.
+[ ] Implementar snapshots de máquina y OT.
+[ ] Implementar máquina de estados de incidencias.
+[ ] Validar transiciones de estado.
+[ ] Integrar auditoría, soft delete y sincronización.
+
+18. MÓDULO DE PRODUCCIÓN: IMPRESIÓN
+[ ] Implementar entidad print_reports.
+[ ] Implementar CRUD completo de reportes de impresión.
+[ ] Implementar recepción transaccional de actividades hijas embebidas.
+[ ] Implementar entidad print_activities.
+[ ] Implementar locks operativos sobre reportes.
+[ ] Implementar unlock de reportes.
+[ ] Implementar snapshots de OT, cliente, producto y operador.
+[ ] Implementar validación contextual por máquina y área.
+[ ] Implementar máquina de estados del reporte.
+[ ] Validar transiciones de estado.
+[ ] Implementar cálculo y actualización de acumulados derivados.
+
+19. MÓDULO DE PRODUCCIÓN: TROQUELADO
+[ ] Implementar entidad diecut_reports.
+[ ] Implementar CRUD completo de reportes de troquelado.
+[ ] Implementar recepción transaccional de actividades hijas embebidas.
+[ ] Implementar entidad diecut_activities.
+[ ] Implementar locks operativos sobre reportes.
+[ ] Implementar unlock de reportes.
+[ ] Implementar snapshots de OT, cliente, producto y operador.
+[ ] Implementar validación contextual por máquina y área.
+[ ] Implementar máquina de estados del reporte.
+[ ] Validar transiciones de estado.
+
+20. KPIS Y ANALÍTICA
+[ ] Implementar entidad production_kpi_daily.
+[ ] Implementar cálculo oficial de KPIs en backend.
+[ ] Implementar jobs de consolidación KPI.
+[ ] Implementar endpoints oee, waste, downtime, throughput y daily.
+[ ] Separar consultas analíticas de la lógica transaccional.
+[ ] Optimizar lecturas mediante tablas agregadas si aplica.
+
+21. SINCRONIZACIÓN OFFLINE-FIRST
+[ ] Implementar tabla change_log.
+[ ] Implementar tabla sync_mutation_log.
+[ ] Implementar GET /sync/pull.
+[ ] Implementar POST /sync/push.
+[ ] Implementar cursor fuerte changed_at|change_id.
+[ ] Implementar lectura incremental basada en change_log.
+[ ] Implementar soporte de scope.
+[ ] Implementar paginación de sync pull.
+[ ] Implementar devolución de registros eliminados lógicamente.
+[ ] Implementar registro de mutationId.
+[ ] Implementar idempotencia de mutaciones.
+[ ] Implementar procesamiento parcial de lotes.
+[ ] Implementar una transacción por mutación.
+[ ] Implementar resolución de conflictos por row_version.
+[ ] Implementar soporte secundario por updated_at.
+[ ] Implementar detección de duplicados lógicos por claves únicas.
+[ ] Implementar reglas para mutaciones sobre registros ya eliminados.
+[ ] Implementar respuesta con processedMutationIds, conflicts, validationErrors y serverChanges.
+[ ] Implementar límites por request y lotes configurables.
+[ ] Implementar tolerancia a conectividad inestable.
+[ ] Implementar reintentos seguros sin duplicación.
+
+22. PERFILES DE DISPOSITIVO Y ALCANCE DE SINCRONIZACIÓN
+[ ] Implementar soporte para perfiles PRINT_STATION, DIECUT_STATION, SUPERVISOR, WAREHOUSE.
+[ ] Restringir módulos visibles por perfil.
+[ ] Restringir datos sincronizados por perfil.
+[ ] Restringir frecuencia y alcance de sincronización por perfil.
+[ ] Restringir catálogos sincronizados por perfil.
+
+23. ARCHIVOS Y ALMACENAMIENTO
+[ ] Implementar entidad file_objects.
+[ ] Implementar POST /files/upload.
+[ ] Implementar GET /files/:id.
+[ ] Implementar GET /files/:id/download.
+[ ] Implementar DELETE /files/:id.
+[ ] Validar MIME real del archivo.
+[ ] Validar tamaño configurable.
+[ ] Calcular hash SHA-256.
+[ ] Generar object_key no predecible.
+[ ] Implementar almacenamiento desacoplado del motor SQL.
+[ ] Implementar acceso por permiso.
+[ ] Implementar URLs firmadas si aplica.
+[ ] Implementar proceso de virus scan / validación de seguridad.
+[ ] Relacionar archivos por entity_name y entity_id.
+
+24. EXPORTACIONES
+[ ] Implementar exportación de print reports a Excel.
+[ ] Implementar exportación de print reports a PDF.
+[ ] Implementar exportación de diecut reports a Excel.
+[ ] Implementar exportación de work orders a Excel.
+[ ] Implementar exportación de incidents a Excel.
+[ ] Implementar tracking de jobs de exportación.
+[ ] Ejecutar exportaciones grandes de forma asíncrona.
+[ ] Integrar auditoría y correlation_id en exportaciones.
+
+25. API REST, DTOS Y CONTRATOS
+[ ] Definir DTOs explícitos por endpoint.
+[ ] Implementar validación con class-validator.
+[ ] Implementar transformación con class-transformer.
+[ ] Alinear todos los endpoints a la especificación del plan.
+[ ] Estandarizar respuestas con success, data, meta, error.
+[ ] Implementar cursor pagination donde aplique.
+[ ] Implementar offset pagination donde aplique.
+[ ] Implementar filtros indexados para listados de alto volumen.
+
+26. OBSERVABILIDAD Y OPERACIÓN
+[ ] Integrar OpenTelemetry.
+[ ] Instrumentar requests HTTP.
+[ ] Instrumentar queries principales de base de datos.
+[ ] Instrumentar jobs.
+[ ] Instrumentar sincronización.
+[ ] Instrumentar importaciones.
+[ ] Instrumentar exportaciones.
+[ ] Implementar logs técnicos con Pino o Winston.
+[ ] Medir latencia por endpoint.
+[ ] Medir tasa de error.
+[ ] Medir conflictos de sync.
+[ ] Medir tiempos de importación y exportación.
+[ ] Medir jobs pendientes y fallidos.
+[ ] Medir throughput de sincronización.
+[ ] Implementar dashboard técnico si entra en alcance.
+
+27. SALUD OPERATIVA E INFRAESTRUCTURA
+[ ] Implementar GET /health/live.
+[ ] Implementar GET /health/ready.
+[ ] Validar conexión a MySQL en readiness.
+[ ] Validar conexión a Redis en readiness.
+[ ] Validar acceso a almacenamiento en readiness.
+[ ] Validar estado de cola en readiness.
+[ ] Validar migraciones aplicadas.
+[ ] Configurar reverse proxy con TLS.
+[ ] Preparar despliegue por ambientes.
+
+28. OUTBOX E INTEGRACIÓN FUTURA
+[ ] Implementar tabla outbox_events.
+[ ] Crear publisher/job processor para outbox.
+[ ] Manejar estados PENDING, PUBLISHED, FAILED.
+[ ] Implementar reintentos y control de intentos.
+[ ] Dejar preparado para integraciones futuras, BI y automatizaciones.
+
+29. PRUEBAS UNITARIAS
+[ ] Probar auth.
+[ ] Probar sesiones.
+[ ] Probar refresh rotation.
+[ ] Probar guards.
+[ ] Probar validación contextual.
+[ ] Probar cálculo de turno.
+[ ] Probar máquinas de estado.
+[ ] Probar servicios de importación.
+[ ] Probar resolución de conflictos.
+[ ] Probar locks operativos.
+
+30. PRUEBAS DE INTEGRACIÓN
+[ ] Probar CRUD por módulo.
+[ ] Probar soft delete.
+[ ] Probar row_version.
+[ ] Probar change_log.
+[ ] Probar staging de importación.
+[ ] Probar upserts masivos.
+[ ] Probar relaciones padre-hijo.
+[ ] Probar health checks.
+
+31. PRUEBAS DE CONCURRENCIA
+[ ] Simular dos operarios editando la misma OT.
+[ ] Simular dos dispositivos editando el mismo reporte.
+[ ] Simular delete vs update concurrente.
+[ ] Simular reenvío del mismo mutationId.
+[ ] Simular pérdida de conexión tras timeout.
+[ ] Simular locks operativos simultáneos.
+
+32. PRUEBAS DE RENDIMIENTO
+[ ] Medir throughput de importación.
+[ ] Medir latencia de sync pull.
+[ ] Medir tiempo de sync push.
+[ ] Medir paginación por cursor.
+[ ] Medir exportaciones.
+[ ] Medir generación de KPIs.
+[ ] Medir carga sobre BD con concurrencia.
+
+33. PRUEBAS DE SEGURIDAD
+[ ] Validar expiración de sesiones.
+[ ] Validar revocación de sesiones.
+[ ] Validar refresh rotation.
+[ ] Validar rate limiting.
+[ ] Validar acceso denegado por rol.
+[ ] Validar acceso denegado por contexto.
+[ ] Validar protección de endpoints de archivo.
+[ ] Validar imposibilidad de modificar audit_logs.
+
+34. PRUEBAS E2E
+[ ] Login completo.
+[ ] Consulta de catálogos.
+[ ] Importación de OTs.
+[ ] Registro de producción.
+[ ] Creación de incidencia.
+[ ] Operación offline.
+[ ] Sincronización posterior.
+[ ] Exportación de datos.
+[ ] Cierre de sesión por dispositivo.
+
+35. DOCUMENTACIÓN TÉCNICA
+[ ] Generar Swagger/OpenAPI completo.
+[ ] Documentar DTOs.
+[ ] Documentar errores estándar.
+[ ] Documentar contratos de sync pull/push.
+[ ] Documentar scopes de sincronización.
+[ ] Documentar reglas de conflicto.
+[ ] Documentar perfiles de dispositivo.
+[ ] Documentar variables de entorno.
+[ ] Documentar proceso de migraciones.
+[ ] Documentar seeds.
+[ ] Documentar estrategia de backup y restore.
+
+36. BACKUPS, RETENCIÓN Y SALIDA A PRODUCCIÓN
+[ ] Definir backup diario.
+[ ] Definir retención de backups.
+[ ] Probar restauración.
+[ ] Definir plan de contingencia.
+[ ] Definir retención de audit logs.
+[ ] Definir retención de sync mutation log.
+[ ] Definir retención de change log.
+[ ] Definir retención de archivos temporales.
+[ ] Ejecutar checklist de salida a producción.
+
+INSTRUCCIÓN DE USO PARA OTRA IA
+
+Implementa este backend completando absolutamente todas las tareas de la checklist. No omitas ninguna funcionalidad implícita o explícita. Antes de codificar, marca dependencias entre tareas, luego implementa por módulos en este orden: base del proyecto, seguridad, catálogos, importaciones, inventario, órdenes de trabajo, calidad, producción, sincronización offline-first, archivos, exportaciones, KPIs, observabilidad, pruebas y documentación.

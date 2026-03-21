@@ -1,0 +1,132 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/">
+  <title>P.FLEX (v21)</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #F4F6F8; }
+    h1, h2, h3, h4, h5, h6 { font-family: 'Inter', sans-serif; }
+    .font-secondary { font-family: 'IBM Plex Sans', sans-serif; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.1); }
+    ::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.4); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.6); }
+    
+    /* Global Gradient Mesh Background */
+    .bg-gradient-mesh {
+        background-color: #0B0E14;
+        background-image: 
+            radial-gradient(at 10% 20%, hsla(220,100%,15%,0.6) 0, transparent 50%), 
+            radial-gradient(at 90% 80%, hsla(240,100%,15%,0.6) 0, transparent 50%),
+            radial-gradient(at 50% 50%, hsla(210,100%,10%,1) 0, transparent 50%);
+        background-attachment: fixed;
+        background-size: cover;
+    }
+
+    /* Common Glassmorphism Utilities */
+    .glassmorphism {
+        @apply bg-[rgba(30,41,59,0.4)] backdrop-blur-xl border border-[rgba(255,255,255,0.1)] shadow-[0_8px_32px_0_rgba(0,0,0,0.36)];
+    }
+    .glassmorphism-card {
+         background-color: rgba(255, 255, 255, 0.05);
+         backdrop-filter: blur(12px);
+         border: 1px solid rgba(255, 255, 255, 0.1);
+         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+    }
+    .glassmorphism-input {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(4px);
+        color: white;
+    }
+    .glassmorphism-input:focus {
+        background-color: rgba(255, 255, 255, 0.1);
+        outline: none;
+    }
+
+    /* PREVENT WHITE BACKGROUND ON AUTOFILL */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover, 
+    input:-webkit-autofill:focus, 
+    textarea:-webkit-autofill,
+    textarea:-webkit-autofill:hover,
+    textarea:-webkit-autofill:focus,
+    select:-webkit-autofill,
+    select:-webkit-autofill:hover,
+    select:-webkit-autofill:focus {
+      -webkit-text-fill-color: white;
+      -webkit-box-shadow: 0 0 0px 1000px #0f172a inset;
+      transition: background-color 5000s ease-in-out 0s;
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              dark: '#1E2A38',
+              graphite: '#2F3A45',
+              light: '#F4F6F8',
+              action: '#2F80ED',
+              success: '#27AE60',
+              warning: '#F2C94C',
+              critical: '#EB5757',
+              auth: '#F2994A'
+            },
+            primary: "#3B82F6",
+            secondary: "#64748B",
+            "background-dark": "#0B0E14",
+            "glass-bg": "rgba(30, 41, 59, 0.4)",
+            "glass-border": "rgba(255, 255, 255, 0.1)",
+            "neon-green": "#00FF66",
+            "industrial-orange": "#F59E0B",
+            "neon-red": "#FF0044",
+            "neon-yellow": "#FFD600",
+          },
+          boxShadow: {
+            'neon-green': '0 0 10px rgba(0, 255, 102, 0.3)',
+            'neon-red': '0 0 10px rgba(239, 68, 68, 0.3)',
+            'neon-yellow': '0 0 10px rgba(255, 214, 0, 0.5)',
+            'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.36)',
+            'glass-modal': '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          }
+        }
+      }
+    }
+  </script>
+<script type="importmap">
+{
+  "imports": {
+    "rxjs": "https://esm.sh/rxjs@7.8.1",
+    "rxjs/operators": "https://esm.sh/rxjs@7.8.1/operators",
+    "@angular/core": "https://esm.sh/@angular/core@19.0.0",
+    "@angular/common": "https://esm.sh/@angular/common@19.0.0",
+    "@angular/compiler": "https://esm.sh/@angular/compiler@19.0.0",
+    "@angular/platform-browser": "https://esm.sh/@angular/platform-browser@19.0.0",
+    "@angular/forms": "https://esm.sh/@angular/forms@19.0.0",
+    "@angular/router": "https://esm.sh/@angular/router@19.0.0",
+    "xlsx": "https://esm.sh/xlsx@0.18.5",
+    "jspdf": "https://esm.sh/jspdf@2.5.1",
+    "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.8.2",
+    "html2canvas": "https://esm.sh/html2canvas@1.4.1",
+    "d3": "https://esm.sh/d3@7.9.0",
+    "zone.js": "https://esm.sh/zone.js@0.14.2",
+    "rxjs/": "https://esm.sh/rxjs@^7.8.2/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <app-root></app-root>
+</body>
+</html>

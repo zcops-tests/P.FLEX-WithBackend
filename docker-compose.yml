@@ -1,0 +1,25 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: pflex_db
+      MYSQL_USER: pflex_user
+      MYSQL_PASSWORD: pflex_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - pflex_mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - pflex_redis_data:/data
+
+volumes:
+  pflex_mysql_data:
+  pflex_redis_data:

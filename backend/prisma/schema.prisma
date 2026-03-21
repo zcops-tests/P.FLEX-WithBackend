@@ -1,0 +1,892 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// =========================================================
+// 1. ADMINISTRACIÓN, SEGURIDAD Y CATÁLOGOS
+// =========================================================
+
+model Area {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  code        String    @unique @db.VarChar(50)
+  name        String    @db.VarChar(100)
+  description String?   @db.Text
+  active      Boolean   @default(true)
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  machines      Machine[]
+  assignedUsers UserAssignedArea[]
+
+  @@map("areas")
+}
+
+model Permission {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  code        String    @unique @db.VarChar(100)
+  name        String    @db.VarChar(100)
+  description String?   @db.Text
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  code        String    @unique @db.VarChar(50)
+  name        String    @db.VarChar(100)
+  description String?   @db.Text
+  active      Boolean   @default(true)
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  permissions RolePermission[]
+  users       User[]
+
+  @@map("roles")
+}
+
+model RolePermission {
+  id            String    @id @default(uuid()) @db.VarChar(36)
+  role_id       String    @db.VarChar(36)
+  permission_id String    @db.VarChar(36)
+  row_version   BigInt    @default(1)
+  created_at    DateTime  @default(now()) @db.DateTime(3)
+  updated_at    DateTime  @updatedAt @db.DateTime(3)
+  deleted_at    DateTime? @db.DateTime(3)
+
+  role       Role       @relation(fields: [role_id], references: [id])
+  permission Permission @relation(fields: [permission_id], references: [id])
+
+  @@unique([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+model Shift {
+  id               String    @id @default(uuid()) @db.VarChar(36)
+  code             String    @unique @db.VarChar(50)
+  name             String    @db.VarChar(100)
+  start_time       String    @db.VarChar(8) // TIME format handled as string HH:mm:ss
+  end_time         String    @db.VarChar(8)
+  crosses_midnight Boolean   @default(false)
+  active           Boolean   @default(true)
+  row_version      BigInt    @default(1)
+  created_at       DateTime  @default(now()) @db.DateTime(3)
+  updated_at       DateTime  @updatedAt @db.DateTime(3)
+  deleted_at       DateTime? @db.DateTime(3)
+
+  print_reports   PrintReport[]
+  diecut_reports  DiecutReport[]
+  kpis            ProductionKpiDaily[]
+
+  @@map("shifts")
+}
+
+model User {
+  id                  String    @id @default(uuid()) @db.VarChar(36)
+  role_id             String    @db.VarChar(36)
+  name                String    @db.VarChar(100)
+  username            String    @unique @db.VarChar(50)
+  password_hash       String    @db.VarChar(255)
+  active              Boolean   @default(true)
+  last_login_at       DateTime? @db.DateTime(3)
+  password_changed_at DateTime? @db.DateTime(3)
+  row_version         BigInt    @default(1)
+  created_at          DateTime  @default(now()) @db.DateTime(3)
+  updated_at          DateTime  @updatedAt @db.DateTime(3)
+  deleted_at          DateTime? @db.DateTime(3)
+
+  role            Role               @relation(fields: [role_id], references: [id])
+  assignedAreas   UserAssignedArea[]
+  refreshTokens   RefreshToken[]
+  sessions        UserSession[]
+  sync_mutations  SyncMutationLog[]
+  import_jobs     ImportJob[]
+  clise_history   CliseHistory[]
+  die_history     DieHistory[]
+  incidents_rpt   Incident[]         @relation("ReportedBy")
+  incidents_asgn  Incident[]         @relation("AssignedTo")
+  capa_actions    CapaAction[]
+  print_reports   PrintReport[]
+  diecut_reports  DiecutReport[]
+  file_objects    FileObject[]
+  audit_logs      AuditLog[]         @relation("UserAudit")
+  change_log      ChangeLog[]
+
+  @@map("users")
+}
+
+model UserAssignedArea {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  user_id     String    @db.VarChar(36)
+  area_id     String    @db.VarChar(36)
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  user User @relation(fields: [user_id], references: [id])
+  area Area @relation(fields: [area_id], references: [id])
+
+  @@unique([user_id, area_id])
+  @@map("user_assigned_areas")
+}
+
+model SystemConfig {
+  id                           String   @id @default(uuid()) @db.VarChar(36)
+  plant_name                   String   @db.VarChar(150)
+  auto_logout_minutes          Int      @default(30)
+  password_expiry_warning_days Int      @default(7)
+  password_policy_days         Int      @default(90)
+  operator_message             String?  @db.Text
+  timezone_name                String   @default("UTC") @db.VarChar(100)
+  row_version                  BigInt   @default(1)
+  created_at                   DateTime @default(now()) @db.DateTime(3)
+  updated_at                   DateTime @updatedAt @db.DateTime(3)
+
+  @@map("system_config")
+}
+
+model Machine {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  area_id     String    @db.VarChar(36)
+  code        String    @unique @db.VarChar(50)
+  name        String    @db.VarChar(100)
+  type        String    @db.VarChar(50)
+  status      String    @default("OPERATIVE") @db.VarChar(50) // ENUM in MySQL, String in Prisma for flexibility
+  active      Boolean   @default(true)
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  area           Area                 @relation(fields: [area_id], references: [id])
+  clise_history  CliseHistory[]
+  die_history    DieHistory[]
+  incidents      Incident[]
+  print_reports  PrintReport[]
+  diecut_reports DiecutReport[]
+  kpis           ProductionKpiDaily[]
+
+  @@map("machines")
+}
+
+model RefreshToken {
+  id                    String    @id @default(uuid()) @db.VarChar(36)
+  user_id               String    @db.VarChar(36)
+  session_id            String    @db.VarChar(36)
+  token_hash            String    @unique @db.VarChar(255)
+  expires_at            DateTime  @db.DateTime(3)
+  rotated_from_token_id String?   @db.VarChar(36)
+  revoked_at            DateTime? @db.DateTime(3)
+  created_at            DateTime  @default(now()) @db.DateTime(3)
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@map("refresh_tokens")
+}
+
+model UserSession {
+  id             String    @id @default(uuid()) @db.VarChar(36)
+  user_id        String    @db.VarChar(36)
+  device_id      String?   @db.VarChar(100)
+  device_name    String?   @db.VarChar(150)
+  device_type    String?   @db.VarChar(50)
+  device_profile String?   @db.VarChar(50)
+  ip_address     String?   @db.VarChar(45)
+  user_agent     String?   @db.Text
+  active         Boolean   @default(true)
+  last_seen_at   DateTime? @db.DateTime(3)
+  revoked_at     DateTime? @db.DateTime(3)
+  created_at     DateTime  @default(now()) @db.DateTime(3)
+
+  user      User       @relation(fields: [user_id], references: [id])
+  auditLogs AuditLog[]
+
+  @@index([user_id])
+  @@index([active])
+  @@map("user_sessions")
+}
+
+// =========================================================
+// 2. AUDITORÍA, CAMBIOS Y PROCESOS
+// =========================================================
+
+model AuditLog {
+  id                  BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  user_id             String?  @db.VarChar(36)
+  session_id          String?  @db.VarChar(36)
+  user_name_snapshot  String?  @db.VarChar(100)
+  role_code_snapshot  String?  @db.VarChar(50)
+  entity              String   @db.VarChar(100)
+  entity_id           String?  @db.VarChar(36)
+  action              String   @db.VarChar(50) // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, IMPORT, EXPORT
+  old_values          Json?
+  new_values          Json?
+  ip_address          String?  @db.VarChar(45)
+  user_agent          String?  @db.Text
+  correlation_id      String?  @db.VarChar(100)
+  created_at          DateTime @default(now()) @db.DateTime(3)
+
+  user    User?        @relation("UserAudit", fields: [user_id], references: [id])
+  session UserSession? @relation(fields: [session_id], references: [id])
+
+  @@index([created_at])
+  @@index([entity])
+  @@index([entity_id])
+  @@index([user_id])
+  @@map("audit_logs")
+}
+
+model ChangeLog {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  entity         String   @db.VarChar(100)
+  entity_id      String   @db.VarChar(36)
+  operation      String   @db.VarChar(50) // CREATE, UPDATE, DELETE
+  row_version    BigInt
+  changed_at     DateTime @default(now()) @db.DateTime(3)
+  user_id        String?  @db.VarChar(36)
+  correlation_id String?  @db.VarChar(100)
+
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@index([changed_at, id])
+  @@index([entity, entity_id])
+  @@index([user_id])
+  @@map("change_log")
+}
+
+model SyncMutationLog {
+  mutation_id      String   @id @db.VarChar(36)
+  client_id        String   @db.VarChar(100)
+  device_profile   String?  @db.VarChar(50)
+  user_id          String   @db.VarChar(36)
+  entity           String   @db.VarChar(100)
+  entity_id        String   @db.VarChar(36)
+  action           String   @db.VarChar(50) // CREATE, UPDATE, DELETE
+  status           String   @db.VarChar(50) // PROCESSED, CONFLICT, REJECTED
+  request_payload  Json?
+  response_payload Json?
+  correlation_id   String?  @db.VarChar(100)
+  processed_at     DateTime @default(now()) @db.DateTime(3)
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@index([entity])
+  @@map("sync_mutation_log")
+}
+
+model ImportJob {
+  id                 String    @id @default(uuid()) @db.VarChar(36)
+  entity_name        String    @db.VarChar(100)
+  file_name          String    @db.VarChar(255)
+  file_hash          String?   @db.VarChar(64)
+  file_url           String?   @db.VarChar(500)
+  status             String    @default("PENDING") @db.VarChar(50) // PENDING, VALIDATING, READY, PROCESSING, COMPLETED, FAILED
+  total_rows         Int       @default(0)
+  valid_rows         Int       @default(0)
+  invalid_rows       Int       @default(0)
+  applied_rows       Int       @default(0)
+  summary            Json?
+  created_by_user_id String    @db.VarChar(36)
+  correlation_id     String?   @db.VarChar(100)
+  started_at         DateTime? @db.DateTime(3)
+  finished_at        DateTime? @db.DateTime(3)
+  created_at         DateTime  @default(now()) @db.DateTime(3)
+  updated_at         DateTime  @updatedAt @db.DateTime(3)
+
+  user                  User                   @relation(fields: [created_by_user_id], references: [id])
+  workOrderImportRows   WorkOrderImportRow[]
+  cliseImportRows       CliseImportRow[]
+  dieImportRows         DieImportRow[]
+
+  @@map("import_jobs")
+}
+
+model OutboxEvent {
+  id             String    @id @default(uuid()) @db.VarChar(36)
+  event_name     String    @db.VarChar(150)
+  aggregate_type String    @db.VarChar(100)
+  aggregate_id   String    @db.VarChar(36)
+  payload        Json
+  status         String    @default("PENDING") @db.VarChar(50) // PENDING, PUBLISHED, FAILED
+  attempts       Int       @default(0)
+  available_at   DateTime  @default(now()) @db.DateTime(3)
+  published_at   DateTime? @db.DateTime(3)
+  created_at     DateTime  @default(now()) @db.DateTime(3)
+
+  @@index([status, available_at])
+  @@map("outbox_events")
+}
+
+// =========================================================
+// 3. ÓRDENES DE TRABAJO
+// =========================================================
+
+model WorkOrder {
+  id                          String    @id @default(uuid()) @db.VarChar(36)
+  ot_number                   String    @unique @db.VarChar(50)
+  status                      String    @default("IMPORTED") @db.VarChar(50) // IMPORTED, PLANNED, IN_PRODUCTION, PARTIAL, COMPLETED, CANCELLED
+  descripcion                 String?   @db.Text
+  nro_cotizacion              String?   @db.VarChar(50)
+  nro_ficha                   String?   @db.VarChar(50)
+  pedido                      String?   @db.VarChar(50)
+  orden_compra                String?   @db.VarChar(100)
+  cliente_razon_social        String?   @db.VarChar(150)
+  vendedor                    String?   @db.VarChar(100)
+  fecha_pedido                DateTime? @db.Date
+  fecha_entrega               DateTime? @db.Date
+  fecha_ingreso_planta        DateTime? @db.Date
+  fecha_programada_produccion DateTime? @db.Date
+  cantidad_pedida             Decimal?  @db.Decimal(14, 2)
+  unidad                      String?   @db.VarChar(20)
+  material                    String?   @db.VarChar(150)
+  ancho_mm                    Decimal?  @db.Decimal(12, 3)
+  avance_mm                   Decimal?  @db.Decimal(12, 3)
+  desarrollo_mm               Decimal?  @db.Decimal(12, 3)
+  columnas                    Int?
+  adhesivo                    String?   @db.VarChar(100)
+  acabado                     String?   @db.VarChar(100)
+  troquel                     String?   @db.VarChar(100)
+  maquina_texto               String?   @db.VarChar(100)
+  total_metros                Decimal?  @db.Decimal(14, 3)
+  total_m2                    Decimal?  @db.Decimal(14, 3)
+  observaciones_diseno        String?   @db.Text
+  observaciones_cotizacion    String?   @db.Text
+  raw_payload                 Json?
+  import_hash                 String?   @db.VarChar(64)
+  row_version                 BigInt    @default(1)
+  created_at                  DateTime  @default(now()) @db.DateTime(3)
+  updated_at                  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at                  DateTime? @db.DateTime(3)
+
+  stock_items    StockItem[]
+  incidents      Incident[]
+  print_reports  PrintReport[]
+  diecut_reports DiecutReport[]
+
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@index([status])
+  @@fulltext([ot_number, cliente_razon_social, descripcion, material, vendedor])
+  @@map("work_orders")
+}
+
+model WorkOrderImportRow {
+  id                String   @id @default(uuid()) @db.VarChar(36)
+  import_job_id     String   @db.VarChar(36)
+  row_number        Int
+  row_status        String   @default("PENDING") @db.VarChar(50) // PENDING, VALID, INVALID, APPLIED
+  business_key      String?  @db.VarChar(100)
+  raw_row           Json
+  normalized_row    Json?
+  validation_errors Json?
+  created_at        DateTime @default(now()) @db.DateTime(3)
+  updated_at        DateTime @updatedAt @db.DateTime(3)
+
+  import_job ImportJob @relation(fields: [import_job_id], references: [id])
+
+  @@index([import_job_id])
+  @@map("work_order_import_rows")
+}
+
+// =========================================================
+// 4. INVENTARIO
+// =========================================================
+
+model Clise {
+  id                String    @id @default(uuid()) @db.VarChar(36)
+  item_code         String    @unique @db.VarChar(100)
+  ubicacion         String?   @db.VarChar(100)
+  descripcion       String?   @db.Text
+  cliente           String?   @db.VarChar(150)
+  z_value           String?   @db.VarChar(50)
+  estandar          String?   @db.VarChar(100)
+  ancho_mm          Decimal?  @db.Decimal(12, 3)
+  avance_mm         Decimal?  @db.Decimal(12, 3)
+  columnas          Int?
+  repeticiones      Int?
+  numero_clises     Int?
+  espesor_mm        Decimal?  @db.Decimal(10, 3)
+  fecha_ingreso     DateTime? @db.Date
+  observaciones     String?   @db.Text
+  maquina_texto     String?   @db.VarChar(100)
+  colores_json      Json?
+  ficha_fler        String?   @db.VarChar(100)
+  metros_acumulados Decimal   @default(0) @db.Decimal(14, 3)
+  imagen_url        String?   @db.VarChar(500)
+  raw_payload       Json?
+  row_version       BigInt    @default(1)
+  created_at        DateTime  @default(now()) @db.DateTime(3)
+  updated_at        DateTime  @updatedAt @db.DateTime(3)
+  deleted_at        DateTime? @db.DateTime(3)
+  rack_id           String?   @db.VarChar(36)
+
+  color_usage   CliseColorUsage[]
+  die_links     CliseDieLink[]
+  history       CliseHistory[]
+  print_reports PrintReport[]
+  rack          RackConfig?      @relation(fields: [rack_id], references: [id])
+
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@map("clises")
+}
+
+model CliseImportRow {
+  id                String   @id @default(uuid()) @db.VarChar(36)
+  import_job_id     String   @db.VarChar(36)
+  row_number        Int
+  row_status        String   @default("PENDING") @db.VarChar(50) // PENDING, VALID, INVALID, APPLIED
+  business_key      String?  @db.VarChar(100)
+  raw_row           Json
+  normalized_row    Json?
+  validation_errors Json?
+  created_at        DateTime @default(now()) @db.DateTime(3)
+  updated_at        DateTime @updatedAt @db.DateTime(3)
+
+  import_job ImportJob @relation(fields: [import_job_id], references: [id])
+
+  @@index([import_job_id])
+  @@map("clise_import_rows")
+}
+
+model CliseColorUsage {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  clise_id    String    @db.VarChar(36)
+  color_name  String    @db.VarChar(100)
+  meters      Decimal   @default(0) @db.Decimal(14, 3)
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  clise Clise @relation(fields: [clise_id], references: [id])
+
+  @@index([clise_id])
+  @@map("clise_color_usage")
+}
+
+model Die {
+  id                String    @id @default(uuid()) @db.VarChar(36)
+  serie             String    @unique @db.VarChar(100)
+  medida            String?   @db.VarChar(100)
+  ubicacion         String?   @db.VarChar(100)
+  ancho_mm          Decimal?  @db.Decimal(12, 3)
+  avance_mm         Decimal?  @db.Decimal(12, 3)
+  ancho_plg         Decimal?  @db.Decimal(12, 3)
+  avance_plg        Decimal?  @db.Decimal(12, 3)
+  z_value           String?   @db.VarChar(50)
+  columnas          Int?
+  repeticiones      Int?
+  material          String?   @db.VarChar(100)
+  forma             String?   @db.VarChar(100)
+  cliente           String?   @db.VarChar(150)
+  observaciones     String?   @db.Text
+  fecha_ingreso     DateTime? @db.Date
+  pb                String?   @db.VarChar(50)
+  separacion_avance String?   @db.VarChar(50)
+  estado            String?   @db.VarChar(50)
+  cantidad          Int?
+  almacen           String?   @db.VarChar(100)
+  metros_acumulados Decimal   @default(0) @db.Decimal(14, 3)
+  tipo_troquel      String?   @db.VarChar(100)
+  raw_payload       Json?
+  row_version       BigInt    @default(1)
+  created_at        DateTime  @default(now()) @db.DateTime(3)
+  updated_at        DateTime  @updatedAt @db.DateTime(3)
+  deleted_at        DateTime? @db.DateTime(3)
+  rack_id           String?   @db.VarChar(36)
+
+  clise_links    CliseDieLink[]
+  history        DieHistory[]
+  print_reports  PrintReport[]
+  diecut_reports DiecutReport[]
+  rack           RackConfig?    @relation(fields: [rack_id], references: [id])
+
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@map("dies")
+}
+
+model DieImportRow {
+  id                String   @id @default(uuid()) @db.VarChar(36)
+  import_job_id     String   @db.VarChar(36)
+  row_number        Int
+  row_status        String   @default("PENDING") @db.VarChar(50) // PENDING, VALID, INVALID, APPLIED
+  business_key      String?  @db.VarChar(100)
+  raw_row           Json
+  normalized_row    Json?
+  validation_errors Json?
+  created_at        DateTime @default(now()) @db.DateTime(3)
+  updated_at        DateTime @updatedAt @db.DateTime(3)
+
+  import_job ImportJob @relation(fields: [import_job_id], references: [id])
+
+  @@index([import_job_id])
+  @@map("die_import_rows")
+}
+
+model CliseDieLink {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  clise_id    String    @db.VarChar(36)
+  die_id      String    @db.VarChar(36)
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  clise Clise @relation(fields: [clise_id], references: [id])
+  die   Die   @relation(fields: [die_id], references: [id])
+
+  @@unique([clise_id, die_id])
+  @@map("clise_die_links")
+}
+
+model CliseHistory {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  clise_id    String    @db.VarChar(36)
+  event_date  DateTime  @db.DateTime(3)
+  event_type  String    @db.VarChar(50) // PRODUCTION, MAINTENANCE, REPAIR, VERSION_CHANGE, CREATION, DEACTIVATION, OTHER
+  description String?   @db.Text
+  user_id     String?   @db.VarChar(36)
+  machine_id  String?   @db.VarChar(36)
+  amount      Decimal?  @db.Decimal(14, 3)
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  clise   Clise    @relation(fields: [clise_id], references: [id])
+  user    User?    @relation(fields: [user_id], references: [id])
+  machine Machine? @relation(fields: [machine_id], references: [id])
+
+  @@map("clise_history")
+}
+
+model DieHistory {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  die_id      String    @db.VarChar(36)
+  event_date  DateTime  @db.DateTime(3)
+  event_type  String    @db.VarChar(50) // PRODUCTION, MAINTENANCE, REPAIR, VERSION_CHANGE, CREATION, DEACTIVATION, OTHER
+  description String?   @db.Text
+  user_id     String?   @db.VarChar(36)
+  machine_id  String?   @db.VarChar(36)
+  amount      Decimal?  @db.Decimal(14, 3)
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  die     Die      @relation(fields: [die_id], references: [id])
+  user    User?    @relation(fields: [user_id], references: [id])
+  machine Machine? @relation(fields: [machine_id], references: [id])
+
+  @@map("die_history")
+}
+
+model RackConfig {
+  id          String    @id @default(uuid()) @db.VarChar(36)
+  name        String    @db.VarChar(100)
+  rack_type   String    @db.VarChar(50) // CLISE, DIE
+  orientation String    @db.VarChar(50) // VERTICAL, HORIZONTAL
+  levels_json Json
+  active      Boolean   @default(true)
+  row_version BigInt    @default(1)
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  updated_at  DateTime  @updatedAt @db.DateTime(3)
+  deleted_at  DateTime? @db.DateTime(3)
+
+  clises Clise[]
+  dies   Die[]
+
+  @@map("rack_configs")
+}
+
+model StockItem {
+  id                   String    @id @default(uuid()) @db.VarChar(36)
+  work_order_id        String?   @db.VarChar(36)
+  ot_number_snapshot   String?   @db.VarChar(50)
+  client_snapshot      String?   @db.VarChar(150)
+  product_snapshot     String?   @db.VarChar(255)
+  quantity             Decimal?  @db.Decimal(14, 3)
+  unit                 String?   @db.VarChar(50)
+  rolls                Int?
+  millares             Decimal?  @db.Decimal(14, 3)
+  location             String?   @db.VarChar(100)
+  status               String    @default("LIBERATED") @db.VarChar(50) // LIBERATED, QUARANTINE, RETAINED, DISPATCHED
+  entry_date           DateTime  @db.DateTime(3)
+  notes                String?   @db.Text
+  pallet_id            String?   @unique @db.VarChar(100)
+  row_version          BigInt    @default(1)
+  created_at           DateTime  @default(now()) @db.DateTime(3)
+  updated_at           DateTime  @updatedAt @db.DateTime(3)
+  deleted_at           DateTime? @db.DateTime(3)
+
+  work_order WorkOrder? @relation(fields: [work_order_id], references: [id])
+
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@index([status])
+  @@map("stock_items")
+}
+
+// =========================================================
+// 5. CALIDAD
+// =========================================================
+
+model Incident {
+  id                    String    @id @default(uuid()) @db.VarChar(36)
+  code                  String    @unique @db.VarChar(50)
+  title                 String    @db.VarChar(200)
+  description           String?   @db.Text
+  priority              String    @db.VarChar(50) // HIGH, MEDIUM, LOW
+  type                  String    @db.VarChar(50) // QUALITY, SAFETY, MACHINERY, MATERIAL, OTHER
+  status                String    @default("OPEN") @db.VarChar(50) // OPEN, ANALYSIS, CORRECTIVE_ACTION, CLOSED
+  work_order_id         String?   @db.VarChar(36)
+  machine_id            String?   @db.VarChar(36)
+  reported_by_user_id   String    @db.VarChar(36)
+  assigned_to_user_id   String?   @db.VarChar(36)
+  reported_at           DateTime  @db.DateTime(3)
+  root_cause            String?   @db.Text
+  machine_code_snapshot String?   @db.VarChar(50)
+  ot_number_snapshot    String?   @db.VarChar(50)
+  row_version           BigInt    @default(1)
+  created_at            DateTime  @default(now()) @db.DateTime(3)
+  updated_at            DateTime  @updatedAt @db.DateTime(3)
+  deleted_at            DateTime? @db.DateTime(3)
+
+  work_order  WorkOrder?   @relation(fields: [work_order_id], references: [id])
+  machine     Machine?     @relation(fields: [machine_id], references: [id])
+  reportedBy  User         @relation("ReportedBy", fields: [reported_by_user_id], references: [id])
+  assignedTo  User?        @relation("AssignedTo", fields: [assigned_to_user_id], references: [id])
+  capaActions CapaAction[]
+
+  @@index([reported_at])
+  @@index([status])
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@map("incidents")
+}
+
+model CapaAction {
+  id                  String    @id @default(uuid()) @db.VarChar(36)
+  incident_id         String    @db.VarChar(36)
+  description         String    @db.Text
+  action_type         String    @db.VarChar(50) // CORRECTIVE, PREVENTIVE
+  responsible_user_id String    @db.VarChar(36)
+  deadline            DateTime  @db.Date
+  completed           Boolean   @default(false)
+  completed_at        DateTime? @db.DateTime(3)
+  row_version         BigInt    @default(1)
+  created_at          DateTime  @default(now()) @db.DateTime(3)
+  updated_at          DateTime  @updatedAt @db.DateTime(3)
+  deleted_at          DateTime? @db.DateTime(3)
+
+  incident    Incident @relation(fields: [incident_id], references: [id])
+  responsible User     @relation(fields: [responsible_user_id], references: [id])
+
+  @@index([deadline])
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@map("capa_actions")
+}
+
+// =========================================================
+// 6. PRODUCCIÓN
+// =========================================================
+
+model PrintReport {
+  id                         String    @id @default(uuid()) @db.VarChar(36)
+  reported_at                DateTime  @db.DateTime(3)
+  work_order_id              String?   @db.VarChar(36)
+  machine_id                 String    @db.VarChar(36)
+  operator_id                String    @db.VarChar(36)
+  shift_id                   String?   @db.VarChar(36)
+  status                     String    @default("SUBMITTED") @db.VarChar(50) // DRAFT, SUBMITTED, APPROVED, CORRECTED
+  work_order_number_snapshot String?   @db.VarChar(50)
+  client_snapshot            String?   @db.VarChar(150)
+  product_snapshot           String?   @db.VarChar(255)
+  operator_name_snapshot     String?   @db.VarChar(100)
+  total_meters               Decimal   @default(0) @db.Decimal(14, 3)
+  waste_meters               Decimal   @default(0) @db.Decimal(14, 3)
+  setup_minutes              Int       @default(0)
+  run_minutes                Int       @default(0)
+  clise_id                   String?   @db.VarChar(36)
+  die_id                     String?   @db.VarChar(36)
+  clise_status               String?   @db.VarChar(50)
+  die_status                 String?   @db.VarChar(50)
+  observations               String?   @db.Text
+  production_status          String    @db.VarChar(50) // PARTIAL, TOTAL
+  locked_by_user_id          String?   @db.VarChar(36)
+  locked_at                  DateTime? @db.DateTime(3)
+  row_version                BigInt    @default(1)
+  created_at                 DateTime  @default(now()) @db.DateTime(3)
+  updated_at                 DateTime  @updatedAt @db.DateTime(3)
+  deleted_at                 DateTime? @db.DateTime(3)
+
+  work_order  WorkOrder?      @relation(fields: [work_order_id], references: [id])
+  machine     Machine         @relation(fields: [machine_id], references: [id])
+  operator    User            @relation(fields: [operator_id], references: [id])
+  shift       Shift?          @relation(fields: [shift_id], references: [id])
+  clise       Clise?          @relation(fields: [clise_id], references: [id])
+  die         Die?            @relation(fields: [die_id], references: [id])
+  activities  PrintActivity[]
+
+  @@index([reported_at])
+  @@index([machine_id])
+  @@index([operator_id])
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@index([status])
+  @@map("print_reports")
+}
+
+model PrintActivity {
+  id               String    @id @default(uuid()) @db.VarChar(36)
+  report_id        String    @db.VarChar(36)
+  activity_type    String    @db.VarChar(100)
+  start_time       String    @db.VarChar(8) // HH:mm:ss
+  end_time         String    @db.VarChar(8) // HH:mm:ss
+  duration_minutes Int       @default(0)
+  meters           Decimal   @default(0) @db.Decimal(14, 3)
+  row_version      BigInt    @default(1)
+  created_at       DateTime  @default(now()) @db.DateTime(3)
+  updated_at       DateTime  @updatedAt @db.DateTime(3)
+  deleted_at       DateTime? @db.DateTime(3)
+
+  report PrintReport @relation(fields: [report_id], references: [id])
+
+  @@index([report_id])
+  @@map("print_activities")
+}
+
+model DiecutReport {
+  id                         String    @id @default(uuid()) @db.VarChar(36)
+  reported_at                DateTime  @db.DateTime(3)
+  work_order_id              String?   @db.VarChar(36)
+  machine_id                 String    @db.VarChar(36)
+  operator_id                String    @db.VarChar(36)
+  shift_id                   String?   @db.VarChar(36)
+  status                     String    @default("SUBMITTED") @db.VarChar(50) // DRAFT, SUBMITTED, APPROVED, CORRECTED
+  work_order_number_snapshot String?   @db.VarChar(50)
+  client_snapshot            String?   @db.VarChar(150)
+  product_snapshot           String?   @db.VarChar(255)
+  operator_name_snapshot     String?   @db.VarChar(100)
+  die_id                     String?   @db.VarChar(36)
+  frequency                  String?   @db.VarChar(50)
+  good_units                 Decimal   @default(0) @db.Decimal(14, 3)
+  waste_units                Decimal   @default(0) @db.Decimal(14, 3)
+  die_status                 String    @db.VarChar(50) // OK, WEAR, DAMAGED
+  production_status          String    @db.VarChar(50) // PARTIAL, TOTAL
+  observations               String?   @db.Text
+  locked_by_user_id          String?   @db.VarChar(36)
+  locked_at                  DateTime? @db.DateTime(3)
+  row_version                BigInt    @default(1)
+  created_at                 DateTime  @default(now()) @db.DateTime(3)
+  updated_at                 DateTime  @updatedAt @db.DateTime(3)
+  deleted_at                 DateTime? @db.DateTime(3)
+
+  work_order WorkOrder?       @relation(fields: [work_order_id], references: [id])
+  machine    Machine          @relation(fields: [machine_id], references: [id])
+  operator   User             @relation(fields: [operator_id], references: [id])
+  shift      Shift?           @relation(fields: [shift_id], references: [id])
+  die        Die?             @relation(fields: [die_id], references: [id])
+  activities DiecutActivity[]
+
+  @@index([reported_at])
+  @@index([machine_id])
+  @@index([operator_id])
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@index([status])
+  @@map("diecut_reports")
+}
+
+model DiecutActivity {
+  id               String    @id @default(uuid()) @db.VarChar(36)
+  report_id        String    @db.VarChar(36)
+  activity_type    String    @db.VarChar(100)
+  start_time       String    @db.VarChar(8)
+  end_time         String    @db.VarChar(8)
+  duration_minutes Int       @default(0)
+  quantity         Decimal   @default(0) @db.Decimal(14, 3)
+  row_version      BigInt    @default(1)
+  created_at       DateTime  @default(now()) @db.DateTime(3)
+  updated_at       DateTime  @updatedAt @db.DateTime(3)
+  deleted_at       DateTime? @db.DateTime(3)
+
+  report DiecutReport @relation(fields: [report_id], references: [id])
+
+  @@index([report_id])
+  @@map("diecut_activities")
+}
+
+model ProductionKpiDaily {
+  id               String   @id @default(uuid()) @db.VarChar(36)
+  kpi_date         DateTime @db.Date
+  machine_id       String?  @db.VarChar(36)
+  area_id          String?  @db.VarChar(36)
+  shift_id         String?  @db.VarChar(36)
+  good_output      Decimal  @default(0) @db.Decimal(14, 3)
+  waste_output     Decimal  @default(0) @db.Decimal(14, 3)
+  runtime_minutes  Int      @default(0)
+  downtime_minutes Int      @default(0)
+  setup_minutes    Int      @default(0)
+  oee_value        Decimal? @db.Decimal(8, 4)
+  created_at       DateTime @default(now()) @db.DateTime(3)
+  updated_at       DateTime @updatedAt @db.DateTime(3)
+
+  machine Machine? @relation(fields: [machine_id], references: [id])
+  shift   Shift?   @relation(fields: [shift_id], references: [id])
+
+  @@unique([kpi_date, machine_id, area_id, shift_id])
+  @@map("production_kpi_daily")
+}
+
+// =========================================================
+// 7. ARCHIVOS
+// =========================================================
+
+model FileObject {
+  id                  String    @id @default(uuid()) @db.VarChar(36)
+  entity_name         String    @db.VarChar(100)
+  entity_id           String    @db.VarChar(36)
+  file_name           String    @db.VarChar(255)
+  mime_type           String    @db.VarChar(150)
+  file_hash           String    @db.VarChar(64)
+  size_bytes          BigInt
+  storage_provider    String    @db.VarChar(50)
+  object_key          String    @db.VarChar(500)
+  file_url            String?   @db.VarChar(1000)
+  uploaded_by_user_id String    @db.VarChar(36)
+  virus_scan_status   String    @default("PENDING") @db.VarChar(50) // PENDING, CLEAN, REJECTED
+  row_version         BigInt    @default(1)
+  created_at          DateTime  @default(now()) @db.DateTime(3)
+  updated_at          DateTime  @updatedAt @db.DateTime(3)
+  deleted_at          DateTime? @db.DateTime(3)
+
+  uploader User @relation(fields: [uploaded_by_user_id], references: [id])
+
+  @@index([entity_name, entity_id])
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@map("file_objects")
+}

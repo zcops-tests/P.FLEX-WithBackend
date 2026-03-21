@@ -1,0 +1,15 @@
+FROM mysql:8.0
+
+# Set environment variables (can also be set in docker-compose)
+ENV MYSQL_DATABASE=pflex_db
+ENV MYSQL_USER=pflex_user
+ENV MYSQL_PASSWORD=pflex_password
+ENV MYSQL_ROOT_PASSWORD=rootpassword
+
+# Optional: Add custom configuration
+# COPY my.cnf /etc/mysql/conf.d/my.cnf
+
+# Optional: Add init scripts
+# COPY init.sql /docker-entrypoint-initdb.d/
+
+EXPOSE 3306
