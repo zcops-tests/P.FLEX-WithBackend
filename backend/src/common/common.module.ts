@@ -3,6 +3,7 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { GlobalExceptionFilter } from './filters/exception.filter';
 import { ResponseInterceptor } from './interceptors/response.interceptor';
 import { CorrelationIdMiddleware } from './middleware/correlation-id.middleware';
+import { AuditInterceptor } from './interceptors/audit.interceptor';
 
 @Module({
   providers: [
@@ -13,6 +14,10 @@ import { CorrelationIdMiddleware } from './middleware/correlation-id.middleware'
     {
       provide: APP_INTERCEPTOR,
       useClass: ResponseInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
   ],
 })

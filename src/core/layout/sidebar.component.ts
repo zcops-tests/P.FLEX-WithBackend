@@ -125,6 +125,7 @@ interface MenuItem {
         </div>
 
         <!-- Bottom Config -->
+        @if (canAccessConfiguration()) {
         <div class="p-2 border-t border-white/5">
             <a routerLink="/admin" class="group flex items-center px-3 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/5 transition-all duration-200"
                [class.justify-center]="state.isSidebarCollapsed()"
@@ -135,6 +136,7 @@ interface MenuItem {
                }
             </a>
         </div>
+        }
       </div>
 
       <!-- FOOTER / SYNC STATUS -->
@@ -422,7 +424,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
   private readonly baseMenuItems: MenuItem[] = [
     { label: 'DASHBOARD', icon: 'dashboard', route: '/dashboard' },
     { label: 'OTS', icon: 'assignment', route: '/ots', badge: '3' },
-    { label: 'PROGRAMACIÓN', icon: 'calendar_month', route: '/schedule' },
+    { label: 'PROGRAMACIÓN', icon: 'calendar_month', route: '/schedule', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente'] },
     { 
       label: 'REPORTES', icon: 'precision_manufacturing', route: '/reports',
       children: [
@@ -446,19 +448,15 @@ export class SidebarComponent implements OnInit, OnDestroy {
 
   private readonly managementItems: MenuItem[] = [
     { label: 'INCIDENCIAS', icon: 'warning', route: '/incidents' },
-    { label: 'INDICADORES', icon: 'analytics', route: '/reports' },
-    { label: 'AUDITORÍA', icon: 'verified_user', route: '/audit' }
+    { label: 'INDICADORES', icon: 'analytics', route: '/analytics', roles: ['Sistemas', 'Jefatura', 'Supervisor'] },
+    { label: 'AUDITORÍA', icon: 'verified_user', route: '/audit', roles: ['Sistemas', 'Jefatura', 'Supervisor'] }
   ];
 
   get mainMenuItems() {
-    const role = this.state.userRole();
-    return this.baseMenuItems.filter(item => 
-      !item.roles || (role !== '' && item.roles.includes(role as UserRole))
-    );
+    return this.baseMenuItems.filter(item => this.canAccess(item.roles));
   }
 
   get managementMenuItems() {
-    const role = this.state.userRole();
     const incidentCount = this.qualityService.activeIncidents.length;
 
     return this.managementItems.map(item => {
@@ -469,8 +467,15 @@ export class SidebarComponent implements OnInit, OnDestroy {
         };
       }
       return item;
-    }).filter(item => 
-      !item.roles || (role !== '' && item.roles.includes(role as UserRole))
-    );
+    }).filter(item => this.canAccess(item.roles));
+  }
+
+  canAccessConfiguration() {
+    return this.state.hasAnyRole(['Sistemas']);
+  }
+
+  private canAccess(roles?: readonly UserRole[]) {
+    if (!roles?.length) return true;
+    return this.state.hasAnyRole(roles);
   }
 }

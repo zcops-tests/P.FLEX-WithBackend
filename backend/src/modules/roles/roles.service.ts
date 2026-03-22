@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { toFrontendRole } from '../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class RolesService {
   constructor(private prisma: PrismaService) {}
 
   async findAll() {
-    return this.prisma.role.findMany({
+    const roles = await this.prisma.role.findMany({
       include: {
         permissions: {
           include: {
@@ -15,6 +16,8 @@ export class RolesService {
         },
       },
     });
+
+    return roles.map((role) => toFrontendRole(role));
   }
 
   async findOne(id: string) {
@@ -31,6 +34,6 @@ export class RolesService {
     if (!role) {
       throw new NotFoundException(`Role with ID ${id} not found`);
     }
-    return role;
+    return toFrontendRole(role);
   }
 }

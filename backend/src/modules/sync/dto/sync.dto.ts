@@ -1,30 +1,47 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsNumber, IsJSON, IsUUID, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SyncPullRequestDto {
   @ApiProperty({ example: '2026-03-22T10:00:00.000Z' })
-  @IsString()
+  @IsDateString()
   @IsNotEmpty()
   last_changed_at: string;
 
-  @ApiProperty({ example: '0' })
-  @IsString()
+  @ApiPropertyOptional({ example: '0' })
+  @Matches(/^\d+$/)
   @IsOptional()
   last_id?: string;
 
-  @ApiProperty({ example: 'PRINT_STATION', required: false })
+  @ApiPropertyOptional({ example: 'PRINT_STATION' })
   @IsString()
   @IsOptional()
   device_profile?: string;
 
-  @ApiProperty({ example: 1000 })
-  @IsNumber()
+  @ApiPropertyOptional({ example: 1000, minimum: 1, maximum: 1000 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
   @IsOptional()
   batch_size?: number;
 
-  @ApiProperty({ example: ['areas', 'machines', 'work_orders'] })
+  @ApiPropertyOptional({ example: ['areas', 'machines', 'work_orders'] })
   @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   scopes?: string[];
 }
@@ -36,21 +53,23 @@ export class SyncMutationDto {
   mutation_id: string;
 
   @ApiProperty({ example: 'POST' })
-  @IsString()
+  @IsIn(['POST', 'PUT', 'PATCH', 'DELETE'])
   @IsNotEmpty()
   method: string;
 
   @ApiProperty({ example: '/api/v1/production/printing/reports' })
   @IsString()
+  @Matches(/^\/?api\/v\d+\//)
   @IsNotEmpty()
   endpoint: string;
 
   @ApiProperty({ example: { id: 'uuid', field: 'value' } })
+  @IsObject()
   @IsNotEmpty()
   payload: any;
 
   @ApiProperty({ example: '2026-03-22T10:00:00Z' })
-  @IsString()
+  @IsDateString()
   @IsNotEmpty()
   client_timestamp: string;
 }

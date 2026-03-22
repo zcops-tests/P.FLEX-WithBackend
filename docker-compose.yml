@@ -1,25 +1,37 @@
 services:
   mysql:
-    image: mysql:8.0
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: pflex_db
-      MYSQL_USER: pflex_user
-      MYSQL_PASSWORD: pflex_password
-    ports:
-      - "3306:3306"
-    volumes:
-      - pflex_mysql_data:/var/lib/mysql
+    extends:
+      file: ./backend/docker-compose.yml
+      service: mysql
 
   redis:
-    image: redis:7-alpine
-    restart: always
+    extends:
+      file: ./backend/docker-compose.yml
+      service: redis
+
+  backend:
+    extends:
+      file: ./backend/docker-compose.yml
+      service: backend
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: pflex_frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
     ports:
-      - "6379:6379"
-    volumes:
-      - pflex_redis_data:/data
+      - "${FRONTEND_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
 volumes:
-  pflex_mysql_data:
-  pflex_redis_data:
+  mysql_data:
+  redis_data:

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { PrismaService } from '../../database/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import * as bcrypt from 'bcrypt';
+import { toFrontendUser } from '../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class UsersService {
@@ -17,7 +18,7 @@ export class UsersService {
 
     const passwordHash = dto.password ? await bcrypt.hash(dto.password, 10) : undefined;
 
-    return this.prisma.user.create({
+    const created = await this.prisma.user.create({
       data: {
         username: dto.username,
         password_hash: passwordHash || '',
@@ -34,10 +35,12 @@ export class UsersService {
         created_at: true,
       },
     });
+
+    return toFrontendUser(created);
   }
 
   async findAll() {
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       where: { deleted_at: null },
       select: {
         id: true,
@@ -54,6 +57,8 @@ export class UsersService {
         },
       },
     });
+
+    return users.map((user) => toFrontendUser(user));
   }
 
   async findOne(id: string) {
@@ -74,7 +79,7 @@ export class UsersService {
     }
 
     const { password_hash, ...result } = user;
-    return result;
+    return toFrontendUser(result);
   }
 
   async update(id: string, dto: UpdateUserDto) {
@@ -90,7 +95,7 @@ export class UsersService {
       data.password_hash = await bcrypt.hash(dto.password, 10);
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id },
       data,
       select: {
@@ -101,6 +106,8 @@ export class UsersService {
         active: true,
       },
     });
+
+    return toFrontendUser(updated);
   }
 
   async remove(id: string) {

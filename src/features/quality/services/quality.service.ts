@@ -1,73 +1,65 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, effect, inject, untracked } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { StateService } from '../../../services/state.service';
 import { AuditService } from '../../../services/audit.service';
-import { Incident, IncidentPriority, IncidentType, IncidentStatus, CapaAction } from '../models/quality.models';
+import { Incident, CapaAction } from '../models/quality.models';
+import { BackendApiService } from '../../../services/backend-api.service';
 
 @Injectable({ providedIn: 'root' })
 export class QualityService {
   private state = inject(StateService);
   private audit = inject(AuditService);
+  private backend = inject(BackendApiService);
   
-  private initialData: Incident[] = [
-    {
-      id: '1',
-      code: 'INC-2024-089',
-      title: 'Parada no programada en Flexo 03',
-      description: 'Rotura de engranaje principal durante corrida a alta velocidad.',
-      priority: 'Alta',
-      type: 'Maquinaria',
-      status: 'Acción Correctiva',
-      otRef: '45100',
-      machineRef: 'Flexo 03',
-      reportedBy: 'Juan Perez',
-      reportedAt: new Date(new Date().getTime() - 7200000), 
-      assignedTo: 'Mantenimiento',
-      rootCause: 'Fatiga de material por falta de lubricación en el turno anterior.',
-      actions: [
-        { id: 'a1', description: 'Reemplazo de engranaje', type: 'Correctiva', responsible: 'J. Mantenimiento', deadline: '2024-10-26', completed: true },
-        { id: 'a2', description: 'Revisar plan de lubricación diario', type: 'Preventiva', responsible: 'Gerente Planta', deadline: '2024-10-30', completed: false }
-      ]
-    },
-    {
-      id: '2',
-      code: 'INC-2024-090',
-      title: 'Diferencia de inventario Tinta Magenta',
-      description: 'Faltante de 2kg vs sistema al realizar el cambio de turno.',
-      priority: 'Media',
-      type: 'Material',
-      status: 'Abierta',
-      reportedBy: 'Pedro Operador',
-      reportedAt: new Date(new Date().getTime() - 14400000),
-      assignedTo: 'Almacén',
-      actions: []
-    }
-  ];
-
-  private _incidents = new BehaviorSubject<Incident[]>(this.initialData);
+  private _incidents = new BehaviorSubject<Incident[]>([]);
 
   get incidents() { return this._incidents.value; }
-
-  // Getters replacing computed signals
   get activeIncidents() { return this.incidents.filter(i => i.status !== 'Cerrada'); }
   get closedIncidents() { return this.incidents.filter(i => i.status === 'Cerrada'); }
   
-  addIncident(incident: Partial<Incident>) {
-    const newIncident: Incident = {
-      id: Math.random().toString(36).substr(2, 9),
-      code: `INC-2024-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
-      title: incident.title || 'Sin Título',
+  constructor() {
+    effect(() => {
+      if (!this.state.currentUser()) {
+        this._incidents.next([]);
+        return;
+      }
+
+      untracked(() => {
+        void this.reload();
+      });
+    });
+  }
+
+  async reload() {
+    try {
+      const response = await this.backend.getIncidents({ page: 1, pageSize: 100 });
+      const items = response.items || [];
+      this._incidents.next(items.map((item: any) => this.mapIncident(item)));
+    } catch {
+      // Preserve current state on failure.
+    }
+  }
+
+  async addIncident(incident: Partial<Incident>) {
+    const machine = this.state.adminMachines().find(item => item.name === incident.machineRef);
+    const workOrder = incident.otRef ? await this.tryFindWorkOrderByOt(incident.otRef) : null;
+
+    const created = await this.backend.createIncident({
+      code: incident.code || `INC-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+      title: incident.title || 'Sin Titulo',
       description: incident.description || '',
-      priority: incident.priority || 'Media',
-      type: incident.type || 'Otro',
-      status: 'Abierta',
-      otRef: incident.otRef,
-      machineRef: incident.machineRef,
-      reportedBy: incident.reportedBy || 'Usuario Actual',
-      reportedAt: new Date(),
-      assignedTo: incident.assignedTo || 'Sin Asignar',
-      actions: []
-    };
+      priority: this.mapPriorityToApi(incident.priority || 'Media'),
+      type: this.mapTypeToApi(incident.type || 'Otro'),
+      work_order_id: workOrder?.id,
+      machine_id: machine?.id,
+      reported_at: new Date().toISOString(),
+    });
+
+    const newIncident = this.mapIncident({
+      ...created,
+      reportedBy: { name: this.state.userName() },
+      assignedTo: null,
+    });
 
     this._incidents.next([newIncident, ...this.incidents]);
     this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Reportar Incidencia', `Nueva incidencia ${newIncident.code}: ${newIncident.title}`);
@@ -75,44 +67,123 @@ export class QualityService {
 
   updateIncident(updated: Incident) {
     this._incidents.next(this.incidents.map(i => i.id === updated.id ? updated : i));
-    // Optional: Log every update or just major ones. Here logging generic update.
-    this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Actualizar Incidencia', `Actualización de ${updated.code}`);
+    this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Actualizar Incidencia', `Actualizacion de ${updated.code}`);
   }
 
-  addCapaAction(incidentId: string, action: Partial<CapaAction>) {
+  async addCapaAction(incidentId: string, action: Partial<CapaAction>) {
+    const responsible = this.state.adminUsers().find(user => user.name === action.responsible) || this.state.adminUsers()[0];
+    if (!responsible) return;
+
+    const created = await this.backend.addCapaAction(incidentId, {
+      description: action.description || '',
+      action_type: action.type === 'Preventiva' ? 'PREVENTIVE' : 'CORRECTIVE',
+      responsible_user_id: responsible.id,
+      deadline: action.deadline || new Date().toISOString().split('T')[0],
+    });
+
     this._incidents.next(this.incidents.map(i => {
-      if (i.id === incidentId) {
-        const newAction: CapaAction = {
-          id: Math.random().toString(36).substr(2, 9),
-          description: action.description || '',
-          type: action.type || 'Correctiva',
-          responsible: action.responsible || '',
-          deadline: action.deadline || new Date().toISOString().split('T')[0],
-          completed: false
-        };
-        const newStatus = i.status === 'Abierta' ? 'Acción Correctiva' : i.status;
-        
-        this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Agregar Acción CAPA', `Acción ${newAction.type} agregada a ${i.code}`);
-        return { ...i, status: newStatus, actions: [...i.actions, newAction] };
-      }
-      return i;
+      if (i.id !== incidentId) return i;
+      const newAction: CapaAction = {
+        id: created.id,
+        description: created.description,
+        type: action.type || 'Correctiva',
+        responsible: responsible.name,
+        deadline: action.deadline || new Date().toISOString().split('T')[0],
+        completed: false,
+      };
+      return {
+        ...i,
+        status: i.status === 'Abierta' ? 'Accion Correctiva' as any : i.status,
+        actions: [...i.actions, newAction],
+      };
     }));
+    this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Agregar Accion CAPA', `Accion ${action.type || 'Correctiva'} agregada a la incidencia.`);
   }
 
-  toggleActionCompletion(incidentId: string, actionId: string) {
-    this._incidents.next(this.incidents.map(i => {
-      if (i.id === incidentId) {
-         const updatedActions = i.actions.map(a => a.id === actionId ? { ...a, completed: !a.completed } : a);
-         this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Completar Acción', `Estado de acción modificado en ${i.code}`);
-         return { ...i, actions: updatedActions };
-      }
-      return i;
-    }));
+  async toggleActionCompletion(incidentId: string, actionId: string) {
+    await this.backend.completeCapaAction(actionId);
+    this._incidents.next(this.incidents.map(i => i.id === incidentId ? {
+      ...i,
+      actions: i.actions.map(a => a.id === actionId ? { ...a, completed: true } : a),
+    } : i));
+    this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Completar Accion', `Estado de accion modificado en incidencia ${incidentId}`);
   }
 
-  closeIncident(incidentId: string) {
-     const incident = this.incidents.find(i => i.id === incidentId);
-     this._incidents.next(this.incidents.map(i => i.id === incidentId ? { ...i, status: 'Cerrada' } : i));
-     this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Cerrar Incidencia', `Incidencia ${incident?.code} marcada como resuelta.`);
+  async closeIncident(incidentId: string) {
+    await this.backend.updateIncidentStatus(incidentId, { status: 'CLOSED' });
+    const incident = this.incidents.find(i => i.id === incidentId);
+    this._incidents.next(this.incidents.map(i => i.id === incidentId ? { ...i, status: 'Cerrada' } : i));
+    this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Cerrar Incidencia', `Incidencia ${incident?.code} marcada como resuelta.`);
+  }
+
+  private mapIncident(item: any): Incident {
+    return {
+      id: item.id,
+      code: item.code,
+      title: item.title,
+      description: item.description || '',
+      priority: this.mapPriorityFromApi(item.priority),
+      type: this.mapTypeFromApi(item.type),
+      status: this.mapStatusFromApi(item.status),
+      otRef: item.ot_number_snapshot || item.work_order?.ot_number,
+      machineRef: item.machine_code_snapshot || item.machine?.name,
+      reportedBy: item.reportedBy?.name || item.reported_by_user_id || 'Sistema',
+      reportedAt: new Date(item.reported_at),
+      assignedTo: item.assignedTo?.name || 'Sin Asignar',
+      rootCause: item.root_cause,
+      actions: (item.capaActions || []).map((action: any) => ({
+        id: action.id,
+        description: action.description,
+        type: action.action_type === 'PREVENTIVE' ? 'Preventiva' : 'Correctiva',
+        responsible: action.responsible?.name || '',
+        deadline: action.deadline ? new Date(action.deadline).toISOString().split('T')[0] : '',
+        completed: action.completed === true,
+      })),
+    };
+  }
+
+  private mapPriorityToApi(priority: string) {
+    if (priority === 'Alta') return 'HIGH';
+    if (priority === 'Baja') return 'LOW';
+    return 'MEDIUM';
+  }
+
+  private mapPriorityFromApi(priority: string): any {
+    if (priority === 'HIGH') return 'Alta';
+    if (priority === 'LOW') return 'Baja';
+    return 'Media';
+  }
+
+  private mapTypeToApi(type: string) {
+    const normalized = String(type || '').toUpperCase();
+    if (normalized.includes('MAQ')) return 'MACHINERY';
+    if (normalized.includes('MAT')) return 'MATERIAL';
+    if (normalized.includes('SEG')) return 'SAFETY';
+    if (normalized.includes('CAL')) return 'QUALITY';
+    return 'OTHER';
+  }
+
+  private mapTypeFromApi(type: string): any {
+    if (type === 'MACHINERY') return 'Maquinaria';
+    if (type === 'MATERIAL') return 'Material';
+    if (type === 'SAFETY') return 'Seguridad';
+    if (type === 'QUALITY') return 'Calidad';
+    return 'Otro';
+  }
+
+  private mapStatusFromApi(status: string): any {
+    if (status === 'ANALYSIS') return 'En Analisis';
+    if (status === 'CORRECTIVE_ACTION') return 'Accion Correctiva';
+    if (status === 'CLOSED') return 'Cerrada';
+    return 'Abierta';
+  }
+
+  private async tryFindWorkOrderByOt(otNumber: string) {
+    try {
+      const response = await this.backend.getWorkOrders({ q: otNumber, page: 1, pageSize: 10 });
+      return (response.items || []).find((item: any) => item.ot_number === otNumber) || null;
+    } catch {
+      return null;
+    }
   }
 }

@@ -19,6 +19,7 @@ import {
   UpdateIncidentStatusDto,
   CreateCapaActionDto,
 } from './dto/incident.dto';
+import { IncidentsQueryDto } from './dto/incidents-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ContextualGuard } from '../auth/guards/contextual.guard';
@@ -46,14 +47,8 @@ export class QualityController {
   @ApiQuery({ name: 'q', required: false, type: String })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
-  async findAllIncidents(
-    @Query('status') status?: IncidentStatus,
-    @Query('priority') priority?: string,
-    @Query('q') q?: string,
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-  ) {
-    return this.qualityService.findAllIncidents({ status, priority, q, page, pageSize });
+  async findAllIncidents(@Query() query: IncidentsQueryDto) {
+    return this.qualityService.findAllIncidents(query);
   }
 
   @Get('incidents/:id')

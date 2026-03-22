@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateWorkOrderDto, WorkOrderStatus } from './dto/work-order.dto';
+import { WorkOrderQueryDto } from './dto/work-order-query.dto';
+import { buildPaginatedResult, resolvePagination } from '../../common/utils/pagination.util';
+import { assertAllowedTransition } from '../../common/utils/state-transition.util';
+import { toFrontendWorkOrder } from '../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class WorkOrdersService {
@@ -14,24 +19,21 @@ export class WorkOrdersService {
       throw new ConflictException(`Work Order ${dto.ot_number} already exists`);
     }
 
-    return this.prisma.workOrder.create({
+    const created = await this.prisma.workOrder.create({
       data: {
         ...dto,
         status: WorkOrderStatus.IMPORTED,
       },
     });
+
+    return toFrontendWorkOrder(created);
   }
 
-  async findAll(params: {
-    page?: number;
-    pageSize?: number;
-    status?: WorkOrderStatus;
-    q?: string;
-  }) {
-    const { page = 1, pageSize = 20, status, q } = params;
-    const skip = (page - 1) * pageSize;
+  async findAll(params: WorkOrderQueryDto) {
+    const { status, q } = params;
+    const pagination = resolvePagination(params);
 
-    const where: any = {
+    const where: Prisma.WorkOrderWhereInput = {
       deleted_at: null,
     };
 
@@ -52,21 +54,13 @@ export class WorkOrdersService {
       this.prisma.workOrder.count({ where }),
       this.prisma.workOrder.findMany({
         where,
-        skip,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.take,
         orderBy: { created_at: 'desc' },
       }),
     ]);
 
-    return {
-      items,
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
-    };
+    return buildPaginatedResult(items.map((item) => toFrontendWorkOrder(item)), total, pagination);
   }
 
   async findOne(id: string) {
@@ -81,7 +75,7 @@ export class WorkOrdersService {
     if (!wo || wo.deleted_at) {
       throw new NotFoundException(`Work Order with ID ${id} not found`);
     }
-    return wo;
+    return toFrontendWorkOrder(wo);
   }
 
   async update(id: string, data: any) {
@@ -92,13 +86,15 @@ export class WorkOrdersService {
       throw new ConflictException('Concurrency conflict: The record has been modified by another user');
     }
 
-    return this.prisma.workOrder.update({
+    const updated = await this.prisma.workOrder.update({
       where: { id },
       data: {
         ...data,
         row_version: { increment: 1 },
       },
     });
+
+    return toFrontendWorkOrder(updated);
   }
 
   async updateStatus(id: string, status: WorkOrderStatus) {
@@ -114,14 +110,14 @@ export class WorkOrdersService {
       [WorkOrderStatus.CANCELLED]: [],
     };
 
-    if (!allowedTransitions[wo.status as string]?.includes(status)) {
-      throw new ConflictException(`Transition from ${wo.status} to ${status} is not allowed`);
-    }
+    assertAllowedTransition(wo.status, status, allowedTransitions, 'Transition');
 
-    return this.prisma.workOrder.update({
+    const updated = await this.prisma.workOrder.update({
       where: { id },
       data: { status },
     });
+
+    return toFrontendWorkOrder(updated);
   }
 
   async remove(id: string) {

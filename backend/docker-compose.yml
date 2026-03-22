@@ -1,42 +1,78 @@
-version: '3.8'
-
 services:
   mysql:
     image: mysql:8.0
     container_name: pflex_mysql
-    restart: always
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
       MYSQL_DATABASE: ${DB_NAME:-pflex_db}
+      MYSQL_USER: ${DB_USER:-pflex_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-pflex_password}
     ports:
-      - "3306:3306"
+      - "${DB_PORT:-3306}:3306"
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     volumes:
       - mysql_data:/var/lib/mysql
 
   redis:
-    image: redis:6.2-alpine
+    image: redis:7-alpine
     container_name: pflex_redis
-    restart: always
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    volumes:
+      - redis_data:/data
 
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: pflex_backend
-    restart: always
+    restart: unless-stopped
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     environment:
-      DATABASE_URL: mysql://root:${DB_ROOT_PASSWORD:-root}@mysql:3306/${DB_NAME:-pflex_db}
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      DATABASE_URL: mysql://${DB_USER:-pflex_user}:${DB_PASSWORD:-pflex_password}@mysql:3306/${DB_NAME:-pflex_db}
       REDIS_HOST: redis
-      REDIS_PORT: 6379
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh}
+      JWT_ACCESS_EXPIRATION: ${JWT_ACCESS_EXPIRATION:-15m}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-7d}
+      SEED_DEV_ADMIN: ${SEED_DEV_ADMIN:-true}
+      DEV_ADMIN_USERNAME: ${DEV_ADMIN_USERNAME:-admin}
+      DEV_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:-admin123}
+      DEV_ADMIN_NAME: ${DEV_ADMIN_NAME:-System Admin}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/v1/health/live >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
 
 volumes:
   mysql_data:
+  redis_data:

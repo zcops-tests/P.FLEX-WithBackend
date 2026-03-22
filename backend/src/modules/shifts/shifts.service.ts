@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateShiftDto, UpdateShiftDto } from './dto/shift.dto';
+import { toFrontendShift } from '../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class ShiftsService {
@@ -14,15 +15,19 @@ export class ShiftsService {
       throw new ConflictException(`Shift with code ${dto.code} already exists`);
     }
 
-    return this.prisma.shift.create({
+    const shift = await this.prisma.shift.create({
       data: dto,
     });
+
+    return toFrontendShift(shift);
   }
 
   async findAll() {
-    return this.prisma.shift.findMany({
+    const shifts = await this.prisma.shift.findMany({
       where: { deleted_at: null },
     });
+
+    return shifts.map((shift) => toFrontendShift(shift));
   }
 
   async findOne(id: string) {
@@ -33,15 +38,17 @@ export class ShiftsService {
     if (!shift || shift.deleted_at) {
       throw new NotFoundException(`Shift with ID ${id} not found`);
     }
-    return shift;
+    return toFrontendShift(shift);
   }
 
   async update(id: string, dto: UpdateShiftDto) {
     await this.findOne(id);
-    return this.prisma.shift.update({
+    const shift = await this.prisma.shift.update({
       where: { id },
       data: dto,
     });
+
+    return toFrontendShift(shift);
   }
 
   async remove(id: string) {

@@ -1,20 +1,29 @@
+param(
+    [string]$ContainerName = "pflex_mysql",
+    [string]$DbUser = "root",
+    [string]$DbPass = "rootpassword",
+    [string]$DbName = "pflex_db",
+    [string]$OutputDir = "backups"
+)
+
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$backupDir = Join-Path $scriptRoot "..\$OutputDir"
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$backupFile = "backups/pflex_backup_$timestamp.sql"
 
-if (!(Test-Path "backups")) { New-Item -ItemType Directory -Path "backups" }
+if (!(Test-Path $backupDir)) {
+    New-Item -ItemType Directory -Path $backupDir | Out-Null
+}
 
-$dbUser = "root"
-$dbPass = "pflex_secret"
-$dbName = "pflex_db"
+$backupFile = Join-Path $backupDir "pflex_backup_$timestamp.sql"
 
-Write-Host "Iniciando backup de $dbName..." -ForegroundColor Cyan
+Write-Host "Iniciando backup de $DbName desde el contenedor $ContainerName..." -ForegroundColor Cyan
 
-# Use mysqldump (assumes it is in PATH or inside the docker container)
-# If using docker:
-docker exec pflex-db mysqldump -u$dbUser -p$dbPass $dbName > $backupFile
+$dumpCommand = "exec mysqldump --single-transaction --quick --routines --triggers -u$DbUser -p$DbPass $DbName"
+docker exec $ContainerName sh -c $dumpCommand > $backupFile
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "Backup completado existosamente: $backupFile" -ForegroundColor Green
+    Write-Host "Backup completado exitosamente: $backupFile" -ForegroundColor Green
 } else {
     Write-Host "Error al realizar el backup" -ForegroundColor Red
+    exit $LASTEXITCODE
 }

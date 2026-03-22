@@ -11,7 +11,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ClisesService } from './clises.service';
-import { CreateCliseDto, UpdateCliseDto } from './dto/clise.dto';
+import { BulkUpsertClisesDto, CreateCliseDto, UpdateCliseDto } from './dto/clise.dto';
+import { CliseQueryDto } from './dto/clise-query.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -30,18 +31,21 @@ export class ClisesController {
     return this.clisesService.create(dto);
   }
 
+  @Post('bulk-upsert')
+  @Roles('ADMIN', 'SUPERVISOR')
+  @ApiOperation({ summary: 'Bulk import/update clichÃ©s' })
+  async bulkUpsert(@Body() dto: BulkUpsertClisesDto) {
+    return this.clisesService.bulkUpsert(dto.items);
+  }
+
   @Get()
   @Roles('ADMIN', 'SUPERVISOR', 'OPERATOR', 'WAREHOUSE')
   @ApiOperation({ summary: 'Get all clichés with filters' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'q', required: false, type: String, description: 'Search by item code, description, or client' })
-  async findAll(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-    @Query('q') q?: string,
-  ) {
-    return this.clisesService.findAll({ page, pageSize, q });
+  async findAll(@Query() query: CliseQueryDto) {
+    return this.clisesService.findAll(query);
   }
 
   @Get(':id')

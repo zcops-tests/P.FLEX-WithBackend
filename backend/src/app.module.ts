@@ -35,6 +35,7 @@ import { ExportsModule } from './modules/exports/exports.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { OutboxModule } from './modules/outbox/outbox.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
+import { validateEnv } from './config/env.validation';
 
 import { UserStatusGuard } from './modules/auth/guards/user-status.guard';
 
@@ -43,6 +44,8 @@ import { UserStatusGuard } from './modules/auth/guards/user-status.guard';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      cache: true,
+      validate: validateEnv,
     }),
     ThrottlerModule.forRoot([{
       name: 'short',

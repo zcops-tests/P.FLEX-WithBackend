@@ -36,9 +36,11 @@ import { ExcelService } from '../../../services/excel.service';
           </div>
           
           <input #fileInputStock type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
-          <button (click)="fileInputStock.click()" [disabled]="isLoading" 
+          <button (click)="fileInputStock.click()" [disabled]="isLoading || isImporting" 
                   class="inline-flex justify-center items-center px-4 py-2 border border-slate-700 shadow-sm text-sm font-medium rounded-lg text-slate-300 bg-[#1e293b] hover:bg-slate-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0f172a] focus:ring-indigo-500 transition-all disabled:opacity-50">
-            <span class="material-icons text-lg mr-2">upload_file</span> Importar
+            <span *ngIf="!isLoading && !isImporting" class="material-icons text-lg mr-2">upload_file</span>
+            <span *ngIf="isLoading || isImporting" class="w-4 h-4 mr-2 rounded-full border-2 border-slate-400/40 border-t-white animate-spin"></span>
+            {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar') }}
           </button>
 
           <button (click)="openModal(null)" 
@@ -86,6 +88,11 @@ import { ExcelService } from '../../../services/excel.service';
 
       <!-- TABLE -->
       <div class="bg-[#1e293b] rounded-xl shadow-lg border border-slate-700/60 overflow-hidden flex-1 flex flex-col relative">
+        <div *ngIf="isLoading" class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#1e293b]/85 backdrop-blur-sm">
+          <div class="w-14 h-14 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin mb-4"></div>
+          <h3 class="text-lg font-bold text-white">Analizando archivo de stock...</h3>
+          <p class="text-sm text-slate-400 mt-1">Preparando la previsualización para revisar los registros.</p>
+        </div>
         <div class="overflow-auto custom-scrollbar flex-1">
           <table class="w-full text-sm text-left">
             <thead class="bg-[#020617]/50 text-slate-400 font-bold sticky top-0 z-10 backdrop-blur-sm">
@@ -258,7 +265,7 @@ import { ExcelService } from '../../../services/excel.service';
                        Se han procesado {{ previewData.length + conflictsData.length }} registros en total.
                    </p>
                </div>
-               <button (click)="cancelImport()" class="text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800 transition-colors">
+               <button (click)="cancelImport()" [disabled]="isImporting" class="text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                    <span class="material-icons">close</span>
                </button>
             </div>
@@ -282,7 +289,12 @@ import { ExcelService } from '../../../services/excel.service';
                 </div>
 
                 <!-- Table Preview -->
-                <div class="flex-1 overflow-auto custom-scrollbar p-6">
+                <div class="flex-1 overflow-auto custom-scrollbar p-6 relative">
+                    <div *ngIf="isImporting" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#1e293b]/80 backdrop-blur-sm">
+                        <div class="w-14 h-14 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin mb-4"></div>
+                        <h3 class="text-lg font-bold text-white">Importando stock...</h3>
+                        <p class="text-sm text-slate-400 mt-1">No cierres esta ventana hasta que finalice.</p>
+                    </div>
                     <table class="w-full text-sm text-left border-collapse">
                         <thead class="text-xs text-slate-400 uppercase bg-[#0f172a] sticky top-0 z-10 font-bold tracking-wider">
                             <tr>
@@ -334,10 +346,10 @@ import { ExcelService } from '../../../services/excel.service';
 
             <!-- Footer -->
             <div class="bg-[#0f172a] px-6 py-4 border-t border-slate-700 flex justify-end gap-4 shrink-0">
-               <button (click)="cancelImport()" class="px-6 py-2.5 rounded-lg border border-slate-600 text-slate-300 font-bold hover:bg-slate-800 hover:text-white transition-colors">
+               <button (click)="cancelImport()" [disabled]="isImporting" class="px-6 py-2.5 rounded-lg border border-slate-600 text-slate-300 font-bold hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                    Cancelar Importación
                </button>
-               <button (click)="confirmImport()" class="px-6 py-2.5 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all">
+               <button (click)="confirmImport()" [disabled]="isImporting" class="px-6 py-2.5 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed">
                    <span class="material-icons text-sm">save_alt</span>
                    Importar Todo (Resolver Conflictos Después)
                </button>
@@ -372,6 +384,7 @@ export class InventoryStockComponent {
 
   // Import State
   isLoading = false;
+  isImporting = false;
   showImportPreviewModal = false;
   previewData: StockItem[] = [];
   conflictsData: StockItem[] = [];
@@ -476,13 +489,26 @@ export class InventoryStockComponent {
     });
   }
 
-  confirmImport() {
-      this.inventoryService.addStocks([...this.previewData, ...this.conflictsData]);
-      alert(`Se importaron ${this.previewData.length + this.conflictsData.length} registros.`);
-      this.cancelImport();
+  async confirmImport() {
+      if (this.isImporting) return;
+
+      this.isImporting = true;
+      this.cdr.detectChanges();
+
+      try {
+          await this.inventoryService.addStocks([...this.previewData, ...this.conflictsData]);
+          alert(`Se importaron ${this.previewData.length + this.conflictsData.length} registros.`);
+          this.cancelImport();
+      } catch (error: any) {
+          alert(`Error al importar: ${error?.message || 'No se pudo completar la importación.'}`);
+      } finally {
+          this.isImporting = false;
+          this.cdr.detectChanges();
+      }
   }
 
   cancelImport() {
+      if (this.isImporting) return;
       this.showImportPreviewModal = false;
       this.previewData = [];
       this.conflictsData = [];

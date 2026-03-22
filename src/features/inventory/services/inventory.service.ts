@@ -1,10 +1,10 @@
-
-import { Injectable, inject } from '@angular/core';
+import { Injectable, effect, inject, untracked } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
-import { CliseItem, DieItem, StockItem, RackConfig, RackBox } from '../models/inventory.models';
+import { CliseItem, DieItem, StockItem, RackConfig } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
 import { AuditService } from '../../../services/audit.service';
 import { StateService } from '../../../services/state.service';
+import { BackendApiService } from '../../../services/backend-api.service';
 
 @Injectable({
   providedIn: 'root'
@@ -13,215 +13,76 @@ export class InventoryService {
   excelService = inject(ExcelService);
   audit = inject(AuditService);
   state = inject(StateService);
+  backend = inject(BackendApiService);
 
-  // --- STATE ---
   private _cliseItems = new BehaviorSubject<CliseItem[]>([]);
   private _dieItems = new BehaviorSubject<DieItem[]>([]);
-  
-  // MOCK DATA: Finished Goods (Producto Terminado)
-  private _stockItems = new BehaviorSubject<StockItem[]>([
-    { 
-      id: 'pt-1', 
-      ot: '45001', 
-      client: 'Coca Cola', 
-      product: 'Etiqueta 500ml Original', 
-      quantity: 1200, 
-      unit: 'Rollos', 
-      rolls: 120,
-      millares: 240.5,
-      location: 'DES-A-01', 
-      status: 'Liberado', 
-      entryDate: new Date().toISOString(), 
-      palletId: 'PAL-2023-884' 
-    },
-    { 
-      id: 'pt-2', 
-      ot: '45022', 
-      client: 'Nestle', 
-      product: 'Empaque Galleta Vainilla', 
-      quantity: 450, 
-      unit: 'Cajas', 
-      rolls: 0,
-      millares: 150.0,
-      location: 'DES-B-04', 
-      status: 'Cuarentena', 
-      entryDate: new Date(Date.now() - 86400000).toISOString(), 
-      palletId: 'PAL-2023-890' 
-    },
-    { 
-      id: 'pt-3', 
-      ot: '45105', 
-      client: 'Alicorp', 
-      product: 'Mayonesa Alacena 100cc', 
-      quantity: 5000, 
-      unit: 'Millares', 
-      rolls: 500,
-      millares: 5000.0,
-      location: 'DES-A-02', 
-      status: 'Liberado', 
-      entryDate: new Date(Date.now() - 172800000).toISOString(), 
-      palletId: 'PAL-2023-855' 
-    },
-    { 
-      id: 'pt-4', 
-      ot: '44900', 
-      client: 'Gloria', 
-      product: 'Etiqueta Yogurt Fresa', 
-      quantity: 80, 
-      unit: 'Rollos', 
-      rolls: 80,
-      millares: 16.2,
-      location: 'ZONA-RET', 
-      status: 'Retenido', 
-      entryDate: new Date(Date.now() - 432000000).toISOString(), 
-      notes: 'Problema de adhesivo lote 441',
-      palletId: 'PAL-2023-810' 
-    }
-  ]);
-  
-  // Layout Data
-  private _layoutData = new BehaviorSubject<RackConfig[]>([
-    // CLISE RACKS
-    {
-      id: 'CL1',
-      name: 'RACK CL-1 (861-1190)',
-      type: 'clise',
-      orientation: 'vertical',
-      levels: [
-        { levelNumber: 3, boxes: [{ label: '1081-1135', min: 1081, max: 1135, items: [] }, { label: '1136-1190', min: 1136, max: 1190, items: [] }] },
-        { levelNumber: 2, boxes: [{ label: '971-1025', min: 971, max: 1025, items: [] }, { label: '1026-1080', min: 1026, max: 1080, items: [] }] },
-        { levelNumber: 1, boxes: [{ label: '861-915', min: 861, max: 915, items: [] }, { label: '916-970', min: 916, max: 970, items: [] }] },
-      ]
-    },
-    {
-      id: 'CL2',
-      name: 'RACK CL-2 (1191-1520)',
-      type: 'clise',
-      orientation: 'vertical',
-      levels: [
-        { levelNumber: 3, boxes: [{ label: '1411-1465', min: 1411, max: 1465, items: [] }, { label: '1466-1520', min: 1466, max: 1520, items: [] }] },
-        { levelNumber: 2, boxes: [{ label: '1301-1355', min: 1301, max: 1355, items: [] }, { label: '1356-1410', min: 1356, max: 1410, items: [] }] },
-        { levelNumber: 1, boxes: [{ label: '1191-1245', min: 1191, max: 1245, items: [] }, { label: '1246-1300', min: 1246, max: 1300, items: [] }] },
-      ]
-    },
-    {
-      id: 'CL3',
-      name: 'RACK CL-3 (1521-1850)',
-      type: 'clise',
-      orientation: 'vertical',
-      levels: [
-        { levelNumber: 3, boxes: [{ label: '1741-1795', min: 1741, max: 1795, items: [] }, { label: '1796-1850', min: 1796, max: 1850, items: [] }] },
-        { levelNumber: 2, boxes: [{ label: '1631-1685', min: 1631, max: 1685, items: [] }, { label: '1686-1740', min: 1686, max: 1740, items: [] }] },
-        { levelNumber: 1, boxes: [{ label: '1521-1575', min: 1521, max: 1575, items: [] }, { label: '1576-1630', min: 1576, max: 1630, items: [] }] },
-      ]
-    },
-    {
-      id: 'CL4',
-      name: 'RACK CL-4 (1851-2180)',
-      type: 'clise',
-      orientation: 'vertical',
-      levels: [
-        { levelNumber: 3, boxes: [{ label: '2071-2125', min: 2071, max: 2125, items: [] }, { label: '2126-2180', min: 2126, max: 2180, items: [] }] },
-        { levelNumber: 2, boxes: [{ label: '1961-2015', min: 1961, max: 2015, items: [] }, { label: '2016-2070', min: 2016, max: 2070, items: [] }] },
-        { levelNumber: 1, boxes: [{ label: '1851-1905', min: 1851, max: 1905, items: [] }, { label: '1906-1960', min: 1906, max: 1960, items: [] }] },
-      ]
-    },
-    {
-      id: 'EST1',
-      name: 'ZONA A (0-200)',
-      type: 'clise',
-      orientation: 'horizontal',
-      levels: [
-        { levelNumber: 1, boxes: [
-            { label: 'A-01 (1-50)', min: 1, max: 50, items: [] }, 
-            { label: 'A-02 (51-100)', min: 51, max: 100, items: [] }, 
-            { label: 'A-03 (101-150)', min: 101, max: 150, items: [] },
-            { label: 'A-04 (151-200)', min: 151, max: 200, items: [] }
-        ]}
-      ]
-    },
-    {
-      id: 'EST2',
-      name: 'ZONA B (201-400)',
-      type: 'clise',
-      orientation: 'horizontal',
-      levels: [
-        { levelNumber: 1, boxes: [
-            { label: 'B-01 (201-250)', min: 201, max: 250, items: [] }, 
-            { label: 'B-02 (251-300)', min: 251, max: 300, items: [] }, 
-            { label: 'B-03 (301-350)', min: 301, max: 350, items: [] },
-            { label: 'B-04 (351-400)', min: 351, max: 400, items: [] }
-        ]}
-      ]
-    },
-    // DIE RACKS (TROQUELES)
-    {
-      id: 'TRQ1',
-      name: 'RACK TRQ-1 (1-100)',
-      type: 'die',
-      orientation: 'vertical',
-      levels: [
-        { levelNumber: 3, boxes: [{ label: '1-33', min: 1, max: 33, items: [] }] },
-        { levelNumber: 2, boxes: [{ label: '34-66', min: 34, max: 66, items: [] }] },
-        { levelNumber: 1, boxes: [{ label: '67-100', min: 67, max: 100, items: [] }] },
-      ]
-    },
-    {
-      id: 'TRQ2',
-      name: 'RACK TRQ-2 (101-200)',
-      type: 'die',
-      orientation: 'vertical',
-      levels: [
-        { levelNumber: 3, boxes: [{ label: '101-133', min: 101, max: 133, items: [] }] },
-        { levelNumber: 2, boxes: [{ label: '134-166', min: 134, max: 166, items: [] }] },
-        { levelNumber: 1, boxes: [{ label: '167-200', min: 167, max: 200, items: [] }] },
-      ]
-    }
-  ]);
+  private _stockItems = new BehaviorSubject<StockItem[]>([]);
+  private _layoutData = new BehaviorSubject<RackConfig[]>(this.buildFallbackLayout());
 
-  // MAPPINGS
   readonly CLISE_MAPPING = {
-    'item': ['item', 'codigo', 'code', 'id', 'clise'],
-    'ubicacion': ['ubicación', 'ubicacion', 'location'],
-    'descripcion': ['descripción', 'descripcion', 'description'],
-    'cliente': ['cliente', 'client'],
-    'z': ['z', 'dientes'],
-    'ancho': ['ancho', 'width'],
-    'avance': ['avance', 'length'],
-    'ingreso': ['ingreso', 'fecha ingreso'],
-    'mtl_acum': ['mtl acum', 'mtl. acum.', 'metros acumulados']
+    item: ['ITEM', 'codigo', 'code', 'id', 'clise'],
+    ubicacion: ['UBICACION', 'UBICACIÓN', 'location'],
+    descripcion: ['DESCRIPCION', 'DESCRIPCIÓN', 'description'],
+    cliente: ['CLIENTE', 'client'],
+    z: ['Z', 'dientes'],
+    estandar: ['ESTANDAR', 'ESTÁNDAR', 'standard'],
+    medidas: ['MEDIDAS', 'medida'],
+    troquel: ['TROQUEL'],
+    ancho: ['ANCHO', 'width'],
+    avance: ['AVANCE', 'length'],
+    col: ['COL', 'columnas'],
+    rep: ['REP', 'repeticiones'],
+    n_clises: ['CANTIDAD', 'cant', 'numero clises', 'n clises'],
+    espesor: ['ESPESOR'],
+    ingreso: ['INGRESO', 'fecha ingreso'],
+    obs: ['OBS', 'observaciones'],
+    maq: ['MAQ', 'maquina', 'máquina'],
+    colores: ['COLORES'],
+    n_ficha_fler: ['N° FICHA FLER', 'Nº FICHA FLER', 'NRO FICHA FLER', 'NUMERO FICHA FLER'],
+    mtl_acum: ['MTL ACUM.', 'MTL ACUM', 'metros acumulados']
   };
 
   readonly DIE_MAPPING = {
-    'serie': ['serie', 'codigo', 'code', 'id'],
-    'cliente': ['cliente', 'client'],
-    'medida': ['medida', 'dimensiones'],
-    'ubicacion': ['ubicación', 'ubicacion'],
-    'z': ['z', 'dientes'],
-    'material': ['material', 'sustrato'],
-    'forma': ['forma', 'shape'],
-    'estado': ['estado', 'status'],
-    'columnas': ['columnas', 'col', 'cols', 'cavidades', 'cav'],
-    'repeticiones': ['repeticiones', 'rep', 'reps']
+    serie: ['serie', 'codigo', 'code', 'id'],
+    cliente: ['cliente', 'client'],
+    medida: ['medida', 'dimensiones'],
+    ubicacion: ['ubicacion'],
+    z: ['z', 'dientes'],
+    material: ['material', 'sustrato'],
+    forma: ['forma', 'shape'],
+    estado: ['estado', 'status'],
+    columnas: ['columnas', 'col', 'cols'],
+    repeticiones: ['repeticiones', 'rep', 'reps']
   };
 
   readonly STOCK_MAPPING = {
-    'ot': ['ot', 'orden', 'op', 'nro'],
-    'client': ['cliente', 'razon social', 'customer'],
-    'product': ['producto', 'descripcion', 'item'],
-    'rolls': ['rollos', 'cant rollos', 'qty rolls', 'und', 'cantidad'],
-    'millares': ['millares', 'cant millares', 'mll', 'qty mll'],
-    'location': ['ubicacion', 'ubicación', 'posicion', 'loc'],
-    'status': ['estado', 'status', 'situacion', 'calidad'],
-    'palletId': ['pallet', 'lote', 'pallet id', 'id', 'caja'],
-    'notes': ['notas', 'observaciones', 'obs']
+    ot: ['ot', 'orden', 'op', 'nro'],
+    client: ['cliente', 'razon social', 'customer'],
+    product: ['producto', 'descripcion', 'item'],
+    rolls: ['rollos', 'cantidad'],
+    millares: ['millares', 'mll'],
+    location: ['ubicacion', 'loc'],
+    status: ['estado', 'status'],
+    palletId: ['pallet', 'lote', 'pallet id', 'id'],
+    notes: ['notas', 'observaciones', 'obs']
   };
 
   constructor() {
-    this.mapItemsToLayout(); // Initial mapping if any default data
+    effect(() => {
+      if (!this.state.currentUser()) {
+        this._cliseItems.next([]);
+        this._dieItems.next([]);
+        this._stockItems.next([]);
+        return;
+      }
+
+      untracked(() => {
+        void this.reload();
+      });
+    });
   }
 
-  // --- ACCESSORS ---
   get cliseItems() { return this._cliseItems.value; }
   get dieItems() { return this._dieItems.value; }
   get stockItems() { return this._stockItems.value; }
@@ -232,220 +93,537 @@ export class InventoryService {
   get stockItems$() { return this._stockItems.asObservable(); }
   get layoutData$() { return this._layoutData.asObservable(); }
 
-  // --- ACTIONS ---
+  async reload() {
+    try {
+      const [clises, dies, stock, racks] = await Promise.all([
+        this.backend.getClises({ page: 1, pageSize: 500 }),
+        this.backend.getDies({ page: 1, pageSize: 500 }),
+        this.backend.getStockItems({ page: 1, pageSize: 500 }),
+        this.backend.getRackConfigs(),
+      ]);
 
-  addClises(items: CliseItem[]) {
-    this._cliseItems.next([...items, ...this.cliseItems]);
-    this.mapItemsToLayout();
-    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Alta Clisés', `Se agregaron ${items.length} clichés al inventario.`);
-  }
-
-  updateClise(item: CliseItem) {
-    const list = this.cliseItems;
-    const idx = list.findIndex(i => i.id === item.id);
-    if (idx !== -1) {
-      list[idx] = item;
-      this._cliseItems.next([...list]);
+      this._cliseItems.next((clises.items || []).map((item: any) => this.mapClise(item)));
+      this._dieItems.next((dies.items || []).map((item: any) => this.mapDie(item)));
+      this._stockItems.next((stock.items || []).map((item: any) => this.mapStock(item)));
+      this._layoutData.next(Array.isArray(racks) && racks.length ? racks.map((rack: any) => this.mapRack(rack)) : this.buildFallbackLayout());
       this.mapItemsToLayout();
-      this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Editar Clisé', `Se modificó el cliché ${item.item}.`);
+    } catch {
+      this.mapItemsToLayout();
     }
   }
 
-  addDies(items: DieItem[]) {
-    this._dieItems.next([...items, ...this.dieItems]);
+  async addClises(items: CliseItem[]) {
+    const created: CliseItem[] = [];
+    for (const item of items) {
+      try {
+        created.push(this.mapClise(await this.backend.createClise(this.mapCliseToPayload(item))));
+      } catch {
+        created.push(item);
+      }
+    }
+    this._cliseItems.next([...created, ...this.cliseItems]);
+    this.mapItemsToLayout();
+    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Alta Clises', `Se agregaron ${items.length} clises al inventario.`);
+  }
+
+  async importClises(
+    items: CliseItem[],
+    onProgress?: (progress: { currentBatch: number; totalBatches: number; processedItems: number; totalItems: number }) => void,
+  ) {
+    const chunkSize = 200;
+    const payloadItems = items.map((item) => this.mapCliseToPayload(item));
+    const totalItems = payloadItems.length;
+    const totalBatches = Math.max(1, Math.ceil(totalItems / chunkSize));
+
+    for (let index = 0; index < totalBatches; index += 1) {
+      const start = index * chunkSize;
+      const end = start + chunkSize;
+      const batch = payloadItems.slice(start, end);
+
+      await this.backend.bulkUpsertClises({ items: batch });
+      onProgress?.({
+        currentBatch: index + 1,
+        totalBatches,
+        processedItems: Math.min(end, totalItems),
+        totalItems,
+      });
+    }
+
+    await this.reload();
+    this.mapItemsToLayout();
+    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Importacion Clises', `Se importaron ${items.length} clises al inventario.`);
+  }
+
+  async updateClise(item: CliseItem) {
+    try {
+      await this.backend.updateClise(item.id, this.mapCliseToPayload(item));
+    } catch {
+      // Preserve local edit on failure.
+    }
+    this._cliseItems.next(this.cliseItems.map(entry => entry.id === item.id ? item : entry));
+    this.mapItemsToLayout();
+    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Editar Clise', `Se modifico el clise ${item.item}.`);
+  }
+
+  async addDies(items: DieItem[]) {
+    const created: DieItem[] = [];
+    for (const item of items) {
+      try {
+        created.push(this.mapDie(await this.backend.createDie(this.mapDieToPayload(item))));
+      } catch {
+        created.push(item);
+      }
+    }
+    this._dieItems.next([...created, ...this.dieItems]);
+    this.mapItemsToLayout();
     this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Alta Troqueles', `Se agregaron ${items.length} troqueles.`);
   }
 
-  updateDie(item: DieItem) {
-    const list = this.dieItems;
-    const idx = list.findIndex(i => i.id === item.id);
-    if (idx !== -1) {
-      list[idx] = item;
-      this._dieItems.next([...list]);
-      this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Editar Troquel', `Se modificó el troquel ${item.serie}.`);
+  async updateDie(item: DieItem) {
+    try {
+      await this.backend.updateDie(item.id, this.mapDieToPayload(item));
+    } catch {
+      // Preserve local edit on failure.
     }
+    this._dieItems.next(this.dieItems.map(entry => entry.id === item.id ? item : entry));
+    this.mapItemsToLayout();
+    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Editar Troquel', `Se modifico el troquel ${item.serie}.`);
   }
 
-  addStock(item: StockItem) {
-    const list = this.stockItems;
-    this._stockItems.next([item, ...list]);
-    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ingreso PT', `Entrada de Producto: OT ${item.ot}`);
-  }
-
-  addStocks(items: StockItem[]) {
-    this._stockItems.next([...items, ...this.stockItems]);
-    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Importación Masiva', `Se importaron ${items.length} items de stock.`);
-  }
-
-  updateStock(item: StockItem) {
-    const list = this.stockItems;
-    const idx = list.findIndex(i => i.id === item.id);
-    if (idx !== -1) {
-      list[idx] = item;
-      this._stockItems.next([...list]);
-      this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ajuste PT', `Ajuste en OT ${item.ot} - ${item.status}`);
+  async addStock(item: StockItem) {
+    let created = item;
+    try {
+      created = this.mapStock(await this.backend.createStockItem(this.mapStockToPayload(item)));
+    } catch {
+      // Preserve local insert on failure.
     }
+    this._stockItems.next([created, ...this.stockItems]);
+    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ingreso PT', `Entrada de Producto: OT ${created.ot}`);
   }
 
-  // --- LOGIC ---
+  async addStocks(items: StockItem[]) {
+    const created: StockItem[] = [];
+    for (const item of items) {
+      try {
+        created.push(this.mapStock(await this.backend.createStockItem(this.mapStockToPayload(item))));
+      } catch {
+        created.push(item);
+      }
+    }
+    this._stockItems.next([...created, ...this.stockItems]);
+    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Importacion Masiva', `Se importaron ${items.length} items de stock.`);
+  }
+
+  async updateStock(item: StockItem) {
+    try {
+      await this.backend.updateStockItem(item.id, this.mapStockToPayload(item));
+      await this.backend.updateStockStatus(item.id, { status: this.mapStockStatusToApi(item.status) });
+    } catch {
+      // Preserve local edit on failure.
+    }
+    this._stockItems.next(this.stockItems.map(entry => entry.id === item.id ? item : entry));
+    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ajuste PT', `Ajuste en OT ${item.ot} - ${item.status}`);
+  }
 
   mapItemsToLayout() {
-     const currentLayout = this.layoutData;
-     const clises = this.cliseItems;
-     const dies = this.dieItems;
+    const currentLayout = this.layoutData.map(rack => ({
+      ...rack,
+      levels: rack.levels.map(level => ({
+        ...level,
+        boxes: level.boxes.map(box => ({ ...box, items: [] })),
+      })),
+    }));
 
-     currentLayout.forEach(rack => rack.levels.forEach(lvl => lvl.boxes.forEach(box => box.items = [])));
-     
-     // Map Clises
-     clises.forEach(item => {
-        if (!item.ubicacion) return;
-        const locationNumber = parseInt(item.ubicacion.replace(/\D/g, ''));
-        if (!isNaN(locationNumber)) {
-             for (const rack of currentLayout) {
-                 if (rack.type !== 'clise') continue;
-                 for (const level of rack.levels) {
-                     for (const box of level.boxes) {
-                         if (box.min !== undefined && box.max !== undefined && locationNumber >= box.min && locationNumber <= box.max) {
-                             box.items.push(item);
-                             return;
-                         }
-                     }
-                 }
-             }
-        }
-     });
+    this.cliseItems.forEach(item => this.placeInventoryItem(currentLayout, 'clise', item.ubicacion, item));
+    this.dieItems.forEach(item => this.placeInventoryItem(currentLayout, 'die', item.ubicacion, item));
 
-     // Map Dies
-     dies.forEach(item => {
-        if (!item.ubicacion) return;
-        const locationNumber = parseInt(item.ubicacion.replace(/\D/g, ''));
-        if (!isNaN(locationNumber)) {
-             for (const rack of currentLayout) {
-                 if (rack.type !== 'die') continue;
-                 for (const level of rack.levels) {
-                     for (const box of level.boxes) {
-                         if (box.min !== undefined && box.max !== undefined && locationNumber >= box.min && locationNumber <= box.max) {
-                             box.items.push(item);
-                             return;
-                         }
-                     }
-                 }
-             }
-        }
-     });
-     
-     this._layoutData.next([...currentLayout]);
+    this._layoutData.next(currentLayout);
   }
 
   normalizeCliseData(rawData: any[]): { valid: CliseItem[], conflicts: CliseItem[] } {
-     const normalized = this.excelService.normalizeData(rawData, this.CLISE_MAPPING);
-     const mapped: CliseItem[] = normalized.map(row => ({
-          id: Math.random().toString(36).substr(2, 9),
-          item: String(row.item || '').trim(),
-          ubicacion: String(row.ubicacion || '').trim(),
-          descripcion: String(row.descripcion || '').trim(),
-          cliente: String(row.cliente || '').trim(),
-          z: String(row.z || ''),
-          estandar: '',
-          medidas: '',
-          troquel: '', 
-          linkedDies: [], 
-          ancho: this.excelService.parseNumber(row.ancho),
-          avance: this.excelService.parseNumber(row.avance),
-          col: 0,
-          rep: 0,
-          n_clises: 0,
-          espesor: '',
-          ingreso: String(row.ingreso || new Date().toISOString().split('T')[0]),
-          obs: '',
-          maq: '',
-          colores: '',
-          colorUsage: [],
-          n_ficha_fler: '',
-          mtl_acum: this.excelService.parseNumber(row.mtl_acum),
-          history: [],
-          hasConflict: false
-     }));
+    const normalized = this.excelService.normalizeData(rawData, this.CLISE_MAPPING);
+    const mapped: CliseItem[] = normalized.map(row => {
+      const medidas = this.parseMeasures(row.medidas);
+      const ancho = this.excelService.parseNumber(row.ancho) ?? medidas.ancho;
+      const avance = this.excelService.parseNumber(row.avance) ?? medidas.avance;
+      const colores = String(row.colores || '').trim();
 
-     const valid = mapped.filter((i: CliseItem) => i.item && i.cliente);
-     const conflicts = mapped.filter((i: CliseItem) => !i.item || !i.cliente);
-     conflicts.forEach(c => c.hasConflict = true);
+      return {
+        id: Math.random().toString(36).slice(2, 11),
+        item: String(row.item || '').trim(),
+        ubicacion: String(row.ubicacion || '').trim(),
+        descripcion: String(row.descripcion || '').trim(),
+        cliente: String(row.cliente || '').trim(),
+        z: String(row.z || ''),
+        estandar: String(row.estandar || '').trim(),
+        medidas: String(row.medidas || '').trim() || this.formatMeasures(ancho, avance),
+        troquel: String(row.troquel || '').trim(),
+        linkedDies: [],
+        ancho,
+        avance,
+        col: this.excelService.parseNumber(row.col),
+        rep: this.excelService.parseNumber(row.rep),
+        n_clises: this.excelService.parseNumber(row.n_clises),
+        espesor: String(row.espesor || '').trim(),
+        ingreso: this.normalizeExcelDate(row.ingreso),
+        obs: String(row.obs || '').trim(),
+        maq: String(row.maq || '').trim(),
+        colores,
+        colorUsage: this.parseColors(colores),
+        n_ficha_fler: String(row.n_ficha_fler || '').trim(),
+        mtl_acum: this.excelService.parseNumber(row.mtl_acum),
+        history: [],
+        hasConflict: false
+      };
+    });
 
-     return { valid, conflicts };
+    const valid = mapped.filter(item => item.item && item.cliente);
+    const conflicts = mapped.filter(item => !item.item || !item.cliente);
+    conflicts.forEach(item => item.hasConflict = true);
+    return { valid, conflicts };
   }
 
   normalizeDieData(rawData: any[]): { valid: DieItem[], conflicts: DieItem[] } {
-     const normalized = this.excelService.normalizeData(rawData, this.DIE_MAPPING);
-     const mapped: DieItem[] = normalized.map(row => ({
-        id: Math.random().toString(36).substr(2, 9),
-        serie: String(row.serie || '').trim(),
-        cliente: String(row.cliente || '').trim(),
-        medida: String(row.medida || '').trim(),
-        ubicacion: String(row.ubicacion || '').trim(),
-        z: String(row.z || ''),
-        ancho_mm: 0,
-        avance_mm: 0,
-        ancho_plg: 0,
-        avance_plg: 0,
-        columnas: this.excelService.parseNumber(row.columnas),
-        repeticiones: this.excelService.parseNumber(row.repeticiones),
-        material: String(row.material || '').trim(),
-        forma: String(row.forma || '').trim(),
-        estado: String(row.estado || 'OK').trim(),
-        ingreso: new Date().toISOString().split('T')[0],
-        pb: '',
-        sep_ava: '',
-        cantidad: 1,
-        almacen: '',
-        mtl_acum: 0,
-        tipo_troquel: '',
-        observaciones: '',
-        history: [],
-        linkedClises: [],
-        hasConflict: false
-     }));
-     
-     const valid = mapped.filter((i: DieItem) => i.serie && i.cliente);
-     const conflicts = mapped.filter((i: DieItem) => !i.serie || !i.cliente);
-     conflicts.forEach(c => c.hasConflict = true);
+    const normalized = this.excelService.normalizeData(rawData, this.DIE_MAPPING);
+    const mapped: DieItem[] = normalized.map(row => ({
+      id: Math.random().toString(36).slice(2, 11),
+      serie: String(row.serie || '').trim(),
+      cliente: String(row.cliente || '').trim(),
+      medida: String(row.medida || '').trim(),
+      ubicacion: String(row.ubicacion || '').trim(),
+      z: String(row.z || ''),
+      ancho_mm: 0,
+      avance_mm: 0,
+      ancho_plg: 0,
+      avance_plg: 0,
+      columnas: this.excelService.parseNumber(row.columnas),
+      repeticiones: this.excelService.parseNumber(row.repeticiones),
+      material: String(row.material || '').trim(),
+      forma: String(row.forma || '').trim(),
+      estado: String(row.estado || 'OK').trim(),
+      ingreso: new Date().toISOString().split('T')[0],
+      pb: '',
+      sep_ava: '',
+      cantidad: 1,
+      almacen: '',
+      mtl_acum: 0,
+      tipo_troquel: '',
+      observaciones: '',
+      history: [],
+      linkedClises: [],
+      hasConflict: false
+    }));
 
-     return { valid, conflicts };
+    const valid = mapped.filter(item => item.serie && item.cliente);
+    const conflicts = mapped.filter(item => !item.serie || !item.cliente);
+    conflicts.forEach(item => item.hasConflict = true);
+    return { valid, conflicts };
   }
 
   normalizeStockData(rawData: any[]): { valid: StockItem[], conflicts: StockItem[] } {
-     const normalized = this.excelService.normalizeData(rawData, this.STOCK_MAPPING);
-     const mapped: StockItem[] = normalized.map(row => {
-        const rolls = this.excelService.parseNumber(row.rolls) || 0;
-        const millares = this.excelService.parseNumber(row.millares) || 0;
-        
-        return {
-          id: Math.random().toString(36).substr(2, 9),
-          ot: String(row.ot || '').trim(),
-          client: String(row.client || '').trim(),
-          product: String(row.product || '').trim(),
-          quantity: rolls, 
-          unit: 'Rollos',
-          rolls: rolls,
-          millares: millares,
-          location: String(row.location || 'RECEPCIÓN').trim(),
-          status: this.normalizeStockStatus(row.status),
-          entryDate: new Date().toISOString(),
-          notes: String(row.notes || ''),
-          palletId: String(row.palletId || `PAL-${new Date().getFullYear()}-${Math.floor(Math.random()*10000)}`)
-        };
-     });
+    const normalized = this.excelService.normalizeData(rawData, this.STOCK_MAPPING);
+    const mapped: StockItem[] = normalized.map(row => {
+      const rolls = this.excelService.parseNumber(row.rolls) || 0;
+      const millares = this.excelService.parseNumber(row.millares) || 0;
+      return {
+        id: Math.random().toString(36).slice(2, 11),
+        ot: String(row.ot || '').trim(),
+        client: String(row.client || '').trim(),
+        product: String(row.product || '').trim(),
+        quantity: rolls,
+        unit: 'Rollos',
+        rolls,
+        millares,
+        location: String(row.location || 'RECEPCION').trim(),
+        status: this.normalizeStockStatus(row.status),
+        entryDate: new Date().toISOString(),
+        notes: String(row.notes || ''),
+        palletId: String(row.palletId || `PAL-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`)
+      };
+    });
 
-     const valid = mapped.filter((i: StockItem) => i.ot && i.client);
-     const conflicts = mapped.filter((i: StockItem) => !i.ot || !i.client);
+    const valid = mapped.filter(item => item.ot && item.client);
+    const conflicts = mapped.filter(item => !item.ot || !item.client);
+    return { valid, conflicts };
+  }
 
-     return { valid, conflicts };
+  private placeInventoryItem(layout: RackConfig[], type: 'clise' | 'die', location: string, item: any) {
+    if (!location) return;
+    const locationNumber = parseInt(location.replace(/\D/g, ''), 10);
+    if (Number.isNaN(locationNumber)) return;
+
+    for (const rack of layout) {
+      if (rack.type !== type) continue;
+      for (const level of rack.levels) {
+        for (const box of level.boxes) {
+          if (box.min !== undefined && box.max !== undefined && locationNumber >= box.min && locationNumber <= box.max) {
+            box.items.push(item);
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  private mapClise(item: any): CliseItem {
+    return {
+      id: item.id,
+      item: item.item_code,
+      ubicacion: item.ubicacion || '',
+      descripcion: item.descripcion || '',
+      cliente: item.cliente || '',
+      z: item.z_value || '',
+      estandar: item.estandar || '',
+      medidas: item.medidas || this.formatMeasures(item.ancho_mm ? Number(item.ancho_mm) : null, item.avance_mm ? Number(item.avance_mm) : null),
+      troquel: item.troquel || '',
+      linkedDies: [],
+      ancho: item.ancho_mm ? Number(item.ancho_mm) : null,
+      avance: item.avance_mm ? Number(item.avance_mm) : null,
+      col: item.columnas ?? null,
+      rep: item.repeticiones ?? null,
+      n_clises: item.numero_clises ?? null,
+      espesor: item.espesor_mm ? String(item.espesor_mm) : '',
+      ingreso: item.fecha_ingreso ? new Date(item.fecha_ingreso).toISOString().split('T')[0] : '',
+      obs: item.observaciones || '',
+      maq: item.maquina_texto || '',
+      colores: item.colores || '',
+      colorUsage: (item.colorUsage || item.color_usage || []).map((entry: any) => ({ name: entry.name || entry.color_name, meters: Number(entry.meters || 0) })),
+      n_ficha_fler: item.ficha_fler || '',
+      mtl_acum: item.metros_acumulados ? Number(item.metros_acumulados) : 0,
+      history: [],
+    };
+  }
+
+  private mapDie(item: any): DieItem {
+    return {
+      id: item.id,
+      medida: item.medida || '',
+      ubicacion: item.ubicacion || '',
+      serie: item.serie,
+      linkedClises: [],
+      ancho_mm: item.ancho_mm ? Number(item.ancho_mm) : null,
+      avance_mm: item.avance_mm ? Number(item.avance_mm) : null,
+      ancho_plg: item.ancho_plg ? Number(item.ancho_plg) : null,
+      avance_plg: item.avance_plg ? Number(item.avance_plg) : null,
+      z: item.z_value || '',
+      columnas: item.columnas ?? null,
+      repeticiones: item.repeticiones ?? null,
+      material: item.material || '',
+      forma: item.forma || '',
+      cliente: item.cliente || '',
+      observaciones: item.observaciones || '',
+      ingreso: item.fecha_ingreso ? new Date(item.fecha_ingreso).toISOString().split('T')[0] : '',
+      pb: item.pb || '',
+      sep_ava: item.separacion_avance || '',
+      estado: item.estado || 'OK',
+      cantidad: item.cantidad ?? null,
+      almacen: item.almacen || '',
+      mtl_acum: item.metros_acumulados ? Number(item.metros_acumulados) : 0,
+      tipo_troquel: item.tipo_troquel || '',
+      history: [],
+    };
+  }
+
+  private mapStock(item: any): StockItem {
+    return {
+      id: item.id,
+      ot: item.ot_number_snapshot || item.work_order?.ot_number || '',
+      client: item.client_snapshot || '',
+      product: item.product_snapshot || '',
+      quantity: Number(item.quantity || 0),
+      unit: item.unit || 'Rollos',
+      rolls: item.rolls ?? 0,
+      millares: item.millares ? Number(item.millares) : 0,
+      location: item.location || '',
+      status: this.normalizeStockStatus(item.status),
+      entryDate: item.entry_date || new Date().toISOString(),
+      notes: item.notes || '',
+      palletId: item.pallet_id || '',
+    };
+  }
+
+  private mapRack(rack: any): RackConfig {
+    return {
+      id: rack.id,
+      name: rack.name,
+      type: String(rack.rack_type || '').toUpperCase().includes('DIE') ? 'die' : 'clise',
+      orientation: String(rack.orientation || '').toUpperCase().includes('H') ? 'horizontal' : 'vertical',
+      levels: (rack.levels_json || []).map((level: any) => ({
+        levelNumber: level.levelNumber,
+        boxes: (level.boxes || []).map((box: any) => ({
+          label: box.label,
+          min: box.min,
+          max: box.max,
+          items: [],
+        })),
+      })),
+    };
+  }
+
+  private mapCliseToPayload(item: CliseItem) {
+    return {
+      item_code: item.item,
+      ubicacion: item.ubicacion || undefined,
+      descripcion: item.descripcion || undefined,
+      cliente: item.cliente || undefined,
+      z_value: item.z || undefined,
+      estandar: item.estandar || undefined,
+      ancho_mm: item.ancho ?? undefined,
+      avance_mm: item.avance ?? undefined,
+      columnas: item.col ?? undefined,
+      repeticiones: item.rep ?? undefined,
+      espesor_mm: this.excelService.parseNumber(item.espesor) ?? undefined,
+      numero_clises: item.n_clises ?? undefined,
+      fecha_ingreso: item.ingreso || undefined,
+      observaciones: item.obs || undefined,
+      maquina_texto: item.maq || undefined,
+      ficha_fler: item.n_ficha_fler || undefined,
+      metros_acumulados: item.mtl_acum ?? 0,
+      colores_json: item.colorUsage?.length ? item.colorUsage.map((entry) => entry.name) : (item.colores ? item.colores.split(',').map((entry) => entry.trim()).filter(Boolean) : undefined),
+      raw_payload: {
+        medidas: item.medidas || undefined,
+        troquel: item.troquel || undefined,
+        colores: item.colores || undefined,
+      },
+    };
+  }
+
+  private mapDieToPayload(item: DieItem) {
+    return {
+      serie: item.serie,
+      medida: item.medida || undefined,
+      ubicacion: item.ubicacion || undefined,
+      ancho_mm: item.ancho_mm ?? undefined,
+      avance_mm: item.avance_mm ?? undefined,
+      ancho_plg: item.ancho_plg ?? undefined,
+      avance_plg: item.avance_plg ?? undefined,
+      z_value: item.z || undefined,
+      columnas: item.columnas ?? undefined,
+      repeticiones: item.repeticiones ?? undefined,
+      material: item.material || undefined,
+      forma: item.forma || undefined,
+      cliente: item.cliente || undefined,
+      observaciones: item.observaciones || undefined,
+      fecha_ingreso: item.ingreso || undefined,
+      pb: item.pb || undefined,
+      separacion_avance: item.sep_ava || undefined,
+      estado: item.estado || undefined,
+      cantidad: item.cantidad ?? undefined,
+      almacen: item.almacen || undefined,
+      metros_acumulados: item.mtl_acum ?? 0,
+      tipo_troquel: item.tipo_troquel || undefined,
+    };
+  }
+
+  private mapStockToPayload(item: StockItem) {
+    return {
+      ot_number_snapshot: item.ot || undefined,
+      client_snapshot: item.client || undefined,
+      product_snapshot: item.product || undefined,
+      quantity: item.quantity ?? 0,
+      unit: item.unit || 'Rollos',
+      rolls: item.rolls ?? undefined,
+      millares: item.millares ?? undefined,
+      location: item.location || undefined,
+      status: this.mapStockStatusToApi(item.status),
+      entry_date: item.entryDate || new Date().toISOString(),
+      notes: item.notes || undefined,
+      pallet_id: item.palletId || undefined,
+    };
   }
 
   private normalizeStockStatus(val: string): any {
-      const v = String(val || '').toLowerCase();
-      if(v.includes('liberado') || v.includes('ok') || v.includes('aprobado')) return 'Liberado';
-      if(v.includes('retenido') || v.includes('hold') || v.includes('rechazado')) return 'Retenido';
-      if(v.includes('despachado') || v.includes('enviado') || v.includes('salida')) return 'Despachado';
-      return 'Cuarentena';
+    const v = String(val || '').toLowerCase();
+    if (v.includes('liberado') || v.includes('liberated') || v.includes('ok') || v.includes('aprobado')) return 'Liberado';
+    if (v.includes('retenido') || v.includes('retained') || v.includes('hold') || v.includes('rechazado')) return 'Retenido';
+    if (v.includes('despachado') || v.includes('dispatched') || v.includes('enviado') || v.includes('salida')) return 'Despachado';
+    return 'Cuarentena';
+  }
+
+  private mapStockStatusToApi(status: string) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized.includes('lib')) return 'LIBERATED';
+    if (normalized.includes('ret')) return 'RETAINED';
+    if (normalized.includes('desp')) return 'DISPATCHED';
+    return 'QUARANTINE';
+  }
+
+  private buildFallbackLayout(): RackConfig[] {
+    return [
+      {
+        id: 'clise-default',
+        name: 'Rack Clises',
+        type: 'clise',
+        orientation: 'vertical',
+        levels: [
+          { levelNumber: 1, boxes: [{ label: '1-9999', min: 1, max: 9999, items: [] }] },
+        ],
+      },
+      {
+        id: 'die-default',
+        name: 'Rack Troqueles',
+        type: 'die',
+        orientation: 'vertical',
+        levels: [
+          { levelNumber: 1, boxes: [{ label: '1-9999', min: 1, max: 9999, items: [] }] },
+        ],
+      },
+    ];
+  }
+
+  private normalizeExcelDate(value: unknown): string {
+    if (!value) return new Date().toISOString().split('T')[0];
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString().slice(0, 10);
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const excelEpoch = Date.UTC(1899, 11, 30);
+      return new Date(excelEpoch + value * 86400000).toISOString().slice(0, 10);
+    }
+
+    const text = String(value).trim();
+    const isoCandidate = new Date(text);
+    if (!Number.isNaN(isoCandidate.getTime())) {
+      return isoCandidate.toISOString().slice(0, 10);
+    }
+
+    const match = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (match) {
+      const [, dd, mm, yy] = match;
+      const fullYear = yy.length === 2 ? `20${yy}` : yy;
+      return new Date(`${fullYear}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T00:00:00`).toISOString().slice(0, 10);
+    }
+
+    return new Date().toISOString().split('T')[0];
+  }
+
+  private parseMeasures(value: unknown): { ancho: number | null; avance: number | null } {
+    const text = String(value || '').trim();
+    if (!text) {
+      return { ancho: null, avance: null };
+    }
+
+    const parts = text.match(/-?\d+(?:[.,]\d+)?/g) || [];
+    const ancho = parts[0] ? Number(parts[0].replace(',', '.')) : null;
+    const avance = parts[1] ? Number(parts[1].replace(',', '.')) : null;
+
+    return {
+      ancho: Number.isFinite(ancho as number) ? ancho : null,
+      avance: Number.isFinite(avance as number) ? avance : null,
+    };
+  }
+
+  private formatMeasures(ancho: number | null, avance: number | null) {
+    if (ancho === null && avance === null) return '';
+    return [ancho, avance].filter((value) => value !== null && value !== undefined).join(' x ');
+  }
+
+  private parseColors(value: string) {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((name) => ({ name, meters: 0 }));
   }
 }

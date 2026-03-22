@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateMachineDto, UpdateMachineDto } from './dto/machine.dto';
+import { toFrontendMachine } from '../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class MachinesService {
@@ -14,7 +15,7 @@ export class MachinesService {
       throw new ConflictException(`Machine with code ${dto.code} already exists`);
     }
 
-    return this.prisma.machine.create({
+    const created = await this.prisma.machine.create({
       data: {
         code: dto.code,
         name: dto.name,
@@ -22,16 +23,23 @@ export class MachinesService {
         type: dto.type,
         active: dto.active ?? true,
       },
+      include: {
+        area: true,
+      },
     });
+
+    return toFrontendMachine(created);
   }
 
   async findAll() {
-    return this.prisma.machine.findMany({
+    const machines = await this.prisma.machine.findMany({
       where: { deleted_at: null },
       include: {
         area: true,
       },
     });
+
+    return machines.map((machine) => toFrontendMachine(machine));
   }
 
   async findOne(id: string) {
@@ -45,15 +53,20 @@ export class MachinesService {
     if (!machine || machine.deleted_at) {
       throw new NotFoundException(`Machine with ID ${id} not found`);
     }
-    return machine;
+    return toFrontendMachine(machine);
   }
 
   async update(id: string, dto: UpdateMachineDto) {
     await this.findOne(id);
-    return this.prisma.machine.update({
+    const updated = await this.prisma.machine.update({
       where: { id },
       data: dto,
+      include: {
+        area: true,
+      },
     });
+
+    return toFrontendMachine(updated);
   }
 
   async remove(id: string) {

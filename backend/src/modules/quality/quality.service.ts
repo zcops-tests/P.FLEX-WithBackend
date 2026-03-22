@@ -1,32 +1,42 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateIncidentDto, IncidentStatus, CreateCapaActionDto } from './dto/incident.dto';
+import { IncidentsQueryDto } from './dto/incidents-query.dto';
+import { buildPaginatedResult, resolvePagination } from '../../common/utils/pagination.util';
+import { assertAllowedTransition } from '../../common/utils/state-transition.util';
+import { toFrontendCapaAction, toFrontendIncident } from '../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class QualityService {
   constructor(private prisma: PrismaService) {}
 
   async createIncident(dto: CreateIncidentDto, userId: string) {
-    return this.prisma.incident.create({
+    const incident = await this.prisma.incident.create({
       data: {
         ...dto,
         status: IncidentStatus.OPEN,
         reported_by_user_id: userId,
       },
+      include: {
+        reportedBy: { select: { name: true } },
+        assignedTo: { select: { name: true } },
+        capaActions: {
+          include: { responsible: true },
+        },
+        work_order: true,
+        machine: true,
+      },
     });
+
+    return toFrontendIncident(incident);
   }
 
-  async findAllIncidents(params: {
-    status?: IncidentStatus;
-    priority?: string;
-    q?: string;
-    page?: number;
-    pageSize?: number;
-  }) {
-    const { status, priority, q, page = 1, pageSize = 20 } = params;
-    const skip = (page - 1) * pageSize;
+  async findAllIncidents(params: IncidentsQueryDto) {
+    const { status, priority, q } = params;
+    const pagination = resolvePagination(params);
 
-    const where: any = {
+    const where: Prisma.IncidentWhereInput = {
       deleted_at: null,
     };
 
@@ -44,8 +54,8 @@ export class QualityService {
       this.prisma.incident.count({ where }),
       this.prisma.incident.findMany({
         where,
-        skip,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.take,
         orderBy: { reported_at: 'desc' },
         include: {
           reportedBy: { select: { name: true } },
@@ -54,7 +64,7 @@ export class QualityService {
       }),
     ]);
 
-    return { items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
+    return buildPaginatedResult(items.map((item) => toFrontendIncident(item)), total, pagination);
   }
 
   async findOneIncident(id: string) {
@@ -74,7 +84,7 @@ export class QualityService {
     if (!incident || incident.deleted_at) {
       throw new NotFoundException(`Incident with ID ${id} not found`);
     }
-    return incident;
+    return toFrontendIncident(incident);
   }
 
   async updateIncidentStatus(id: string, status: IncidentStatus, rootCause?: string) {
@@ -88,41 +98,60 @@ export class QualityService {
       [IncidentStatus.CLOSED]: [IncidentStatus.OPEN], // Allow re-opening
     };
 
-    if (!allowedTransitions[incident.status as string]?.includes(status)) {
-      throw new ConflictException(`Transition from ${incident.status} to ${status} is not allowed`);
-    }
+    assertAllowedTransition(incident.status, status, allowedTransitions, 'Transition');
 
-    return this.prisma.incident.update({
+    const updated = await this.prisma.incident.update({
       where: { id },
       data: { 
         status,
         root_cause: rootCause || incident.root_cause,
       },
+      include: {
+        reportedBy: { select: { name: true } },
+        assignedTo: { select: { name: true } },
+        capaActions: {
+          include: { responsible: true },
+        },
+        work_order: true,
+        machine: true,
+      },
     });
+
+    return toFrontendIncident(updated);
   }
 
   async addCapaAction(incidentId: string, dto: CreateCapaActionDto) {
     await this.findOneIncident(incidentId);
-    return this.prisma.capaAction.create({
+    const action = await this.prisma.capaAction.create({
       data: {
         ...dto,
         incident_id: incidentId,
       },
+      include: {
+        responsible: true,
+      },
     });
+
+    return toFrontendCapaAction(action);
   }
 
   async completeCapaAction(actionId: string) {
-    const action = await this.prisma.capaAction.findUnique({ where: { id: actionId } });
-    if (!action || action.deleted_at) {
+    const existingAction = await this.prisma.capaAction.findUnique({ where: { id: actionId } });
+    if (!existingAction || existingAction.deleted_at) {
       throw new NotFoundException(`CAPA Action with ID ${actionId} not found`);
     }
 
-    return this.prisma.capaAction.update({
+    const action = await this.prisma.capaAction.update({
       where: { id: actionId },
       data: { 
         completed: true,
         completed_at: new Date(),
       },
+      include: {
+        responsible: true,
+      },
     });
+
+    return toFrontendCapaAction(action);
   }
 }

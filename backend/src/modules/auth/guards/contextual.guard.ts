@@ -20,8 +20,9 @@ export class ContextualGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const { user, body, query, params, headers } = request;
+    const userId = user?.sub || user?.id;
 
-    if (!user || !user.id) {
+    if (!user || !userId) {
       return false;
     }
 
@@ -32,13 +33,19 @@ export class ContextualGuard implements CanActivate {
 
     // 1. Check assigned areas for the user
     const userAreas = await this.prisma.userAssignedArea.findMany({
-      where: { user_id: user.id },
+      where: { user_id: userId },
       select: { area_id: true },
     });
     const areaIds = userAreas.map((ua) => ua.area_id);
 
     // 2. Machine validation (if request targets a specific machine)
-    const machineId = body?.machineId || query?.machineId || params?.machineId;
+    const machineId =
+      body?.machine_id ||
+      body?.machineId ||
+      query?.machine_id ||
+      query?.machineId ||
+      params?.machine_id ||
+      params?.machineId;
     if (machineId) {
       const machine = await this.prisma.machine.findUnique({
         where: { id: machineId },
@@ -49,7 +56,7 @@ export class ContextualGuard implements CanActivate {
       }
 
       if (!areaIds.includes(machine.area_id)) {
-        this.logger.warn(`User ${user.id} attempted to access machine ${machineId} outside assigned areas`);
+        this.logger.warn(`User ${userId} attempted to access machine ${machineId} outside assigned areas`);
         throw new ForbiddenException('User not assigned to this machine area');
       }
     }

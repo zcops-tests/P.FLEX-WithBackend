@@ -1,0 +1,11 @@
+node_modules
+dist
+.angular
+coverage
+backend/node_modules
+backend/dist
+backend/coverage
+backups
+.git
+.gitignore
+*.log

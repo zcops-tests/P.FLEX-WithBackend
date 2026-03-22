@@ -1,24 +1,23 @@
 import { NestFactory } from '@nestjs/core';
-import { VersioningType, ValidationPipe } from '@nestjs/common';
+import { Logger as NestLogger, VersioningType, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { AuditInterceptor } from './common/interceptors/audit.interceptor';
-import { PrismaService } from './database/prisma.service';
+import express from 'express';
 
 async function bootstrap() {
+  const logger = new NestLogger('Bootstrap');
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
-
-  const prisma = app.get(PrismaService);
-
-  // Global Filter & Interceptor
-  app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalInterceptors(new AuditInterceptor(prisma));
+  app.enableShutdownHooks();
 
   // Security Hardening
   app.use(helmet());
+
+  const requestBodyLimitMb = Number(process.env.REQUEST_BODY_LIMIT_MB || 25);
+  const requestBodyLimit = `${requestBodyLimitMb}mb`;
+  app.use(express.json({ limit: requestBodyLimit }));
+  app.use(express.urlencoded({ limit: requestBodyLimit, extended: true }));
 
   // Use pino-logger
   app.useLogger(app.get(Logger));
@@ -42,7 +41,13 @@ async function bootstrap() {
   );
 
   // CORS
-  app.enableCors();
+  app.enableCors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id'],
+    exposedHeaders: ['x-correlation-id'],
+  });
 
   // Swagger Documentation
   const config = new DocumentBuilder()
@@ -54,9 +59,10 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);
 
-  const port = process.env.PORT || 3000;
+  const port = Number(process.env.PORT || 3000);
   await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}/api/v1`);
-  console.log(`Swagger docs available on: http://localhost:${port}/docs`);
+  logger.log(`Application is running on: http://localhost:${port}/api/v1`);
+  logger.log(`Swagger docs available on: http://localhost:${port}/docs`);
+  logger.log(`Request body limit: ${requestBodyLimit}`);
 }
 bootstrap();

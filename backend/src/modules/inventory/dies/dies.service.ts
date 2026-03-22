@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateDieDto, UpdateDieDto } from './dto/die.dto';
+import { DieQueryDto } from './dto/die-query.dto';
+import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import { toFrontendDie } from '../../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class DiesService {
@@ -14,23 +18,21 @@ export class DiesService {
       throw new ConflictException(`Die with serie ${dto.serie} already exists`);
     }
 
-    return this.prisma.die.create({
+    const created = await this.prisma.die.create({
       data: {
         ...dto,
         metros_acumulados: 0,
       },
     });
+
+    return toFrontendDie(created);
   }
 
-  async findAll(params: {
-    page?: number;
-    pageSize?: number;
-    q?: string;
-  }) {
-    const { page = 1, pageSize = 20, q } = params;
-    const skip = (page - 1) * pageSize;
+  async findAll(params: DieQueryDto) {
+    const { q } = params;
+    const pagination = resolvePagination(params);
 
-    const where: any = {
+    const where: Prisma.DieWhereInput = {
       deleted_at: null,
     };
 
@@ -47,21 +49,26 @@ export class DiesService {
       this.prisma.die.count({ where }),
       this.prisma.die.findMany({
         where,
-        skip,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.take,
         orderBy: { created_at: 'desc' },
+        include: {
+          clise_links: {
+            include: {
+              clise: true,
+            },
+          },
+          history: {
+            include: {
+              user: true,
+              machine: true,
+            },
+          },
+        },
       }),
     ]);
 
-    return {
-      items,
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
-    };
+    return buildPaginatedResult(items.map((item) => toFrontendDie(item)), total, pagination);
   }
 
   async findOne(id: string) {
@@ -73,22 +80,42 @@ export class DiesService {
             clise: true,
           },
         },
-        history: true,
+        history: {
+          include: {
+            user: true,
+            machine: true,
+          },
+        },
       },
     });
 
     if (!die || die.deleted_at) {
       throw new NotFoundException(`Die with ID ${id} not found`);
     }
-    return die;
+    return toFrontendDie(die);
   }
 
   async update(id: string, dto: UpdateDieDto) {
     await this.findOne(id);
-    return this.prisma.die.update({
+    const updated = await this.prisma.die.update({
       where: { id },
       data: dto,
+      include: {
+        clise_links: {
+          include: {
+            clise: true,
+          },
+        },
+        history: {
+          include: {
+            user: true,
+            machine: true,
+          },
+        },
+      },
     });
+
+    return toFrontendDie(updated);
   }
 
   async remove(id: string) {

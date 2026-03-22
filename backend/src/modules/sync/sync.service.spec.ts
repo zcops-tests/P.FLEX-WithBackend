@@ -14,7 +14,11 @@ describe('SyncService', () => {
           provide: PrismaService,
           useValue: {
             changeLog: { findMany: jest.fn() },
-            syncMutationLog: { create: jest.fn() },
+            syncMutationLog: {
+              create: jest.fn(),
+              findUnique: jest.fn(),
+              update: jest.fn(),
+            },
             $transaction: jest.fn(),
           },
         },

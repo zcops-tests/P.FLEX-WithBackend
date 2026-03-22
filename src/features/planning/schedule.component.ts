@@ -6,8 +6,8 @@ import { OrdersService } from '../orders/services/orders.service';
 import { OT } from '../orders/models/orders.models';
 import { StateService, Machine } from '../../services/state.service';
 import { QualityService } from '../quality/services/quality.service';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { FileExportService } from '../../services/file-export.service';
+import { NotificationService } from '../../services/notification.service';
 
 @Component({
   selector: 'app-schedule',
@@ -398,6 +398,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   state = inject(StateService);
   ordersService = inject(OrdersService);
   qualityService = inject(QualityService);
+  fileExport = inject(FileExportService);
+  notifications = inject(NotificationService);
 
   readonly scheduleContainer = viewChild<ElementRef>('scheduleContainer');
   selectedShift: 'DIA' | 'NOCHE' = 'DIA';
@@ -536,37 +538,14 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     const element = el.nativeElement;
 
     try {
-      const canvas = await html2canvas(element, { 
-        scale: 2,
+      const dateStr = new Date().toISOString().split('T')[0];
+      await this.fileExport.exportElementToPdf(element, `Programacion_${dateStr}.pdf`, {
+        orientation: 'l',
         backgroundColor: '#0f172a',
-        logging: false
       });
 
-      const imgData = canvas.toDataURL('image/png');
-      
-      const pdf = new jsPDF('l', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      const imgProps = pdf.getImageProperties(imgData);
-      const imgWidth = pageWidth;
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-
-      if (imgHeight > pageHeight) {
-          const ratio = pageHeight / imgProps.height;
-          const fitW = imgProps.width * ratio;
-          const fitH = pageHeight;
-          pdf.addImage(imgData, 'PNG', (pageWidth - fitW) / 2, 0, fitW, fitH);
-      } else {
-          pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-      }
-      
-      const dateStr = new Date().toISOString().split('T')[0];
-      pdf.save(`Programacion_${dateStr}.pdf`);
-
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Hubo un error al generar el PDF visual.');
+      this.notifications.showError('Hubo un error al generar el PDF visual.');
     }
   }
 }

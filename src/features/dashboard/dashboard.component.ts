@@ -10,9 +10,8 @@ import { OtImportComponent } from '../orders/components/ot-import.component';
 import { OtFormComponent } from '../orders/components/ot-form.component';
 import { OtDetailComponent } from '../orders/components/ot-detail.component';
 import { Router } from '@angular/router';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { FileExportService } from '../../services/file-export.service';
+import { NotificationService } from '../../services/notification.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -445,6 +444,8 @@ export class DashboardComponent implements OnDestroy {
   qualityService = inject(QualityService);
   audit = inject(AuditService);
   router = inject(Router);
+  fileExport = inject(FileExportService);
+  notifications = inject(NotificationService);
 
   @ViewChild('dashboardContent') dashboardContent!: ElementRef;
 
@@ -474,47 +475,23 @@ export class DashboardComponent implements OnDestroy {
     const element = this.dashboardContent.nativeElement;
     
     try {
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        backgroundColor: '#0B0E14',
-        logging: false,
-        useCORS: true
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('l', 'mm', 'a4');
-      
-      const imgWidth = 297; 
-      const pageHeight = 210;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
       const dateStr = new Date().toISOString().slice(0, 10);
-      pdf.save(`Dashboard_Report_${dateStr}.pdf`);
+      await this.fileExport.exportElementToPdf(element, `Dashboard_Report_${dateStr}.pdf`, {
+        orientation: 'l',
+        backgroundColor: '#0B0E14',
+      });
       this.audit.log(this.state.userName(), this.state.userRole(), 'DASHBOARD', 'Export PDF', 'Exportación visual del tablero completada.');
 
     } catch (err) {
-      console.error('PDF Export Error', err);
-      alert('Error al generar PDF. Revise la consola.');
+      this.notifications.showError('Error al generar PDF.');
     }
   }
 
-  exportToExcel() {
+  async exportToExcel() {
     this.showExportMenu = false;
-    
-    const wb = XLSX.utils.book_new();
+    await this.fileExport.preloadXlsx();
+    const xlsx = this.fileExport.getXlsx();
+    const wb = xlsx.utils.book_new();
     const dateStr = new Date().toISOString().split('T')[0];
 
     // Sheet 1: General Stats
@@ -531,10 +508,9 @@ export class DashboardComponent implements OnDestroy {
       ['Eficiencia Energética', '94%'],
       ['Cola de Sincronización', this.state.pendingSyncCount()]
     ];
-    const wsStats = XLSX.utils.aoa_to_sheet(statsData);
-    XLSX.utils.book_append_sheet(wb, wsStats, "KPIs");
+    const wsStats = xlsx.utils.aoa_to_sheet(statsData);
+    xlsx.utils.book_append_sheet(wb, wsStats, "KPIs");
 
-    // Sheet 2: Active OTs
     const activeOTsData = this.activeProduction.map(ot => ({
       OT: ot.OT,
       Cliente: ot['Razon Social'],
@@ -543,9 +519,9 @@ export class DashboardComponent implements OnDestroy {
       Metros: ot.total_mtl,
       Estado: ot.Estado_pedido
     }));
-    const wsOTs = XLSX.utils.json_to_sheet(activeOTsData);
+    const wsOTs = xlsx.utils.json_to_sheet(activeOTsData);
+    const XLSX = xlsx;
     XLSX.utils.book_append_sheet(wb, wsOTs, "Producción en Curso");
-
     // Sheet 3: Feed / Logs
     const feedData = this.feedItems.map(item => ({
       Hora: item.displayTime,
@@ -554,10 +530,10 @@ export class DashboardComponent implements OnDestroy {
       Descripcion: item.description,
       Maquina: item.machine || '-'
     }));
-    const wsFeed = XLSX.utils.json_to_sheet(feedData);
-    XLSX.utils.book_append_sheet(wb, wsFeed, "Feed de Actividad");
+    const wsFeed = xlsx.utils.json_to_sheet(feedData);
+    xlsx.utils.book_append_sheet(wb, wsFeed, "Feed de Actividad");
 
-    XLSX.writeFile(wb, `Dashboard_Data_${dateStr}.xlsx`);
+    await this.fileExport.writeWorkbook(wb, `Dashboard_Data_${dateStr}.xlsx`);
     this.audit.log(this.state.userName(), this.state.userRole(), 'DASHBOARD', 'Export Excel', 'Exportación de datos estadísticos completada.');
   }
 

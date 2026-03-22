@@ -3,10 +3,10 @@ import { Component, inject, ElementRef, viewChild, AfterViewInit } from '@angula
 import { CommonModule } from '@angular/common';
 import { OrdersService } from '../orders/services/orders.service';
 import { OT } from '../orders/models/orders.models';
-import * as d3 from 'd3';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { FileExportService } from '../../services/file-export.service';
+import { NotificationService } from '../../services/notification.service';
+
+type D3Module = typeof import('d3');
 
 @Component({
   selector: 'app-report-list',
@@ -202,6 +202,9 @@ import html2canvas from 'html2canvas';
 })
 export class ReportListComponent implements AfterViewInit {
   ordersService = inject(OrdersService);
+  fileExport = inject(FileExportService);
+  notifications = inject(NotificationService);
+  private d3ModulePromise?: Promise<D3Module>;
 
   readonly trendChartContainer = viewChild<ElementRef>('trendChartContainer');
   readonly donutChartContainer = viewChild<ElementRef>('donutChartContainer');
@@ -279,14 +282,16 @@ export class ReportListComponent implements AfterViewInit {
 
   ngAfterViewInit() {
     setTimeout(() => {
-        this.renderTrendChart();
-        this.renderDonutChart(this.stats);
+      void this.renderCharts();
     }, 100);
   }
 
-  exportExcel() {
+  async exportExcel() {
     this.showExportMenu = false;
-    const wb = XLSX.utils.book_new();
+    await this.fileExport.preloadXlsx();
+    const xlsx = this.fileExport.getXlsx();
+    const wb = xlsx.utils.book_new();
+    const XLSX = xlsx;
     const dateStr = new Date().toISOString().split('T')[0];
 
     const s = this.stats;
@@ -305,10 +310,10 @@ export class ReportListComponent implements AfterViewInit {
         ['Finalizados', s.completed],
         ['Pausadas', s.paused]
     ];
-    const wsKPI = XLSX.utils.aoa_to_sheet(kpiData);
-    XLSX.utils.book_append_sheet(wb, wsKPI, "KPIs Resumen");
+    const wsKPI = xlsx.utils.aoa_to_sheet(kpiData);
+    xlsx.utils.book_append_sheet(wb, wsKPI, "KPIs Resumen");
 
-    const wsTrend = XLSX.utils.json_to_sheet(this.trendData);
+    const wsTrend = xlsx.utils.json_to_sheet(this.trendData);
     XLSX.utils.book_append_sheet(wb, wsTrend, "Tendencia Producción");
 
     const wasteData = this.topWasteItems.map(i => ({
@@ -322,7 +327,7 @@ export class ReportListComponent implements AfterViewInit {
     const wsWaste = XLSX.utils.json_to_sheet(wasteData);
     XLSX.utils.book_append_sheet(wb, wsWaste, "Mermas Críticas");
 
-    XLSX.writeFile(wb, `KPI_Planta_${dateStr}.xlsx`);
+    await this.fileExport.writeWorkbook(wb, `KPI_Planta_${dateStr}.xlsx`);
   }
 
   async exportPDF() {
@@ -332,46 +337,36 @@ export class ReportListComponent implements AfterViewInit {
     const element = el.nativeElement;
 
     try {
-      const canvas = await html2canvas(element, { 
-        scale: 2,
+      const dateStr = new Date().toISOString().split('T')[0];
+      await this.fileExport.exportElementToPdf(element, `Reporte_Grafico_KPI_${dateStr}.pdf`, {
+        orientation: 'l',
         backgroundColor: '#0f172a',
-        logging: false
       });
 
-      const imgData = canvas.toDataURL('image/png');
-      
-      const pdf = new jsPDF('l', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      const imgProps = pdf.getImageProperties(imgData);
-      const imgWidth = pageWidth;
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-
-      if (imgHeight > pageHeight) {
-          const ratio = pageHeight / imgProps.height;
-          const fitW = imgProps.width * ratio;
-          const fitH = pageHeight;
-          pdf.addImage(imgData, 'PNG', (pageWidth - fitW) / 2, 0, fitW, fitH);
-      } else {
-          pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-      }
-      
-      const dateStr = new Date().toISOString().split('T')[0];
-      pdf.save(`Reporte_Grafico_KPI_${dateStr}.pdf`);
-
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Hubo un error al generar el PDF visual.');
+      this.notifications.showError('Hubo un error al generar el PDF visual.');
     }
   }
 
-  renderTrendChart() {
+  private async renderCharts() {
+    const d3Any = await this.loadD3();
+    this.renderTrendChart(d3Any);
+    this.renderDonutChart(d3Any, this.stats);
+  }
+
+  private async loadD3() {
+    if (!this.d3ModulePromise) {
+      this.d3ModulePromise = import('d3');
+    }
+
+    return this.d3ModulePromise as Promise<any>;
+  }
+
+  renderTrendChart(d3Any: any) {
     const el = this.trendChartContainer();
     if (!el) return;
 
     const element = el.nativeElement;
-    const d3Any = d3 as any;
 
     d3Any.select(element).selectAll('*').remove();
 
@@ -437,12 +432,11 @@ export class ReportListComponent implements AfterViewInit {
     svg.selectAll('.tick line').attr('stroke', 'rgba(255,255,255,0.05)');
   }
 
-  renderDonutChart(stats: any) {
+  renderDonutChart(d3Any: any, stats: any) {
     const el = this.donutChartContainer();
     if (!el) return;
 
     const element = el.nativeElement;
-    const d3Any = d3 as any;
 
     d3Any.select(element).selectAll('*').remove();
 

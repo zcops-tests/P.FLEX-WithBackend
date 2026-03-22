@@ -1,5 +1,5 @@
 
-import { Component, inject } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { SidebarComponent } from './core/layout/sidebar.component';
 import { StateService } from './services/state.service';
@@ -61,6 +61,12 @@ export class AppComponent {
   showSidebar = true;
 
   constructor() {
+    effect(() => {
+      if (!this.state.sessionExpired()) return;
+      void this.state.logout();
+      this.router.navigate(['/login']);
+    });
+
     this.router.events.pipe(
       filter(event => event instanceof NavigationEnd)
     ).subscribe((event: any) => {

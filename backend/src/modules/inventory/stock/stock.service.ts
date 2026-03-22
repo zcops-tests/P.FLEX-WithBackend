@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateStockItemDto, UpdateStockItemDto, StockStatus } from './dto/stock.dto';
+import { StockQueryDto } from './dto/stock-query.dto';
+import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import { toFrontendStockItem } from '../../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class StockService {
@@ -16,24 +20,24 @@ export class StockService {
       }
     }
 
-    return this.prisma.stockItem.create({
+    const created = await this.prisma.stockItem.create({
       data: {
         ...dto,
         status: dto.status || StockStatus.LIBERATED,
       },
+      include: {
+        work_order: true,
+      },
     });
+
+    return toFrontendStockItem(created);
   }
 
-  async findAll(params: {
-    page?: number;
-    pageSize?: number;
-    status?: StockStatus;
-    q?: string;
-  }) {
-    const { page = 1, pageSize = 20, status, q } = params;
-    const skip = (page - 1) * pageSize;
+  async findAll(params: StockQueryDto) {
+    const { status, q } = params;
+    const pagination = resolvePagination(params);
 
-    const where: any = {
+    const where: Prisma.StockItemWhereInput = {
       deleted_at: null,
     };
 
@@ -55,21 +59,16 @@ export class StockService {
       this.prisma.stockItem.count({ where }),
       this.prisma.stockItem.findMany({
         where,
-        skip,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.take,
         orderBy: { entry_date: 'desc' },
+        include: {
+          work_order: true,
+        },
       }),
     ]);
 
-    return {
-      items,
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
-    };
+    return buildPaginatedResult(items.map((item) => toFrontendStockItem(item)), total, pagination);
   }
 
   async findOne(id: string) {
@@ -83,23 +82,33 @@ export class StockService {
     if (!item || item.deleted_at) {
       throw new NotFoundException(`Stock item with ID ${id} not found`);
     }
-    return item;
+    return toFrontendStockItem(item);
   }
 
   async update(id: string, dto: UpdateStockItemDto) {
     await this.findOne(id);
-    return this.prisma.stockItem.update({
+    const updated = await this.prisma.stockItem.update({
       where: { id },
       data: dto,
+      include: {
+        work_order: true,
+      },
     });
+
+    return toFrontendStockItem(updated);
   }
 
   async updateStatus(id: string, status: StockStatus) {
     await this.findOne(id);
-    return this.prisma.stockItem.update({
+    const updated = await this.prisma.stockItem.update({
       where: { id },
       data: { status },
+      include: {
+        work_order: true,
+      },
     });
+
+    return toFrontendStockItem(updated);
   }
 
   async remove(id: string) {

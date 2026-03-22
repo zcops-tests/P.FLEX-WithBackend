@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { StateService, Shift } from '../../services/state.service';
 import { CommonModule } from '@angular/common';
+import { NotificationService } from '../../services/notification.service';
 
 @Component({
   selector: 'app-login',
@@ -229,6 +230,7 @@ import { CommonModule } from '@angular/common';
 export class LoginComponent {
   state = inject(StateService);
   router: Router = inject(Router);
+  notifications = inject(NotificationService);
   
   username = '';
   password = '';
@@ -259,10 +261,14 @@ export class LoginComponent {
     }
   }
 
-  onLogin() {
-    if (this.username && this.selectedShift) {
-      this.state.login(this.username, this.selectedShift);
-      this.router.navigate(['/operator']);
+  async onLogin() {
+    if (this.username && this.selectedShift && this.password) {
+      try {
+        await this.state.login(this.username, this.selectedShift, this.password);
+        this.router.navigate(['/operator']);
+      } catch (error: any) {
+        this.notifications.showError(error?.message || 'No fue posible iniciar sesion.');
+      }
     }
   }
 }

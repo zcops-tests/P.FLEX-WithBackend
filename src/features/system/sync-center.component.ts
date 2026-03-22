@@ -2,6 +2,7 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StateService } from '../../services/state.service';
+import { BackendApiService } from '../../services/backend-api.service';
 
 @Component({
   selector: 'app-sync-center',
@@ -23,7 +24,7 @@ import { StateService } from '../../services/state.service';
          <p class="text-gray-500 mt-2">Todos los registros han sido subidos a la nube correctamente.</p>
          <p class="text-xs text-gray-400 mt-1">Última sincronización: Hace 2 minutos</p>
 
-         <button class="mt-6 px-6 py-2 border border-brand-action text-brand-action rounded hover:bg-blue-50 font-bold text-sm transition-colors">
+         <button (click)="forceSync()" class="mt-6 px-6 py-2 border border-brand-action text-brand-action rounded hover:bg-blue-50 font-bold text-sm transition-colors">
            Forzar Sincronización Manual
          </button>
       </div>
@@ -62,4 +63,17 @@ import { StateService } from '../../services/state.service';
 })
 export class SyncCenterComponent {
   state = inject(StateService);
+  backend = inject(BackendApiService);
+
+  async forceSync() {
+    try {
+      this.state.setSyncStatus('syncing');
+      const response = await this.backend.syncPull({ lastSyncAt: new Date(0).toISOString(), pageSize: 100 });
+      const pending = Array.isArray(response?.changes) ? response.changes.length : 0;
+      this.state.setPendingSyncCount(pending);
+      this.state.setSyncStatus('online');
+    } catch {
+      this.state.setSyncStatus('conflict');
+    }
+  }
 }

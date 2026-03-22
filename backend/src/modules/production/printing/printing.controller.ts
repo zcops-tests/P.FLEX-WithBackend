@@ -17,6 +17,7 @@ import {
   PrintReportStatus,
   UpdatePrintReportStatusDto,
 } from './dto/print-report.dto';
+import { PrintReportQueryDto } from './dto/print-report-query.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { ContextualGuard } from '../../auth/guards/contextual.guard';
@@ -44,14 +45,8 @@ export class PrintingController {
   @ApiQuery({ name: 'status', required: false, enum: PrintReportStatus })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
-  async findAllReports(
-    @Query('machineId') machineId?: string,
-    @Query('operatorId') operatorId?: string,
-    @Query('status') status?: PrintReportStatus,
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-  ) {
-    return this.printingService.findAllReports({ machineId, operatorId, status, page, pageSize });
+  async findAllReports(@Query() query: PrintReportQueryDto) {
+    return this.printingService.findAllReports(query);
   }
 
   @Get('reports/:id')

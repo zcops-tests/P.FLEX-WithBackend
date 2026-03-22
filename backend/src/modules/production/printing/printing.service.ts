@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreatePrintReportDto, PrintReportStatus, UpdatePrintReportDto } from './dto/print-report.dto';
+import { PrintReportQueryDto } from './dto/print-report-query.dto';
+import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import { assertAllowedTransition } from '../../../common/utils/state-transition.util';
+import { assertReportLockAvailable } from '../../../common/utils/report-lock.util';
+import { toFrontendPrintReport } from '../../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class PrintingService {
@@ -87,21 +93,28 @@ export class PrintingService {
         });
       }
 
-      return report;
+      const fullReport = await tx.printReport.findUnique({
+        where: { id: report.id },
+        include: {
+          activities: true,
+          machine: true,
+          operator: true,
+          shift: true,
+          work_order: true,
+          clise: true,
+          die: true,
+        },
+      });
+
+      return toFrontendPrintReport(fullReport || report);
     });
   }
 
-  async findAllReports(params: {
-    machineId?: string;
-    operatorId?: string;
-    status?: PrintReportStatus;
-    page?: number;
-    pageSize?: number;
-  }) {
-    const { machineId, operatorId, status, page = 1, pageSize = 20 } = params;
-    const skip = (page - 1) * pageSize;
+  async findAllReports(params: PrintReportQueryDto) {
+    const { machineId, operatorId, status } = params;
+    const pagination = resolvePagination(params);
 
-    const where: any = { deleted_at: null };
+    const where: Prisma.PrintReportWhereInput = { deleted_at: null };
     if (machineId) where.machine_id = machineId;
     if (operatorId) where.operator_id = operatorId;
     if (status) where.status = status;
@@ -110,8 +123,8 @@ export class PrintingService {
       this.prisma.printReport.count({ where }),
       this.prisma.printReport.findMany({
         where,
-        skip,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.take,
         orderBy: { reported_at: 'desc' },
         include: {
           machine: { select: { name: true, code: true } },
@@ -121,7 +134,7 @@ export class PrintingService {
       }),
     ]);
 
-    return { items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
+    return buildPaginatedResult(items.map((item) => toFrontendPrintReport(item)), total, pagination);
   }
 
   async findOneReport(id: string) {
@@ -140,7 +153,7 @@ export class PrintingService {
     if (!report || report.deleted_at) {
       throw new NotFoundException(`Print Report with ID ${id} not found`);
     }
-    return report;
+    return toFrontendPrintReport(report);
   }
 
   async updateStatus(id: string, status: PrintReportStatus) {
@@ -155,43 +168,67 @@ export class PrintingService {
       [PrintReportStatus.CORRECTED]: [PrintReportStatus.APPROVED],
     };
 
-    if (!allowed[report.status as string]?.includes(status)) {
-      throw new ConflictException(`Invalid status transition from ${report.status} to ${status}`);
-    }
+    assertAllowedTransition(report.status, status, allowed, 'Transition');
 
-    return this.prisma.printReport.update({
+    const updated = await this.prisma.printReport.update({
       where: { id },
       data: { status },
+      include: {
+        activities: true,
+        machine: true,
+        operator: true,
+        shift: true,
+        work_order: true,
+        clise: true,
+        die: true,
+      },
     });
+
+    return toFrontendPrintReport(updated);
   }
 
   async lockReport(id: string, userId: string) {
     const report = await this.findOneReport(id);
-    if (report.locked_by_user_id && report.locked_by_user_id !== userId) {
-      // Check if lock is old (e.g. > 15 mins)
-      const lockTime = report.locked_at ? new Date(report.locked_at).getTime() : 0;
-      const now = Date.now();
-      if (now - lockTime < 15 * 60 * 1000) {
-        throw new ConflictException(`Report is locked by another user`);
-      }
-    }
+    assertReportLockAvailable(report.locked_by_user_id, report.locked_at, userId);
 
-    return this.prisma.printReport.update({
+    const updated = await this.prisma.printReport.update({
       where: { id },
       data: {
         locked_by_user_id: userId,
         locked_at: new Date(),
       },
+      include: {
+        activities: true,
+        machine: true,
+        operator: true,
+        shift: true,
+        work_order: true,
+        clise: true,
+        die: true,
+      },
     });
+
+    return toFrontendPrintReport(updated);
   }
 
   async unlockReport(id: string) {
-    return this.prisma.printReport.update({
+    const updated = await this.prisma.printReport.update({
       where: { id },
       data: {
         locked_by_user_id: null,
         locked_at: null,
       },
+      include: {
+        activities: true,
+        machine: true,
+        operator: true,
+        shift: true,
+        work_order: true,
+        clise: true,
+        die: true,
+      },
     });
+
+    return toFrontendPrintReport(updated);
   }
 }

@@ -14,6 +14,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { WorkOrdersService } from './work-orders.service';
 import { CreateWorkOrderDto, WorkOrderStatus, UpdateWorkOrderStatusDto } from './dto/work-order.dto';
+import { WorkOrderQueryDto } from './dto/work-order-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -38,13 +39,8 @@ export class WorkOrdersController {
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false, enum: WorkOrderStatus })
   @ApiQuery({ name: 'q', required: false, type: String, description: 'Search by OT, description, client, or material' })
-  async findAll(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-    @Query('status') status?: WorkOrderStatus,
-    @Query('q') q?: string,
-  ) {
-    return this.workOrdersService.findAll({ page, pageSize, status, q });
+  async findAll(@Query() query: WorkOrderQueryDto) {
+    return this.workOrdersService.findAll(query);
   }
 
   @Get(':id')

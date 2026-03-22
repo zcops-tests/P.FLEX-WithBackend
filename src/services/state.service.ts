@@ -1,16 +1,21 @@
-
-import { Injectable, signal, computed, inject } from '@angular/core';
+import { Injectable, computed, effect, signal, untracked, inject } from '@angular/core';
 import { AuditService } from './audit.service';
 import { AppUser, RoleDefinition, SystemConfig } from '../features/admin/models/admin.models';
+import { BackendApiService } from './backend-api.service';
+import { ApiClientService } from './api-client.service';
+import { BrowserStorageService } from './browser-storage.service';
 
 export type UserRole = 'Jefatura' | 'Supervisor' | 'Asistente' | 'Operario' | 'Encargado' | 'Sistemas';
-export type Shift = 'Turno Día' | 'Turno Noche' | string | null;
+export type Shift = string | null;
 export type SyncStatus = 'online' | 'offline' | 'syncing' | 'conflict';
+export const USER_ROLES: readonly UserRole[] = ['Jefatura', 'Supervisor', 'Asistente', 'Operario', 'Encargado', 'Sistemas'] as const;
 
 export interface User {
   id: string;
   name: string;
   role: UserRole;
+  username?: string;
+  roleCode?: string;
   avatar?: string;
 }
 
@@ -22,15 +27,42 @@ export interface Machine {
   area: string;
   status: 'Operativa' | 'Mantenimiento' | 'Detenida' | 'Sin Operador';
   active: boolean;
+  areaId?: string;
+  rawType?: string;
+}
+
+export interface PlantArea {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+}
+
+export interface PlantShift {
+  id: string;
+  code: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+}
+
+interface PersistedUserSession {
+  user: User | null;
+  shift: Shift;
+  sessionId?: string | null;
+  expiresAt?: string;
 }
 
 @Injectable({ providedIn: 'root' })
 export class StateService {
   private audit = inject(AuditService);
+  private backend = inject(BackendApiService);
+  private apiClient = inject(ApiClientService);
+  private storage = inject(BrowserStorageService);
+  private readonly userSessionKey = 'pflex_user_session';
 
-  // Global Configuration (Signal)
   readonly config = signal<SystemConfig>({
-    shiftName1: 'Turno Día',
+    shiftName1: 'Turno Dia',
     shiftTime1: '06:00',
     shiftName2: 'Turno Noche',
     shiftTime2: '18:00',
@@ -38,131 +70,359 @@ export class StateService {
     passwordPolicyDays: 90,
     plantName: 'Planta Central - Zona Industrial',
     autoLogoutMinutes: 30,
-    operatorMessage: 'Recordar verificar el estado de los clichés y troqueles al finalizar el turno noche. Reportar daños en Incidencias.'
+    operatorMessage: 'Recordar verificar el estado de los clises y troqueles al finalizar el turno.',
   });
 
-  // Authentication State (Signals)
   readonly currentUser = signal<User | null>(null);
   readonly currentShift = signal<Shift>(null);
-  
-  // App State (Signals)
+
   readonly isSidebarCollapsed = signal<boolean>(false);
   readonly syncStatus = signal<SyncStatus>('online');
   readonly pendingSyncCount = signal<number>(0);
 
-  // --- ADMIN DATA STORE (Signals) ---
-  readonly adminUsers = signal<AppUser[]>([
-    { id: '1', name: 'Juan Perez', username: 'jperez', role: 'Supervisor', active: true },
-    { id: '2', name: 'Maria Garcia', username: 'mgarcia', role: 'Jefatura', active: true },
-    { id: '3', name: 'Pedro Operador', username: 'poperador', role: 'Operario', active: true },
-    { id: '4', name: 'Carlos Admin', username: 'admin', role: 'Sistemas', active: true },
-  ]);
+  readonly adminUsers = signal<AppUser[]>([]);
+  readonly adminRoles = signal<RoleDefinition[]>([]);
+  readonly adminMachines = signal<Machine[]>([]);
+  readonly plantAreas = signal<PlantArea[]>([]);
+  readonly plantShifts = signal<PlantShift[]>([]);
+  readonly permissions = signal<{ id: string; code: string; name: string; description?: string }[]>([]);
 
-  readonly adminRoles = signal<RoleDefinition[]>([
-    { id: 'r1', name: 'Jefatura', description: 'Acceso total a reportes, KPIs y aprobación.', permissions: ['Ver Dashboard', 'Aprobar OTs', 'Reportes', 'Gestión Usuarios'] },
-    { id: 'r2', name: 'Supervisor', description: 'Gestión de turno y asignación.', permissions: ['Asignar Tareas', 'Cerrar Turno', 'Validar Calidad', 'Ver OTs'] },
-    { id: 'r3', name: 'Operario', description: 'Registro de producción.', permissions: ['Registrar Producción', 'Ver OTs'] },
-    { id: 'r4', name: 'Sistemas', description: 'Configuración técnica.', permissions: ['Admin Total'] }
-  ]);
-
-  readonly adminMachines = signal<Machine[]>([
-    // IMPRESIÓN
-    { id: 'p1', code: 'IMP-01', name: 'SUPERPRINT 1', type: 'Impresión', area: 'Nave A', status: 'Operativa', active: true },
-    { id: 'p2', code: 'IMP-02', name: 'SUPERPRINT 2', type: 'Impresión', area: 'Nave A', status: 'Operativa', active: true },
-    { id: 'p3', code: 'IMP-03', name: 'SUPERFLEX 250', type: 'Impresión', area: 'Nave A', status: 'Operativa', active: true },
-    { id: 'p4', code: 'IMP-04', name: 'SUPERFLEX ELITE', type: 'Impresión', area: 'Nave A', status: 'Mantenimiento', active: true },
-    { id: 'p5', code: 'IMP-05', name: 'MARK ANDY 4120', type: 'Impresión', area: 'Nave B', status: 'Operativa', active: true },
-    { id: 'p6', code: 'IMP-06', name: 'MARK ANDY 2100', type: 'Impresión', area: 'Nave B', status: 'Operativa', active: true },
-    { id: 'p7', code: 'IMP-07', name: 'EVOLUTION', type: 'Impresión', area: 'Nave B', status: 'Operativa', active: true },
-    { id: 'p8', code: 'IMP-08', name: 'MARK ANDY 4200', type: 'Impresión', area: 'Nave B', status: 'Operativa', active: true },
-    { id: 'p9', code: 'IMP-09', name: 'REINAFLEX', type: 'Impresión', area: 'Nave A', status: 'Detenida', active: true },
-    // TROQUELADO
-    { id: 'd1', code: 'TRQ-01', name: 'PLANA 1', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    { id: 'd2', code: 'TRQ-02', name: 'PLANA 2', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    { id: 'd3', code: 'TRQ-03', name: 'PLANA 3', type: 'Troquelado', area: 'Nave C', status: 'Sin Operador', active: true },
-    { id: 'd4', code: 'TRQ-04', name: 'PLANA 4', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    { id: 'd5', code: 'TRQ-05', name: 'PLANA 5', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    { id: 'd6', code: 'TRQ-06', name: 'PLANA 6', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    { id: 'd7', code: 'TRQ-07', name: 'MARK ANDY 830-1', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    { id: 'd8', code: 'TRQ-08', name: 'MARK ANDY 830-2', type: 'Troquelado', area: 'Nave C', status: 'Mantenimiento', active: true },
-    { id: 'd9', code: 'TRQ-09', name: 'FOCUS', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    { id: 'd10', code: 'TRQ-10', name: 'MASTER', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    { id: 'd11', code: 'TRQ-11', name: 'DK-320', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    { id: 'd12', code: 'TRQ-12', name: 'MAQUIFLEX', type: 'Troquelado', area: 'Nave C', status: 'Operativa', active: true },
-    // ACABADO
-    { id: 'r1', code: 'RBB-01', name: 'REBOBINADORA 1', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r2', code: 'RBB-02', name: 'REBOBINADORA 2', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r3', code: 'RBB-03', name: 'REBOBINADORA 3', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r4', code: 'RBB-04', name: 'REBOBINADORA 4', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r5', code: 'RBB-05', name: 'REBOBINADORA 5', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r6', code: 'RBB-06', name: 'REBOBINADORA 6', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r7', code: 'RBB-07', name: 'REBOBINADORA 7', type: 'Acabado', area: 'Nave D', status: 'Mantenimiento', active: true },
-    { id: 'r8', code: 'RBB-08', name: 'REBOBINADORA 8', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r9', code: 'RBB-09', name: 'ROTOFLEX', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r10', code: 'RBB-10', name: 'REB EVO', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r11', code: 'RBB-11', name: 'BGM', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r12', code: 'RBB-12', name: 'BLISTER 1', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-    { id: 'r13', code: 'RBB-13', name: 'BLISTER 2', type: 'Acabado', area: 'Nave D', status: 'Operativa', active: true },
-  ]);
-  
-  // Computed Signals
   readonly isLoggedIn = computed(() => !!this.currentUser());
   readonly userName = computed(() => this.currentUser()?.name || 'Invitado');
   readonly userRole = computed(() => this.currentUser()?.role || '');
+  readonly roleCode = computed(() => this.currentUser()?.roleCode || '');
+  readonly sessionExpired = computed(() => {
+    const session = this.readSession();
+    if (!session?.expiresAt) return false;
+    return new Date(session.expiresAt).getTime() <= Date.now();
+  });
 
-  // Logic
-  login(username: string, shift: Shift) {
-    let role: UserRole = 'Supervisor';
-    let name = 'Juan Supervisor';
-    const lowerUser = username.toLowerCase().trim();
+  constructor() {
+    this.restoreSession();
 
-    const foundUser = this.adminUsers().find(u => u.username.toLowerCase() === lowerUser);
-    if (foundUser && foundUser.active) {
-       role = foundUser.role;
-       name = foundUser.name;
-    } else if (lowerUser === 'admin') {
-      role = 'Sistemas';
-      name = 'Admin Sistema';
-    } else if (lowerUser === 'jefe') {
-      role = 'Jefatura';
-      name = 'Carlos Gerencia';
-    } else if (lowerUser === 'operario') {
-      role = 'Operario';
-      name = 'Pedro Operador';
-    }
-
-    this.currentUser.set({
-      id: 'u-' + Date.now(),
-      name: name,
-      role: role
+    effect(() => {
+      const user = this.currentUser();
+      if (!user) return;
+      untracked(() => {
+        void this.loadBootstrapData();
+      });
     });
-    this.currentShift.set(shift);
-
-    // AUDIT LOG
-    this.audit.log(name, role, 'ACCESO', 'Inicio de Sesión', `Usuario ${username} inició sesión en ${shift}.`);
   }
 
-  logout() {
-    // AUDIT LOG
+  async login(username: string, shift: Shift, password: string) {
+    const response = await this.backend.login({
+      username,
+      password,
+      deviceName: 'Web Frontend',
+      deviceType: 'DESKTOP',
+      deviceProfile: 'FRONTEND_APP',
+    });
+
+    const mappedUser = this.mapAuthUser(response.user);
+    const expiresAt = new Date(Date.now() + this.config().autoLogoutMinutes * 60_000).toISOString();
+
+    this.persistSession({
+      user: mappedUser,
+      shift,
+      sessionId: response.sessionId,
+      expiresAt,
+    });
+
+    this.apiClient.setSession(
+      {
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+        sessionId: response.sessionId,
+      },
+      {
+        user: mappedUser,
+        shift,
+        expiresAt,
+      },
+    );
+
+    this.currentUser.set(mappedUser);
+    this.currentShift.set(shift);
+
+    this.audit.log(mappedUser.name, mappedUser.role, 'ACCESO', 'Inicio de Sesion', `Usuario ${username} inicio sesion en ${shift}.`);
+    await this.loadBootstrapData();
+    return mappedUser;
+  }
+
+  async logout() {
+    try {
+      if (this.currentUser()) {
+        await this.backend.logout();
+      }
+    } catch {
+      // Ignore logout transport errors and clear session locally.
+    }
+
     const user = this.userName();
     const role = this.userRole();
-    this.audit.log(user, role, 'ACCESO', 'Cierre de Sesión', 'Usuario cerró sesión manualmente.');
+    this.audit.log(user, role, 'ACCESO', 'Cierre de Sesion', 'Usuario cerro sesion manualmente.');
+
+    this.clearPersistedSession();
+    this.apiClient.clearSession();
 
     this.currentUser.set(null);
     this.currentShift.set(null);
   }
 
   toggleSidebar() {
-    this.isSidebarCollapsed.update(v => !v);
+    this.isSidebarCollapsed.update((v) => !v);
   }
 
   setSyncStatus(status: SyncStatus) {
     this.syncStatus.set(status);
   }
 
+  setPendingSyncCount(count: number) {
+    this.pendingSyncCount.set(count);
+  }
+
+  setAdminUsers(users: AppUser[]) {
+    this.adminUsers.set(users);
+  }
+
+  setAdminRoles(roles: RoleDefinition[]) {
+    this.adminRoles.set(roles);
+  }
+
+  setAdminMachines(machines: Machine[]) {
+    this.adminMachines.set(machines);
+  }
+
+  setPlantAreas(areas: PlantArea[]) {
+    this.plantAreas.set(areas);
+  }
+
+  setPlantShifts(shifts: PlantShift[]) {
+    this.plantShifts.set(shifts);
+    this.applyShiftConfigFromShifts(shifts);
+  }
+
+  setPermissions(permissions: { id: string; code: string; name: string; description?: string }[]) {
+    this.permissions.set(permissions);
+  }
+
   updateMachine(updatedMachine: Machine) {
-    this.adminMachines.update(machines => machines.map(m => m.id === updatedMachine.id ? updatedMachine : m));
-    // Operational update log
-    this.audit.log(this.userName(), this.userRole(), 'OPERACIONES', 'Estado Máquina', `Máquina ${updatedMachine.name} cambió a ${updatedMachine.status}`);
+    this.adminMachines.update((machines) => machines.map((m) => (m.id === updatedMachine.id ? updatedMachine : m)));
+    this.audit.log(this.userName(), this.userRole(), 'OPERACIONES', 'Estado Maquina', `Maquina ${updatedMachine.name} cambio a ${updatedMachine.status}`);
+  }
+
+  hasAnyRole(roles: readonly UserRole[]): boolean {
+    const currentRole = this.currentUser()?.role;
+    if (!currentRole || !roles.length) return false;
+    return roles.includes(currentRole);
+  }
+
+  normalizeUserRole(value: string): UserRole {
+    const normalized = String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+
+    if (normalized.includes('ADMIN') || normalized.includes('SISTEM')) return 'Sistemas';
+    if (normalized.includes('SUPERVISOR')) return 'Supervisor';
+    if (normalized.includes('OPERATOR') || normalized.includes('OPERARIO')) return 'Operario';
+    if (normalized.includes('WAREHOUSE') || normalized.includes('ENCARG')) return 'Encargado';
+    if (normalized.includes('PLANNER') || normalized.includes('ASIST')) return 'Asistente';
+    if (normalized.includes('JEFAT') || normalized.includes('MANAGER') || normalized.includes('GEREN')) return 'Jefatura';
+    return 'Jefatura';
+  }
+
+  toUiMachineType(value: string): string {
+    const normalized = String(value || '').toUpperCase();
+    if (normalized.includes('PRINT') || normalized.includes('IMP')) return 'Impresion';
+    if (normalized.includes('DIECUT') || normalized.includes('TROQ')) return 'Troquelado';
+    if (normalized.includes('REWIND') || normalized.includes('PACK') || normalized.includes('ACAB')) return 'Acabado';
+    return value || 'Impresion';
+  }
+
+  toUiMachineStatus(value: string): Machine['status'] {
+    const normalized = String(value || '').toUpperCase();
+    if (normalized.includes('MAINT')) return 'Mantenimiento';
+    if (normalized.includes('STOP') || normalized.includes('DETEN')) return 'Detenida';
+    if (normalized.includes('NO_OPERATOR') || normalized.includes('SIN')) return 'Sin Operador';
+    return 'Operativa';
+  }
+
+  private restoreSession() {
+    const session = this.readSession();
+    if (!session) return;
+
+    if (session.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) {
+      this.clearPersistedSession();
+      this.apiClient.clearSession();
+      return;
+    }
+
+    this.currentUser.set(session.user || null);
+    this.currentShift.set(session.shift || null);
+  }
+
+  private async loadBootstrapData() {
+    const tasks = await Promise.allSettled([
+      this.backend.getRoles(),
+      this.backend.getMachines(),
+      this.backend.getUsers(),
+      this.backend.getAreas(),
+      this.backend.getShifts(),
+      this.backend.getPermissions(),
+      this.backend.getSystemConfig(),
+    ]);
+
+    const [roles, machines, users, areas, shifts, permissions, config] = tasks;
+
+    if (roles.status === 'fulfilled') {
+      this.adminRoles.set(roles.value.map((role) => this.mapRole(role)));
+    }
+
+    if (areas.status === 'fulfilled') {
+      this.plantAreas.set(
+        areas.value.map((area: any) => ({
+          id: area.id,
+          code: area.code,
+          name: area.name,
+          active: area.active !== false,
+        })),
+      );
+    }
+
+    if (machines.status === 'fulfilled') {
+      this.adminMachines.set(machines.value.map((machine: any) => this.mapMachine(machine)));
+    }
+
+    if (users.status === 'fulfilled') {
+      this.adminUsers.set(users.value.map((user: any) => this.mapAdminUser(user)));
+    }
+
+    if (shifts.status === 'fulfilled') {
+      this.setPlantShifts(
+        shifts.value.map((shift: any) => ({
+          id: shift.id,
+          code: shift.code,
+          name: shift.name,
+          startTime: this.normalizeTime(shift.start_time),
+          endTime: this.normalizeTime(shift.end_time),
+        })),
+      );
+    }
+
+    if (permissions.status === 'fulfilled') {
+      this.permissions.set(
+        permissions.value.map((permission: any) => ({
+          id: permission.id,
+          code: permission.code,
+          name: permission.name,
+          description: permission.description,
+        })),
+      );
+    }
+
+    if (config.status === 'fulfilled') {
+      this.config.update((current) => ({
+        ...current,
+        plantName: config.value.plant_name || current.plantName,
+        autoLogoutMinutes: config.value.auto_logout_minutes ?? current.autoLogoutMinutes,
+        passwordExpiryWarningDays: config.value.password_expiry_warning_days ?? current.passwordExpiryWarningDays,
+        passwordPolicyDays: config.value.password_policy_days ?? current.passwordPolicyDays,
+        operatorMessage: config.value.operator_message || current.operatorMessage,
+      }));
+    }
+  }
+
+  private applyShiftConfigFromShifts(shifts: PlantShift[]) {
+    if (!shifts.length) return;
+    this.config.update((current) => ({
+      ...current,
+      shiftName1: shifts[0]?.name || current.shiftName1,
+      shiftTime1: shifts[0]?.startTime || current.shiftTime1,
+      shiftName2: shifts[1]?.name || current.shiftName2,
+      shiftTime2: shifts[1]?.startTime || current.shiftTime2,
+    }));
+  }
+
+  private mapAuthUser(user: any): User {
+    return {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: this.normalizeUserRole(user.role || user.roleCode || user.role_name),
+      roleCode: user.roleCode || user.role,
+    };
+  }
+
+  private mapAdminUser(user: any): AppUser {
+    return {
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      role: this.normalizeUserRole(user.role?.code || user.role_code || user.role?.name),
+      active: user.active !== false,
+      assignedAreas: user.assignedAreas?.map((item: any) => item.area?.name).filter(Boolean) || [],
+    };
+  }
+
+  private mapRole(role: any): RoleDefinition {
+    const roleName = this.normalizeUserRole(role.code || role.name);
+    return {
+      id: role.id,
+      name: roleName,
+      description: role.description || role.name || roleName,
+      permissions: (role.permissions || []).map((entry: any) => entry.permission?.name || entry.permission?.code).filter(Boolean),
+    };
+  }
+
+  private mapMachine(machine: any): Machine {
+    return {
+      id: machine.id,
+      code: machine.code,
+      name: machine.name,
+      type: this.toUiMachineType(machine.type),
+      area: machine.area?.name || machine.area_name || '',
+      areaId: machine.area_id,
+      status: this.toUiMachineStatus(machine.status),
+      active: machine.active !== false,
+      rawType: machine.type,
+    };
+  }
+
+  private normalizeTime(value: string | undefined): string {
+    if (!value) return '';
+    return String(value).slice(0, 5);
+  }
+
+  private persistSession(session: PersistedUserSession) {
+    this.storage.setItem(this.userSessionKey, JSON.stringify(session));
+    this.storage.setItem(
+      'pflex_session',
+      JSON.stringify({
+        sessionId: session.sessionId || null,
+        user: session.user,
+        expiresAt: session.expiresAt,
+      }),
+    );
+  }
+
+  private clearPersistedSession() {
+    this.storage.removeItem(this.userSessionKey);
+    this.storage.removeItem('pflex_session');
+    this.storage.removeItem('pflex_access_token');
+    this.storage.removeItem('pflex_refresh_token');
+  }
+
+  private readSession(): PersistedUserSession | null {
+    const raw = this.storage.getItem(this.userSessionKey);
+    if (!raw) return null;
+
+    try {
+      return JSON.parse(raw) as PersistedUserSession;
+    } catch {
+      this.storage.removeItem(this.userSessionKey);
+      return null;
+    }
   }
 }

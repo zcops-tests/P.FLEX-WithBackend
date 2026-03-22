@@ -31,6 +31,30 @@
 $ npm install
 ```
 
+## Usuario Admin De Desarrollo
+
+```bash
+# 1. Crea tu archivo de entorno
+$ copy .env.example .env
+
+# 2. Aplica esquema o migraciones
+$ npm run db:migrate
+
+# 3. Si ya tienes la BD creada y solo quieres sembrar datos base
+$ npm run db:seed
+```
+
+Por defecto el seed crea un usuario administrador usando estas variables:
+
+```env
+SEED_DEV_ADMIN=true
+DEV_ADMIN_USERNAME=admin
+DEV_ADMIN_PASSWORD=admin123
+DEV_ADMIN_NAME=System Admin
+```
+
+En este proyecto el rol admin real del frontend es `Sistemas`, y el seed lo asigna automáticamente a ese usuario.
+
 ## Compile and run the project
 
 ```bash

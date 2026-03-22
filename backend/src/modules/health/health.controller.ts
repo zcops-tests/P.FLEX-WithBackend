@@ -3,6 +3,8 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../database/prisma.service';
 import { RedisService } from '../../database/redis.service';
 
+type ReadinessStatus = 'UP' | 'DOWN';
+
 @ApiTags('Health')
 @Controller('health')
 export class HealthController {
@@ -23,7 +25,7 @@ export class HealthController {
   @ApiResponse({ status: 200, description: 'Services are ready' })
   @ApiResponse({ status: 503, description: 'One or more services are down' })
   async ready() {
-    const status: any = {
+    const status: Record<'database' | 'redis', ReadinessStatus> = {
       database: 'DOWN',
       redis: 'DOWN',
     };

@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { StockService } from './stock.service';
 import { CreateStockItemDto, UpdateStockItemDto, StockStatus, UpdateStockStatusDto } from './dto/stock.dto';
+import { StockQueryDto } from './dto/stock-query.dto';
 import { JwtAuthGuard } from '../../../modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../modules/auth/guards/roles.guard';
 import { Roles } from '../../../modules/auth/decorators/roles.decorator';
@@ -38,13 +39,8 @@ export class StockController {
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false, enum: StockStatus })
   @ApiQuery({ name: 'q', required: false, type: String, description: 'Search by OT, client, product, pallet, or location' })
-  async findAll(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-    @Query('status') status?: StockStatus,
-    @Query('q') q?: string,
-  ) {
-    return this.stockService.findAll({ page, pageSize, status, q });
+  async findAll(@Query() query: StockQueryDto) {
+    return this.stockService.findAll(query);
   }
 
   @Get(':id')

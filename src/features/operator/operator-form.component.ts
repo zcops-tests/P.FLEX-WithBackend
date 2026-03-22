@@ -536,7 +536,7 @@ export class OperatorFormComponent {
 
   otSearch = '';
   showSuggestions = false;
-  selectedOt: OT | null = null;
+  selectedOt: Partial<OT> | null = null;
 
   // Static list for demo purposes, could be fetched from service
   operatorList = [
@@ -598,7 +598,7 @@ export class OperatorFormComponent {
      observations: ''
   };
 
-  get filteredOts() {
+  get filteredOts(): Partial<OT>[] {
      const term = this.otSearch.toLowerCase();
      if (!term) return [];
      return this.ordersService.ots
@@ -735,7 +735,7 @@ export class OperatorFormComponent {
      if(!term) this.selectedOt = null;
   }
 
-  selectOt(ot: OT) {
+  selectOt(ot: Partial<OT>) {
      this.selectedOt = ot;
      this.otSearch = String(ot.OT);
      this.showSuggestions = false;

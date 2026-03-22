@@ -1,7 +1,7 @@
 
 import { Component, Output, EventEmitter, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import * as XLSX from 'xlsx';
+import { FileExportService } from '../../../services/file-export.service';
 
 @Component({
   selector: 'app-ot-import',
@@ -180,6 +180,7 @@ export class OtImportComponent {
   @Output() dataImported = new EventEmitter<any[]>();
   
   cdr = inject(ChangeDetectorRef);
+  fileExport = inject(FileExportService);
 
   step: 'upload' | 'preview' = 'upload';
   isDragging = false;
@@ -232,14 +233,15 @@ export class OtImportComponent {
     await new Promise(resolve => setTimeout(resolve, 150));
 
     try {
-      const xlsxLib: any = (XLSX as any).default || XLSX;
+      await this.fileExport.preloadXlsx();
+      const xlsxLib = this.fileExport.getXlsx();
       
       if (!xlsxLib || !xlsxLib.read) {
         throw new Error('La librería Excel no se ha cargado correctamente.');
       }
 
       const buffer = await file.arrayBuffer();
-      const workbook = xlsxLib.read(buffer, { type: 'array' });
+      const workbook = await this.fileExport.readWorkbook(buffer);
       
       if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
         throw new Error('El archivo no contiene hojas de cálculo.');
@@ -248,7 +250,7 @@ export class OtImportComponent {
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       
-      const rawData = xlsxLib.utils.sheet_to_json(worksheet, { defval: "" });
+      const rawData = await this.fileExport.sheetToJson(worksheet, { defval: '' });
 
       if (!rawData || rawData.length === 0) {
         throw new Error('No se encontraron datos en la hoja.');

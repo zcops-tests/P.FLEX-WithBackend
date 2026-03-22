@@ -52,6 +52,7 @@ describe('AuditInterceptor', () => {
     
     // We must subscribe and wait for the observable to complete
     await result$.toPromise();
+    await new Promise((resolve) => setImmediate(resolve));
 
     // Check if auditLog.create was called
     expect(mockPrisma.auditLog.create).toHaveBeenCalled();

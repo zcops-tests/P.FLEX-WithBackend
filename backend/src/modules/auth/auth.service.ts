@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import * as uuid from 'uuid';
 import { PrismaService } from '../../database/prisma.service';
 import { LoginDto, RefreshTokenDto } from './dto/auth.dto';
+import { normalizeRoleName } from './utils/role-normalization.util';
 
 @Injectable()
 export class AuthService {
@@ -29,63 +30,59 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Create session
     const sessionId = uuid.v4();
-    const session = await this.prisma.userSession.create({
-      data: {
-        id: sessionId,
-        user_id: user.id,
-        device_id: loginDto.deviceId,
-        device_name: loginDto.deviceName,
-        device_type: loginDto.deviceType,
-        device_profile: loginDto.deviceProfile,
-        ip_address: ipAddress,
-        user_agent: userAgent,
-        last_seen_at: new Date(),
-      },
-    });
-
-    // Audit Login
-    await this.prisma.auditLog.create({
-      data: {
-        user_id: user.id,
-        session_id: sessionId,
-        user_name_snapshot: user.name,
-        role_code_snapshot: user.role.code,
-        entity: 'User',
-        entity_id: user.id,
-        action: 'LOGIN',
-        ip_address: ipAddress,
-        user_agent: userAgent,
-      },
-    });
-
-    // Generate tokens
-    const tokens = await this.generateTokens(user.id, sessionId, user.role.code);
-
-    // Save refresh token
+    const normalizedRole = normalizeRoleName(user.role.name || user.role.code);
+    const tokens = await this.generateTokens(user.id, sessionId, normalizedRole);
     const refreshTokenHash = await bcrypt.hash(tokens.refreshToken, 10);
-    await this.prisma.refreshToken.create({
-      data: {
-        user_id: user.id,
-        session_id: sessionId,
-        token_hash: refreshTokenHash,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days (default)
-      },
-    });
 
-    // Update last login
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { last_login_at: new Date() },
-    });
+    await this.prisma.$transaction([
+      this.prisma.userSession.create({
+        data: {
+          id: sessionId,
+          user_id: user.id,
+          device_id: loginDto.deviceId,
+          device_name: loginDto.deviceName,
+          device_type: loginDto.deviceType,
+          device_profile: loginDto.deviceProfile,
+          ip_address: ipAddress,
+          user_agent: userAgent,
+          last_seen_at: new Date(),
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          user_id: user.id,
+          session_id: sessionId,
+          user_name_snapshot: user.name,
+          role_code_snapshot: user.role.code,
+          entity: 'users',
+          entity_id: user.id,
+          action: 'LOGIN',
+          ip_address: ipAddress,
+          user_agent: userAgent,
+        },
+      }),
+      this.prisma.refreshToken.create({
+        data: {
+          user_id: user.id,
+          session_id: sessionId,
+          token_hash: refreshTokenHash,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      }),
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { last_login_at: new Date() },
+      }),
+    ]);
 
     return {
       user: {
         id: user.id,
         username: user.username,
         name: user.name,
-        role: user.role.code,
+        role: normalizedRole,
+        roleCode: user.role.code,
       },
       ...tokens,
       sessionId,
@@ -137,7 +134,11 @@ export class AuthService {
       throw new UnauthorizedException('User inactive');
     }
 
-    const tokens = await this.generateTokens(user.id, sessionId, user.role.code);
+    const tokens = await this.generateTokens(
+      user.id,
+      sessionId,
+      normalizeRoleName(user.role.name || user.role.code),
+    );
 
     // Rotate token (revoke old, create new)
     const newHash = await bcrypt.hash(tokens.refreshToken, 10);
@@ -178,7 +179,7 @@ export class AuthService {
         data: {
           user_id: userId,
           session_id: sessionId,
-          entity: 'User',
+          entity: 'users',
           entity_id: userId,
           action: 'LOGOUT',
         },
@@ -215,38 +216,48 @@ export class AuthService {
   }
 
   async revokeSession(sessionId: string, userId: string) {
-    const result = await this.prisma.userSession.updateMany({
-      where: { id: sessionId, user_id: userId },
-      data: { active: false, revoked_at: new Date() },
-    });
-    
-    await this.prisma.auditLog.create({
-      data: {
-        user_id: userId,
-        session_id: sessionId,
-        entity: 'User',
-        entity_id: userId,
-        action: 'REVOKE_SESSION',
-      },
-    });
+    const [result] = await this.prisma.$transaction([
+      this.prisma.userSession.updateMany({
+        where: { id: sessionId, user_id: userId },
+        data: { active: false, revoked_at: new Date() },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { session_id: sessionId, user_id: userId, revoked_at: null },
+        data: { revoked_at: new Date() },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          user_id: userId,
+          session_id: sessionId,
+          entity: 'users',
+          entity_id: userId,
+          action: 'REVOKE_SESSION',
+        },
+      }),
+    ]);
 
     return result;
   }
 
   async logoutAll(userId: string) {
-    await this.prisma.userSession.updateMany({
-      where: { user_id: userId, active: true },
-      data: { active: false, revoked_at: new Date() },
-    });
-    
-    await this.prisma.auditLog.create({
-      data: {
-        user_id: userId,
-        entity: 'User',
-        entity_id: userId,
-        action: 'LOGOUT_ALL',
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.userSession.updateMany({
+        where: { user_id: userId, active: true },
+        data: { active: false, revoked_at: new Date() },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { user_id: userId, revoked_at: null },
+        data: { revoked_at: new Date() },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          user_id: userId,
+          entity: 'users',
+          entity_id: userId,
+          action: 'LOGOUT_ALL',
+        },
+      }),
+    ]);
 
     return { message: 'All sessions revoked' };
   }

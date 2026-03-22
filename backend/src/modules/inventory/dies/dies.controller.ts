@@ -12,6 +12,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { DiesService } from './dies.service';
 import { CreateDieDto, UpdateDieDto } from './dto/die.dto';
+import { DieQueryDto } from './dto/die-query.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -36,12 +37,8 @@ export class DiesController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'q', required: false, type: String, description: 'Search by serie, misura, client, or material' })
-  async findAll(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-    @Query('q') q?: string,
-  ) {
-    return this.diesService.findAll({ page, pageSize, q });
+  async findAll(@Query() query: DieQueryDto) {
+    return this.diesService.findAll(query);
   }
 
   @Get(':id')

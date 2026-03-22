@@ -8,13 +8,14 @@ export class UserStatusGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
+    const userId = user?.sub || user?.id;
 
-    if (!user || !user.sub) {
+    if (!user || !userId) {
       return true; // Let JwtAuthGuard handle it or public routes
     }
 
     const dbUser = await this.prisma.user.findUnique({
-      where: { id: user.sub },
+      where: { id: userId },
       select: { active: true },
     });
 

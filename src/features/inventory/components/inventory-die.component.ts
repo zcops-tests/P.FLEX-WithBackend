@@ -27,8 +27,10 @@ import { ExcelService } from '../../../services/excel.service';
               </div>
               <div class="flex items-center gap-3 w-full md:w-auto">
                   <input #fileInputDie type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
-                  <button (click)="fileInputDie.click()" [disabled]="isLoading" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#94A3B8] bg-[#1A222C] hover:bg-[#202A36] hover:text-white border border-[#2D3748] rounded-lg transition-all duration-200">
-                      <span class="material-icons text-[20px]">upload_file</span> Importar CSV
+                  <button (click)="fileInputDie.click()" [disabled]="isLoading || isImporting" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#94A3B8] bg-[#1A222C] hover:bg-[#202A36] hover:text-white border border-[#2D3748] rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                      <span *ngIf="!isLoading && !isImporting" class="material-icons text-[20px]">upload_file</span>
+                      <span *ngIf="isLoading || isImporting" class="w-4 h-4 rounded-full border-2 border-slate-500/40 border-t-white animate-spin"></span>
+                      {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar CSV') }}
                   </button>
                   <button (click)="openModal(null, 'edit')" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#3B82F6] hover:bg-blue-600 border border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)] rounded-lg transition-all duration-200">
                       <span class="material-icons text-[20px]">add</span> Nuevo Troquel
@@ -97,6 +99,11 @@ import { ExcelService } from '../../../services/excel.service';
 
           <!-- TABLE -->
           <div class="bg-[#1A222C] rounded-xl border border-[#2D3748] overflow-hidden shadow-xl flex-1 flex flex-col relative">
+              <div *ngIf="isLoading" class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#1A222C]/85 backdrop-blur-sm">
+                  <div class="w-14 h-14 rounded-full border-4 border-[#2D3748] border-t-[#3B82F6] animate-spin mb-4"></div>
+                  <h3 class="text-lg font-bold text-white">Analizando archivo de troqueles...</h3>
+                  <p class="text-sm text-[#94A3B8] mt-1">Validando datos antes de mostrar la previsualización.</p>
+              </div>
               <div class="overflow-x-auto custom-scrollbar flex-1">
                   <table class="w-full text-sm text-left">
                       <thead class="bg-[#151c24] text-[#94A3B8] font-bold sticky top-0 z-10">
@@ -269,7 +276,7 @@ import { ExcelService } from '../../../services/excel.service';
                        Se han procesado {{ previewData.length + conflictsData.length }} registros en total.
                    </p>
                </div>
-               <button (click)="cancelImport()" class="text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800 transition-colors">
+               <button (click)="cancelImport()" [disabled]="isImporting" class="text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                    <span class="material-icons">close</span>
                </button>
             </div>
@@ -293,7 +300,12 @@ import { ExcelService } from '../../../services/excel.service';
                 </div>
 
                 <!-- Table Preview -->
-                <div class="flex-1 overflow-auto custom-scrollbar p-6">
+                <div class="flex-1 overflow-auto custom-scrollbar p-6 relative">
+                    <div *ngIf="isImporting" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#1e293b]/80 backdrop-blur-sm">
+                        <div class="w-14 h-14 rounded-full border-4 border-slate-700 border-t-blue-500 animate-spin mb-4"></div>
+                        <h3 class="text-lg font-bold text-white">Importando troqueles...</h3>
+                        <p class="text-sm text-slate-400 mt-1">No cierres esta ventana hasta que finalice.</p>
+                    </div>
                     <table class="w-full text-sm text-left border-collapse">
                         <thead class="text-xs text-slate-400 uppercase bg-[#0f172a] sticky top-0 z-10 font-bold tracking-wider">
                             <tr>
@@ -337,10 +349,10 @@ import { ExcelService } from '../../../services/excel.service';
 
             <!-- Footer -->
             <div class="bg-[#0f172a] px-6 py-4 border-t border-slate-700 flex justify-end gap-4 shrink-0">
-               <button (click)="cancelImport()" class="px-6 py-2.5 rounded-lg border border-slate-600 text-slate-300 font-bold hover:bg-slate-800 hover:text-white transition-colors">
+               <button (click)="cancelImport()" [disabled]="isImporting" class="px-6 py-2.5 rounded-lg border border-slate-600 text-slate-300 font-bold hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                    Cancelar Importación
                </button>
-               <button (click)="confirmImport()" class="px-6 py-2.5 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all">
+               <button (click)="confirmImport()" [disabled]="isImporting" class="px-6 py-2.5 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed">
                    <span class="material-icons text-sm">save_alt</span>
                    Importar Todo (Resolver Conflictos Después)
                </button>
@@ -380,6 +392,7 @@ export class InventoryDieComponent {
 
   // Import
   isLoading = false;
+  isImporting = false;
   showImportPreviewModal = false;
   previewData: DieItem[] = [];
   conflictsData: DieItem[] = [];
@@ -547,13 +560,26 @@ export class InventoryDieComponent {
     });
   }
 
-  confirmImport() {
-      this.inventoryService.addDies([...this.previewData, ...this.conflictsData]);
-      alert(`Se importaron ${this.previewData.length + this.conflictsData.length} registros.`);
-      this.cancelImport();
+  async confirmImport() {
+      if (this.isImporting) return;
+
+      this.isImporting = true;
+      this.cdr.detectChanges();
+
+      try {
+          await this.inventoryService.addDies([...this.previewData, ...this.conflictsData]);
+          alert(`Se importaron ${this.previewData.length + this.conflictsData.length} registros.`);
+          this.cancelImport();
+      } catch (error: any) {
+          alert(`Error al importar: ${error?.message || 'No se pudo completar la importación.'}`);
+      } finally {
+          this.isImporting = false;
+          this.cdr.detectChanges();
+      }
   }
 
   cancelImport() {
+      if (this.isImporting) return;
       this.showImportPreviewModal = false;
       this.previewData = [];
       this.conflictsData = [];

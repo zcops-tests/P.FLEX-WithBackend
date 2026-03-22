@@ -1,10 +1,22 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateCliseDto, UpdateCliseDto } from './dto/clise.dto';
+import { CliseQueryDto } from './dto/clise-query.dto';
+import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import { toFrontendClise } from '../../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class ClisesService {
   constructor(private prisma: PrismaService) {}
+
+  private buildPersistenceData(dto: CreateCliseDto | UpdateCliseDto) {
+    return {
+      ...dto,
+      colores_json: dto.colores_json ? (dto.colores_json as Prisma.InputJsonValue) : undefined,
+      raw_payload: dto.raw_payload ? (dto.raw_payload as Prisma.InputJsonValue) : undefined,
+    };
+  }
 
   async create(dto: CreateCliseDto) {
     const existing = await this.prisma.clise.findUnique({
@@ -14,23 +26,83 @@ export class ClisesService {
       throw new ConflictException(`Clisé with item code ${dto.item_code} already exists`);
     }
 
-    return this.prisma.clise.create({
+    const created = await this.prisma.clise.create({
       data: {
-        ...dto,
-        metros_acumulados: 0,
+        ...this.buildPersistenceData(dto),
+        metros_acumulados: dto.metros_acumulados ?? 0,
       },
     });
+
+    return toFrontendClise(created);
   }
 
-  async findAll(params: {
-    page?: number;
-    pageSize?: number;
-    q?: string;
-  }) {
-    const { page = 1, pageSize = 20, q } = params;
-    const skip = (page - 1) * pageSize;
+  async bulkUpsert(dtos: CreateCliseDto[]) {
+    const normalizedItems = dtos
+      .map((dto) => ({
+        ...dto,
+        item_code: String(dto.item_code || '').trim(),
+      }))
+      .filter((dto) => dto.item_code);
 
-    const where: any = {
+    const uniqueItems = Array.from(new Map(normalizedItems.map((dto) => [dto.item_code, dto])).values());
+
+    if (uniqueItems.length === 0) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const existing = await this.prisma.clise.findMany({
+      where: {
+        item_code: { in: uniqueItems.map((dto) => dto.item_code) },
+      },
+      select: {
+        id: true,
+        item_code: true,
+      },
+    });
+
+    const existingByItemCode = new Map(existing.map((item) => [item.item_code, item.id]));
+    let created = 0;
+    let updated = 0;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const dto of uniqueItems) {
+        const data = {
+          ...this.buildPersistenceData(dto),
+          metros_acumulados: dto.metros_acumulados ?? 0,
+        };
+
+        const existingId = existingByItemCode.get(dto.item_code);
+        if (existingId) {
+          await tx.clise.update({
+            where: { id: existingId },
+            data: {
+              ...data,
+              deleted_at: null,
+            },
+          });
+          updated += 1;
+          continue;
+        }
+
+        await tx.clise.create({
+          data,
+        });
+        created += 1;
+      }
+    });
+
+    return {
+      processed: uniqueItems.length,
+      created,
+      updated,
+    };
+  }
+
+  async findAll(params: CliseQueryDto) {
+    const { q } = params;
+    const pagination = resolvePagination(params);
+
+    const where: Prisma.CliseWhereInput = {
       deleted_at: null,
     };
 
@@ -46,21 +118,27 @@ export class ClisesService {
       this.prisma.clise.count({ where }),
       this.prisma.clise.findMany({
         where,
-        skip,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.take,
         orderBy: { created_at: 'desc' },
+        include: {
+          color_usage: true,
+          die_links: {
+            include: {
+              die: true,
+            },
+          },
+          history: {
+            include: {
+              user: true,
+              machine: true,
+            },
+          },
+        },
       }),
     ]);
 
-    return {
-      items,
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
-    };
+    return buildPaginatedResult(items.map((item) => toFrontendClise(item)), total, pagination);
   }
 
   async findOne(id: string) {
@@ -73,22 +151,43 @@ export class ClisesService {
             die: true,
           },
         },
-        history: true,
+        history: {
+          include: {
+            user: true,
+            machine: true,
+          },
+        },
       },
     });
 
     if (!clise || clise.deleted_at) {
       throw new NotFoundException(`Clisé with ID ${id} not found`);
     }
-    return clise;
+    return toFrontendClise(clise);
   }
 
   async update(id: string, dto: UpdateCliseDto) {
     await this.findOne(id);
-    return this.prisma.clise.update({
+    const updated = await this.prisma.clise.update({
       where: { id },
-      data: dto,
+      data: this.buildPersistenceData(dto),
+      include: {
+        color_usage: true,
+        die_links: {
+          include: {
+            die: true,
+          },
+        },
+        history: {
+          include: {
+            user: true,
+            machine: true,
+          },
+        },
+      },
     });
+
+    return toFrontendClise(updated);
   }
 
   async remove(id: string) {

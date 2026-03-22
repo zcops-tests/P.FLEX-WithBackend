@@ -1,7 +1,13 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateDiecutReportDto, DiecutReportStatus } from './dto/diecut-report.dto';
 import { StockService } from '../../inventory/stock/stock.service';
+import { DiecutReportQueryDto } from './dto/diecut-report-query.dto';
+import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import { assertAllowedTransition } from '../../../common/utils/state-transition.util';
+import { assertReportLockAvailable } from '../../../common/utils/report-lock.util';
+import { toFrontendDiecutReport } from '../../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class DiecuttingService {
@@ -104,21 +110,27 @@ export class DiecuttingService {
         });
       }
 
-      return report;
+      const fullReport = await tx.diecutReport.findUnique({
+        where: { id: report.id },
+        include: {
+          activities: true,
+          machine: true,
+          operator: true,
+          shift: true,
+          work_order: true,
+          die: true,
+        },
+      });
+
+      return toFrontendDiecutReport(fullReport || report);
     });
   }
 
-  async findAllReports(params: {
-    machineId?: string;
-    operatorId?: string;
-    status?: DiecutReportStatus;
-    page?: number;
-    pageSize?: number;
-  }) {
-    const { machineId, operatorId, status, page = 1, pageSize = 20 } = params;
-    const skip = (page - 1) * pageSize;
+  async findAllReports(params: DiecutReportQueryDto) {
+    const { machineId, operatorId, status } = params;
+    const pagination = resolvePagination(params);
 
-    const where: any = { deleted_at: null };
+    const where: Prisma.DiecutReportWhereInput = { deleted_at: null };
     if (machineId) where.machine_id = machineId;
     if (operatorId) where.operator_id = operatorId;
     if (status) where.status = status;
@@ -127,8 +139,8 @@ export class DiecuttingService {
       this.prisma.diecutReport.count({ where }),
       this.prisma.diecutReport.findMany({
         where,
-        skip,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.take,
         orderBy: { reported_at: 'desc' },
         include: {
           machine: { select: { name: true, code: true } },
@@ -138,7 +150,7 @@ export class DiecuttingService {
       }),
     ]);
 
-    return { items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
+    return buildPaginatedResult(items.map((item) => toFrontendDiecutReport(item)), total, pagination);
   }
 
   async findOneReport(id: string) {
@@ -156,7 +168,7 @@ export class DiecuttingService {
     if (!report || report.deleted_at) {
       throw new NotFoundException(`Die-cutting Report with ID ${id} not found`);
     }
-    return report;
+    return toFrontendDiecutReport(report);
   }
 
   async updateStatus(id: string, status: DiecutReportStatus) {
@@ -169,42 +181,64 @@ export class DiecuttingService {
       [DiecutReportStatus.CORRECTED]: [DiecutReportStatus.APPROVED],
     };
 
-    if (!allowed[report.status as string]?.includes(status)) {
-      throw new ConflictException(`Invalid status transition from ${report.status} to ${status}`);
-    }
+    assertAllowedTransition(report.status, status, allowed, 'Transition');
 
-    return this.prisma.diecutReport.update({
+    const updated = await this.prisma.diecutReport.update({
       where: { id },
       data: { status },
+      include: {
+        activities: true,
+        machine: true,
+        operator: true,
+        shift: true,
+        work_order: true,
+        die: true,
+      },
     });
+
+    return toFrontendDiecutReport(updated);
   }
 
   async lockReport(id: string, userId: string) {
     const report = await this.findOneReport(id);
-    if (report.locked_by_user_id && report.locked_by_user_id !== userId) {
-      const lockTime = report.locked_at ? new Date(report.locked_at).getTime() : 0;
-      const now = Date.now();
-      if (now - lockTime < 15 * 60 * 1000) {
-        throw new ConflictException(`Report is locked by another user`);
-      }
-    }
+    assertReportLockAvailable(report.locked_by_user_id, report.locked_at, userId);
 
-    return this.prisma.diecutReport.update({
+    const updated = await this.prisma.diecutReport.update({
       where: { id },
       data: {
         locked_by_user_id: userId,
         locked_at: new Date(),
       },
+      include: {
+        activities: true,
+        machine: true,
+        operator: true,
+        shift: true,
+        work_order: true,
+        die: true,
+      },
     });
+
+    return toFrontendDiecutReport(updated);
   }
 
   async unlockReport(id: string) {
-    return this.prisma.diecutReport.update({
+    const updated = await this.prisma.diecutReport.update({
       where: { id },
       data: {
         locked_by_user_id: null,
         locked_at: null,
       },
+      include: {
+        activities: true,
+        machine: true,
+        operator: true,
+        shift: true,
+        work_order: true,
+        die: true,
+      },
     });
+
+    return toFrontendDiecutReport(updated);
   }
 }

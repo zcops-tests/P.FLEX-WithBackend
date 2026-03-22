@@ -27,10 +27,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Session is inactive or revoked');
     }
 
-    return { 
-      id: payload.sub, 
-      sid: payload.sid, 
-      role: payload.role 
+    return {
+      id: payload.sub,
+      sub: payload.sub,
+      sid: payload.sid,
+      role: payload.role,
     };
   }
 }

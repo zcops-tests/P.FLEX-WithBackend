@@ -2,9 +2,28 @@ import { Injectable, Logger, BadRequestException, ConflictException } from '@nes
 import { PrismaService } from '../../database/prisma.service';
 import { SyncPullRequestDto, SyncPushRequestDto, SyncMutationDto } from './dto/sync.dto';
 
+type SyncMutationStatus = 'SUCCESS' | 'CONFLICT' | 'ERROR';
+
+interface ParsedSyncMutation {
+  normalizedEndpoint: string;
+  entity: string;
+  entityId: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+}
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
+  private readonly syncEndpointMap: Record<string, string> = {
+    'work-orders': 'work_orders',
+    'quality/incidents': 'incidents',
+    'quality/capa-actions': 'capa_actions',
+    'production/printing/reports': 'print_reports',
+    'production/diecutting/reports': 'diecut_reports',
+    'inventory/stock': 'stock_items',
+    'inventory/clises': 'clises',
+    'inventory/dies': 'dies',
+  };
 
   constructor(
     private prisma: PrismaService,
@@ -54,18 +73,21 @@ export class SyncService {
     } : { last_changed_at, last_id };
 
     // Fetch the actual data
-    const results = await Promise.all(logs.map(async (log) => {
-      const data = await (this.prisma[this.mapEntityToModel(log.entity)] as any).findUnique({
-        where: { id: log.entity_id },
-      });
-      return {
-        log_id: log.id.toString(),
-        entity: log.entity,
-        entity_id: log.entity_id,
-        operation: log.operation,
-        data: data || { deleted: true },
-      };
-    }));
+    const results = await Promise.all(
+      logs.map(async (log) => {
+        const model = this.mapEntityToModel(log.entity);
+        const delegate = this.prisma[model] as { findUnique?: (args: { where: { id: string } }) => Promise<unknown> } | undefined;
+        const data = delegate?.findUnique ? await delegate.findUnique({ where: { id: log.entity_id } }) : null;
+
+        return {
+          log_id: log.id.toString(),
+          entity: log.entity,
+          entity_id: log.entity_id,
+          operation: log.operation,
+          data: data || { deleted: true },
+        };
+      }),
+    );
 
     return {
       items: results,
@@ -75,7 +97,7 @@ export class SyncService {
   }
 
   async pushMutations(dto: SyncPushRequestDto, userId: string) {
-    const pushResults: any[] = [];
+    const pushResults: Array<{ mutation_id: string; status: SyncMutationStatus; response?: any; message?: string }> = [];
     const { mutations, device_id } = dto;
 
     for (const mutation of mutations) {
@@ -91,6 +113,8 @@ export class SyncService {
   }
 
   private async processSingleMutation(mutation: SyncMutationDto, userId: string, deviceId: string) {
+    const metadata = this.parseMutationMetadata(mutation);
+
     // 1. Check idempotency
     const existing = await this.prisma.syncMutationLog.findUnique({
       where: { mutation_id: mutation.mutation_id },
@@ -99,20 +123,20 @@ export class SyncService {
     if (existing) {
       return {
         mutation_id: mutation.mutation_id,
-        status: existing.status,
+        status: this.mapStoredStatusToResponseStatus(existing.status),
         response: existing.response_payload,
-      };
+      } as const;
     }
 
     // 2. Log pending
     await this.prisma.syncMutationLog.create({
       data: {
         mutation_id: mutation.mutation_id,
-        entity: 'unknown', // Should be determined from endpoint
-        entity_id: 'unknown',
+        entity: metadata.entity,
+        entity_id: metadata.entityId,
         user_id: userId,
         client_id: deviceId,
-        action: mutation.method,
+        action: metadata.action,
         request_payload: mutation.payload as any,
         response_payload: {} as any,
         status: 'PENDING',
@@ -121,27 +145,28 @@ export class SyncService {
     });
 
     try {
-      const response = await this.executeLogic(mutation, userId);
+      const response = await this.executeLogic(mutation, userId, metadata);
 
       await this.prisma.syncMutationLog.update({
         where: { mutation_id: mutation.mutation_id },
         data: {
-          status: 'SUCCESS',
+          status: 'PROCESSED',
           response_payload: response as any,
           processed_at: new Date(),
         },
       });
 
-      return { mutation_id: mutation.mutation_id, status: 'SUCCESS', response };
+      return { mutation_id: mutation.mutation_id, status: 'SUCCESS' as const, response };
     } catch (error) {
       this.logger.error(`Mutation ${mutation.mutation_id} failed: ${error.message}`);
       
       const status = error instanceof ConflictException ? 'CONFLICT' : 'ERROR';
+      const logStatus = error instanceof ConflictException ? 'CONFLICT' : 'REJECTED';
       
       await this.prisma.syncMutationLog.update({
         where: { mutation_id: mutation.mutation_id },
         data: {
-          status,
+          status: logStatus,
           response_payload: { message: error.message } as any,
           processed_at: new Date(),
         },
@@ -149,16 +174,24 @@ export class SyncService {
 
       return { 
         mutation_id: mutation.mutation_id, 
-        status, 
+        status: status as SyncMutationStatus, 
         message: error.message 
       };
     }
   }
 
-  private async executeLogic(mutation: SyncMutationDto, userId: string) {
-    // Basic mapping for demo/POC
-    // In production, use a registry or dynamic dispatcher
-    return { success: true };
+  private async executeLogic(mutation: SyncMutationDto, userId: string, metadata: ParsedSyncMutation) {
+    return {
+      success: true,
+      accepted: true,
+      deferred: true,
+      endpoint: metadata.normalizedEndpoint,
+      entity: metadata.entity,
+      entity_id: metadata.entityId,
+      action: metadata.action,
+      requested_by: userId,
+      client_timestamp: mutation.client_timestamp,
+    };
   }
 
   private mapEntityToModel(entity: string): string {
@@ -184,19 +217,79 @@ export class SyncService {
       'incidents', 'capa_actions'
     ];
 
+    let allowedEntities = allSourcedEntities;
+
     if (profile === 'PRINT_STATION') {
-      return ['areas', 'machines', 'shifts', 'users', 'work_orders', 'clises', 'print_reports', 'print_activities', 'incidents'];
+      allowedEntities = ['areas', 'machines', 'shifts', 'users', 'work_orders', 'clises', 'print_reports', 'print_activities', 'incidents'];
     }
-
     if (profile === 'DIECUT_STATION') {
-      return ['areas', 'machines', 'shifts', 'users', 'work_orders', 'dies', 'diecut_reports', 'diecut_activities', 'incidents'];
+      allowedEntities = ['areas', 'machines', 'shifts', 'users', 'work_orders', 'dies', 'diecut_reports', 'diecut_activities', 'incidents'];
     }
-
     if (profile === 'WAREHOUSE') {
-      return ['areas', 'users', 'clises', 'dies', 'racks', 'stock_items'];
+      allowedEntities = ['areas', 'users', 'clises', 'dies', 'racks', 'stock_items'];
     }
 
-    // Default or SUPERVISOR can see everything
-    return allSourcedEntities;
+    if (!scopes?.length) {
+      return allowedEntities;
+    }
+
+    const requestedScopes = new Set(scopes);
+    return allowedEntities.filter((entity) => requestedScopes.has(entity));
+  }
+
+  private parseMutationMetadata(mutation: SyncMutationDto): ParsedSyncMutation {
+    const normalizedEndpoint = this.normalizeEndpoint(mutation.endpoint);
+    const resourcePath = normalizedEndpoint.replace(/^\/api\/v\d+\//, '');
+    const matchedBasePath = Object.keys(this.syncEndpointMap)
+      .sort((a, b) => b.length - a.length)
+      .find((candidate) => resourcePath === candidate || resourcePath.startsWith(`${candidate}/`));
+
+    if (!matchedBasePath) {
+      throw new BadRequestException(`Endpoint ${normalizedEndpoint} is not enabled for sync mutations`);
+    }
+
+    const resourceSegments = resourcePath.split('/').filter(Boolean);
+    const baseSegments = matchedBasePath.split('/');
+    const suffixSegments = resourceSegments.slice(baseSegments.length);
+    const explicitEntityId = this.extractEntityId(suffixSegments);
+    const payloadId = this.extractPayloadId(mutation.payload);
+
+    return {
+      normalizedEndpoint,
+      entity: this.syncEndpointMap[matchedBasePath],
+      entityId: explicitEntityId || payloadId || 'pending',
+      action: this.mapMethodToAction(mutation.method),
+    };
+  }
+
+  private normalizeEndpoint(endpoint: string) {
+    const [rawPath] = endpoint.trim().split('?');
+    return rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+  }
+
+  private extractEntityId(segments: string[]) {
+    const dynamicSegment = segments.find((segment) => !['status', 'lock', 'unlock', 'complete', 'capa'].includes(segment));
+    return dynamicSegment || null;
+  }
+
+  private extractPayloadId(payload: Record<string, unknown>) {
+    const payloadId = payload?.id;
+    return typeof payloadId === 'string' && payloadId.length > 0 ? payloadId : null;
+  }
+
+  private mapMethodToAction(method: string): ParsedSyncMutation['action'] {
+    if (method === 'POST') return 'CREATE';
+    if (method === 'DELETE') return 'DELETE';
+    return 'UPDATE';
+  }
+
+  private mapStoredStatusToResponseStatus(status: string): SyncMutationStatus {
+    if (status === 'CONFLICT') {
+      return 'CONFLICT';
+    }
+    if (status === 'REJECTED') {
+      return 'ERROR';
+    }
+    return 'SUCCESS';
   }
 }

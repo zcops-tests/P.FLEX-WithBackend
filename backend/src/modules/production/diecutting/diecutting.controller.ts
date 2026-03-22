@@ -17,6 +17,7 @@ import {
   DiecutReportStatus,
   UpdateDiecutReportStatusDto,
 } from './dto/diecut-report.dto';
+import { DiecutReportQueryDto } from './dto/diecut-report-query.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { ContextualGuard } from '../../auth/guards/contextual.guard';
@@ -44,14 +45,8 @@ export class DiecuttingController {
   @ApiQuery({ name: 'status', required: false, enum: DiecutReportStatus })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
-  async findAllReports(
-    @Query('machineId') machineId?: string,
-    @Query('operatorId') operatorId?: string,
-    @Query('status') status?: DiecutReportStatus,
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-  ) {
-    return this.diecuttingService.findAllReports({ machineId, operatorId, status, page, pageSize });
+  async findAllReports(@Query() query: DiecutReportQueryDto) {
+    return this.diecuttingService.findAllReports(query);
   }
 
   @Get('reports/:id')
