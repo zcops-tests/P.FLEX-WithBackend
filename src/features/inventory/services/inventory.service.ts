@@ -21,39 +21,51 @@ export class InventoryService {
   private _layoutData = new BehaviorSubject<RackConfig[]>(this.buildFallbackLayout());
 
   readonly CLISE_MAPPING = {
-    item: ['ITEM', 'codigo', 'code', 'id', 'clise'],
-    ubicacion: ['UBICACION', 'UBICACIÓN', 'location'],
-    descripcion: ['DESCRIPCION', 'DESCRIPCIÓN', 'description'],
-    cliente: ['CLIENTE', 'client'],
-    z: ['Z', 'dientes'],
-    estandar: ['ESTANDAR', 'ESTÁNDAR', 'standard'],
-    medidas: ['MEDIDAS', 'medida'],
-    troquel: ['TROQUEL'],
-    ancho: ['ANCHO', 'width'],
-    avance: ['AVANCE', 'length'],
-    col: ['COL', 'columnas'],
-    rep: ['REP', 'repeticiones'],
-    n_clises: ['CANTIDAD', 'cant', 'numero clises', 'n clises'],
-    espesor: ['ESPESOR'],
-    ingreso: ['INGRESO', 'fecha ingreso'],
-    obs: ['OBS', 'observaciones'],
-    maq: ['MAQ', 'maquina', 'máquina'],
-    colores: ['COLORES'],
-    n_ficha_fler: ['N° FICHA FLER', 'Nº FICHA FLER', 'NRO FICHA FLER', 'NUMERO FICHA FLER'],
-    mtl_acum: ['MTL ACUM.', 'MTL ACUM', 'metros acumulados']
+    item: ['ITEM', 'ITEM CODE', 'CODIGO', 'CODIGO ITEM', 'COD ITEM', 'CODIGO CLISE', 'CODIGO CLICHE', 'CLISE', 'CLICHE', 'ID', 'CODE'],
+    ubicacion: ['UBICACIÓN', 'UBICACION', 'UBIC', 'UBIC.', 'LOCATION', 'POSICION', 'POSICIÓN', 'RACK', 'LOCALIZACION', 'LOCALIZACIÓN'],
+    descripcion: ['DESCRIPCIÓN', 'DESCRIPCION', 'DESCRIPCION ITEM', 'DESCRIPCION CLISE', 'DESCRIPCION CLICHE', 'DESCRIPTION', 'DETALLE', 'GLOSA', 'REFERENCIA', 'REF'],
+    cliente: ['CLIENTE', 'CLIENTE FINAL', 'CLIENTE / MARCA', 'CLIENT', 'CUSTOMER', 'CUSTOMER NAME', 'RAZON SOCIAL', 'RAZÓN SOCIAL', 'MARCA'],
+    z: ['Z', 'VALOR Z', 'Z VALUE', 'DIENTE', 'DIENTES'],
+    estandar: ['ESTÁNDAR', 'ESTANDAR', 'STANDARD', 'ESTANDAR MM', 'ESTANDAR CLISE'],
+    medidas: ['MEDIDAS', 'MEDIDA', 'MEDIDA GENERAL', 'DIMENSION', 'DIMENSIÓN', 'DIMENSIONES'],
+    troquel: ['TROQUEL', 'TROQUEL RELACIONADO', 'TROQUEL REF', 'SERIE TROQUEL', 'DIE'],
+    ancho: ['ANCHO', 'ANCHO MM', 'WIDTH'],
+    avance: ['AVANCE', 'AVANCE MM', 'LARGO', 'LONGITUD', 'LENGTH'],
+    col: ['COL', 'COLUMNA', 'COLUMNAS', 'COLS'],
+    rep: ['REP', 'REPETICION', 'REPETICIÓN', 'REPETICIONES', 'REPS'],
+    n_clises: ['CANTIDAD', 'CANT', 'CANTIDAD CLISES', 'NUMERO CLISES', 'NRO CLISES', 'NRO DE CLISES', 'N CLISES'],
+    espesor: ['ESPESOR', 'ESPESOR MM'],
+    ingreso: ['INGRESO', 'FECHA INGRESO', 'FECHA DE INGRESO', 'F INGRESO'],
+    obs: ['OBS', 'OBSERVACION', 'OBSERVACIÓN', 'OBSERVACIONES', 'COMENTARIO', 'COMENTARIOS', 'NOTAS'],
+    maq: ['MAQ', 'MAQUINA', 'MÁQUINA', 'IMPRESORA', 'EQUIPO'],
+    colores: ['COLORES', 'COLOR', 'COLORES PROCESO'],
+    n_ficha_fler: ['N° FICHA FLER', 'Nº FICHA FLER', 'NRO FICHA FLER', 'NUMERO FICHA FLER', 'FICHA FLER', 'NRO FICHA', 'N° FICHA', 'Nº FICHA'],
+    mtl_acum: ['MTL ACUM.', 'MTL ACUM', 'MTL ACUMULADO', 'METROS ACUMULADOS', 'METROS ACUMULADO', 'METRAJE ACUMULADO']
   };
 
   readonly DIE_MAPPING = {
-    serie: ['serie', 'codigo', 'code', 'id'],
-    cliente: ['cliente', 'client'],
-    medida: ['medida', 'dimensiones'],
-    ubicacion: ['ubicacion'],
-    z: ['z', 'dientes'],
-    material: ['material', 'sustrato'],
-    forma: ['forma', 'shape'],
-    estado: ['estado', 'status'],
-    columnas: ['columnas', 'col', 'cols'],
-    repeticiones: ['repeticiones', 'rep', 'reps']
+    medida: ['MEDIDA', 'MEDIDAS', 'DIMENSION', 'DIMENSIÓN', 'DIMENSIONES'],
+    ubicacion: ['UBICACIÓN', 'UBICACION', 'UBIC', 'LOCATION', 'LOCALIZACION', 'LOCALIZACIÓN', 'RACK'],
+    serie: ['SERIE', 'SERIE TROQUEL', 'CODIGO', 'CODIGO TROQUEL', 'CODIGO DIE', 'CODE', 'ID'],
+    ancho_mm: ['ANCHO MM', 'ANCHO', 'WIDTH MM'],
+    avance_mm: ['AVANCE MM', 'AVANCE', 'LENGTH MM', 'LARGO MM'],
+    ancho_plg: ['ANCHO PLG', 'ANCHO PULG', 'WIDTH IN'],
+    avance_plg: ['AVANCE PLG', 'AVANCE PULG', 'LENGTH IN'],
+    z: ['Z', 'VALOR Z', 'Z VALUE', 'DIENTES'],
+    columnas: ['COLUMNAS', 'COL', 'COLS', 'COLUMNA'],
+    repeticiones: ['REPETICIONES', 'REP', 'REPS', 'REPETICION', 'REPETICIÓN'],
+    material: ['MATERIAL', 'SUSTRATO'],
+    forma: ['FORMA', 'SHAPE'],
+    cliente: ['CLIENTE', 'CLIENT', 'CUSTOMER', 'CUSTOMER NAME', 'RAZON SOCIAL', 'RAZÓN SOCIAL', 'MARCA'],
+    observaciones: ['OBSERVACIONES', 'OBS', 'OBSERVACION', 'OBSERVACIÓN', 'NOTAS', 'COMENTARIOS'],
+    ingreso: ['INGRESO', 'FECHA INGRESO', 'FECHA DE INGRESO'],
+    pb: ['PB'],
+    sep_ava: ['SEP/AVA', 'SEP AVA', 'SEPARACION AVANCE', 'SEPARACIÓN AVANCE'],
+    estado: ['ESTADO', 'STATUS'],
+    cantidad: ['CANTIDAD', 'CANT'],
+    almacen: ['ALMACEN', 'ALMACÉN', 'BODEGA'],
+    mtl_acum: ['MTL ACUM.', 'MTL ACUM', 'METROS ACUMULADOS', 'METRAJE ACUMULADO'],
+    tipo_troquel: ['TIPO DE TROQUEL', 'TIPO TROQUEL']
   };
 
   readonly STOCK_MAPPING = {
@@ -93,18 +105,39 @@ export class InventoryService {
   get stockItems$() { return this._stockItems.asObservable(); }
   get layoutData$() { return this._layoutData.asObservable(); }
 
+  private async fetchAllPages<T>(fetchPage: (query: { page: number; pageSize: number }) => Promise<{ items?: T[]; meta?: { totalPages?: number } }>) {
+    const pageSize = 500;
+    const firstPage = await fetchPage({ page: 1, pageSize });
+    const items = [...(firstPage.items || [])];
+    const totalPages = Math.max(1, Number(firstPage.meta?.totalPages || 1));
+
+    if (totalPages === 1) {
+      return items;
+    }
+
+    const remainingPages = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) => fetchPage({ page: index + 2, pageSize })),
+    );
+
+    remainingPages.forEach((page) => {
+      items.push(...(page.items || []));
+    });
+
+    return items;
+  }
+
   async reload() {
     try {
       const [clises, dies, stock, racks] = await Promise.all([
-        this.backend.getClises({ page: 1, pageSize: 500 }),
-        this.backend.getDies({ page: 1, pageSize: 500 }),
-        this.backend.getStockItems({ page: 1, pageSize: 500 }),
+        this.fetchAllPages((query) => this.backend.getClises(query)),
+        this.fetchAllPages((query) => this.backend.getDies(query)),
+        this.fetchAllPages((query) => this.backend.getStockItems(query)),
         this.backend.getRackConfigs(),
       ]);
 
-      this._cliseItems.next((clises.items || []).map((item: any) => this.mapClise(item)));
-      this._dieItems.next((dies.items || []).map((item: any) => this.mapDie(item)));
-      this._stockItems.next((stock.items || []).map((item: any) => this.mapStock(item)));
+      this._cliseItems.next(clises.map((item: any) => this.mapClise(item)));
+      this._dieItems.next(dies.map((item: any) => this.mapDie(item)));
+      this._stockItems.next(stock.map((item: any) => this.mapStock(item)));
       this._layoutData.next(Array.isArray(racks) && racks.length ? racks.map((rack: any) => this.mapRack(rack)) : this.buildFallbackLayout());
       this.mapItemsToLayout();
     } catch {
@@ -131,8 +164,16 @@ export class InventoryService {
     onProgress?: (progress: { currentBatch: number; totalBatches: number; processedItems: number; totalItems: number }) => void,
   ) {
     const chunkSize = 200;
-    const payloadItems = items.map((item) => this.mapCliseToPayload(item));
+    const payloadItems = items
+      .filter((item) => String(item.item || '').trim() && String(item.cliente || '').trim())
+      .map((item) => this.mapCliseToPayload(item));
+    const skippedItems = items.length - payloadItems.length;
     const totalItems = payloadItems.length;
+
+    if (totalItems === 0) {
+      return { imported: 0, skipped: skippedItems };
+    }
+
     const totalBatches = Math.max(1, Math.ceil(totalItems / chunkSize));
 
     for (let index = 0; index < totalBatches; index += 1) {
@@ -151,7 +192,8 @@ export class InventoryService {
 
     await this.reload();
     this.mapItemsToLayout();
-    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Importacion Clises', `Se importaron ${items.length} clises al inventario.`);
+    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Importacion Clises', `Se importaron ${totalItems} clises al inventario.`);
+    return { imported: totalItems, skipped: skippedItems };
   }
 
   async updateClise(item: CliseItem) {
@@ -177,6 +219,34 @@ export class InventoryService {
     this._dieItems.next([...created, ...this.dieItems]);
     this.mapItemsToLayout();
     this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Alta Troqueles', `Se agregaron ${items.length} troqueles.`);
+  }
+
+  async importDies(items: DieItem[]) {
+    const chunkSize = 200;
+    const payloadItems = items
+      .filter((item) => String(item.serie || '').trim() && String(item.cliente || '').trim())
+      .map((item) => this.mapDieToPayload(item));
+    const skippedItems = items.length - payloadItems.length;
+    const totalItems = payloadItems.length;
+
+    if (totalItems === 0) {
+      return { imported: 0, skipped: skippedItems };
+    }
+
+    const totalBatches = Math.max(1, Math.ceil(totalItems / chunkSize));
+
+    for (let index = 0; index < totalBatches; index += 1) {
+      const start = index * chunkSize;
+      const end = start + chunkSize;
+      const batch = payloadItems.slice(start, end);
+
+      await this.backend.bulkUpsertDies({ items: batch });
+    }
+
+    await this.reload();
+    this.mapItemsToLayout();
+    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Importacion Troqueles', `Se importaron ${totalItems} troqueles.`);
+    return { imported: totalItems, skipped: skippedItems };
   }
 
   async updateDie(item: DieItem) {
@@ -272,6 +342,7 @@ export class InventoryService {
         colorUsage: this.parseColors(colores),
         n_ficha_fler: String(row.n_ficha_fler || '').trim(),
         mtl_acum: this.excelService.parseNumber(row.mtl_acum),
+        sourceRow: row.__sourceRow || undefined,
         history: [],
         hasConflict: false
       };
@@ -291,24 +362,25 @@ export class InventoryService {
       cliente: String(row.cliente || '').trim(),
       medida: String(row.medida || '').trim(),
       ubicacion: String(row.ubicacion || '').trim(),
-      z: String(row.z || ''),
-      ancho_mm: 0,
-      avance_mm: 0,
-      ancho_plg: 0,
-      avance_plg: 0,
+      z: String(row.z || '').trim(),
+      ancho_mm: this.excelService.parseNumber(row.ancho_mm),
+      avance_mm: this.excelService.parseNumber(row.avance_mm),
+      ancho_plg: this.excelService.parseNumber(row.ancho_plg),
+      avance_plg: this.excelService.parseNumber(row.avance_plg),
       columnas: this.excelService.parseNumber(row.columnas),
       repeticiones: this.excelService.parseNumber(row.repeticiones),
       material: String(row.material || '').trim(),
       forma: String(row.forma || '').trim(),
-      estado: String(row.estado || 'OK').trim(),
-      ingreso: new Date().toISOString().split('T')[0],
-      pb: '',
-      sep_ava: '',
-      cantidad: 1,
-      almacen: '',
-      mtl_acum: 0,
-      tipo_troquel: '',
-      observaciones: '',
+      estado: String(row.estado || 'OK').trim() || 'OK',
+      ingreso: this.normalizeExcelDate(row.ingreso),
+      pb: String(row.pb || '').trim(),
+      sep_ava: String(row.sep_ava || '').trim(),
+      cantidad: this.excelService.parseNumber(row.cantidad),
+      almacen: String(row.almacen || '').trim(),
+      mtl_acum: this.excelService.parseNumber(row.mtl_acum),
+      tipo_troquel: String(row.tipo_troquel || '').trim(),
+      observaciones: String(row.observaciones || '').trim(),
+      sourceRow: row.__sourceRow || undefined,
       history: [],
       linkedClises: [],
       hasConflict: false
@@ -391,6 +463,7 @@ export class InventoryService {
       n_ficha_fler: item.ficha_fler || '',
       mtl_acum: item.metros_acumulados ? Number(item.metros_acumulados) : 0,
       history: [],
+      sourceRow: item.raw_payload?.source_row || undefined,
     };
   }
 
@@ -420,6 +493,7 @@ export class InventoryService {
       almacen: item.almacen || '',
       mtl_acum: item.metros_acumulados ? Number(item.metros_acumulados) : 0,
       tipo_troquel: item.tipo_troquel || '',
+      sourceRow: item.raw_payload?.source_row || undefined,
       history: [],
     };
   }
@@ -484,6 +558,8 @@ export class InventoryService {
         medidas: item.medidas || undefined,
         troquel: item.troquel || undefined,
         colores: item.colores || undefined,
+        source_row: item.sourceRow || undefined,
+        source_columns: item.sourceRow ? Object.keys(item.sourceRow) : undefined,
       },
     };
   }
@@ -512,6 +588,10 @@ export class InventoryService {
       almacen: item.almacen || undefined,
       metros_acumulados: item.mtl_acum ?? 0,
       tipo_troquel: item.tipo_troquel || undefined,
+      raw_payload: {
+        source_row: item.sourceRow || undefined,
+        source_columns: item.sourceRow ? Object.keys(item.sourceRow) : undefined,
+      },
     };
   }
 
@@ -579,20 +659,51 @@ export class InventoryService {
 
     if (typeof value === 'number' && Number.isFinite(value)) {
       const excelEpoch = Date.UTC(1899, 11, 30);
-      return new Date(excelEpoch + value * 86400000).toISOString().slice(0, 10);
+      const serialDate = new Date(excelEpoch + value * 86400000);
+      return Number.isNaN(serialDate.getTime())
+        ? new Date().toISOString().split('T')[0]
+        : serialDate.toISOString().slice(0, 10);
     }
 
     const text = String(value).trim();
+    if (!text) {
+      return new Date().toISOString().split('T')[0];
+    }
+
+    if (/^\d+(?:[.,]\d+)?$/.test(text)) {
+      const serialValue = Number(text.replace(',', '.'));
+      if (Number.isFinite(serialValue)) {
+        const excelEpoch = Date.UTC(1899, 11, 30);
+        const serialDate = new Date(excelEpoch + serialValue * 86400000);
+        if (!Number.isNaN(serialDate.getTime())) {
+          return serialDate.toISOString().slice(0, 10);
+        }
+      }
+    }
+
     const isoCandidate = new Date(text);
     if (!Number.isNaN(isoCandidate.getTime())) {
       return isoCandidate.toISOString().slice(0, 10);
     }
 
-    const match = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    const match = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
     if (match) {
       const [, dd, mm, yy] = match;
       const fullYear = yy.length === 2 ? `20${yy}` : yy;
-      return new Date(`${fullYear}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T00:00:00`).toISOString().slice(0, 10);
+      const normalizedDate = new Date(`${fullYear}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T00:00:00`);
+      if (!Number.isNaN(normalizedDate.getTime())) {
+        return normalizedDate.toISOString().slice(0, 10);
+      }
+    }
+
+    const monthFirstMatch = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
+    if (monthFirstMatch) {
+      const [, mm, dd, yy] = monthFirstMatch;
+      const fullYear = yy.length === 2 ? `20${yy}` : yy;
+      const normalizedDate = new Date(`${fullYear}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T00:00:00`);
+      if (!Number.isNaN(normalizedDate.getTime())) {
+        return normalizedDate.toISOString().slice(0, 10);
+      }
     }
 
     return new Date().toISOString().split('T')[0];

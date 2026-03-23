@@ -562,13 +562,21 @@ export class InventoryDieComponent {
 
   async confirmImport() {
       if (this.isImporting) return;
+      if (this.previewData.length === 0) {
+          alert('No hay registros validos para importar. Revisa los conflictos detectados en el archivo.');
+          return;
+      }
 
       this.isImporting = true;
       this.cdr.detectChanges();
 
       try {
-          await this.inventoryService.addDies([...this.previewData, ...this.conflictsData]);
-          alert(`Se importaron ${this.previewData.length + this.conflictsData.length} registros.`);
+          const result = await this.inventoryService.importDies(this.previewData);
+          const omittedItems = this.conflictsData.length + result.skipped;
+          const summary = omittedItems > 0
+            ? `Se importaron ${result.imported} registros. ${omittedItems} filas con conflictos no se importaron.`
+            : `Se importaron ${result.imported} registros.`;
+          alert(summary);
           this.cancelImport();
       } catch (error: any) {
           alert(`Error al importar: ${error?.message || 'No se pudo completar la importación.'}`);

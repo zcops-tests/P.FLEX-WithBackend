@@ -38,6 +38,7 @@ export interface CliseItem {
   n_ficha_fler: string;
   mtl_acum: number | null;
   imagen?: string; 
+  sourceRow?: Record<string, unknown>;
   history: CliseHistory[];
   hasConflict?: boolean; 
 }
@@ -67,6 +68,7 @@ export interface DieItem {
   almacen: string;
   mtl_acum: number | null;
   tipo_troquel: string;
+  sourceRow?: Record<string, unknown>;
   history: CliseHistory[];
   hasConflict?: boolean;
 }

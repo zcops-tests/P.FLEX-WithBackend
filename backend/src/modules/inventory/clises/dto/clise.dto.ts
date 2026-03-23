@@ -1,13 +1,8 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsString, IsNotEmpty, IsOptional, IsNumber, IsDateString, IsArray, IsObject, ValidateNested } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class CreateCliseDto {
-  @ApiProperty({ example: 'CL-1234' })
-  @IsString()
-  @IsNotEmpty()
-  item_code: string;
-
+export class CreateCliseBaseDto {
   @ApiProperty({ example: 'Rack A-1' })
   @IsString()
   @IsOptional()
@@ -99,12 +94,34 @@ export class CreateCliseDto {
   raw_payload?: Record<string, unknown>;
 }
 
+export class CreateCliseDto extends CreateCliseBaseDto {
+  @ApiProperty({ example: 'CL-1234' })
+  @IsString()
+  @IsNotEmpty()
+  item_code: string;
+}
+
 export class UpdateCliseDto extends CreateCliseDto {}
 
+export class BulkUpsertCliseItemDto extends CreateCliseBaseDto {
+  @ApiProperty({ example: 'CL-1234', required: false })
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    const trimmedValue = value.trim();
+    return trimmedValue === '' ? undefined : trimmedValue;
+  })
+  @IsOptional()
+  @IsString()
+  item_code?: string;
+}
+
 export class BulkUpsertClisesDto {
-  @ApiProperty({ type: () => [CreateCliseDto] })
+  @ApiProperty({ type: () => [BulkUpsertCliseItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateCliseDto)
-  items!: CreateCliseDto[];
+  @Type(() => BulkUpsertCliseItemDto)
+  items!: BulkUpsertCliseItemDto[];
 }

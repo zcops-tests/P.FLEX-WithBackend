@@ -1,5 +1,6 @@
 import { Controller, Post, Body, Req, UseGuards, UnauthorizedException, Get, Delete, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto, RefreshTokenDto } from './dto/auth.dto';
@@ -11,6 +12,7 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 600000 } })
   @ApiOperation({ summary: 'Login and issue tokens' })
   @ApiResponse({ status: 200, description: 'Tokens issued' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })

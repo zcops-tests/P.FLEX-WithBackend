@@ -27,17 +27,50 @@ export class ExcelService {
 
       Object.keys(mapping).forEach(targetKey => {
         const possibleVariations = mapping[targetKey];
-        const matchingKey = rowKeys.find(key =>
-          possibleVariations.some(variation => this.normalizeString(variation) === this.normalizeString(key))
-        );
+        const matchingKey = this.findMatchingKey(rowKeys, possibleVariations);
 
         if (matchingKey) {
           newRow[targetKey] = row[matchingKey];
         }
       });
 
+      newRow.__sourceRow = row;
       return newRow;
     });
+  }
+
+  private findMatchingKey(rowKeys: string[], possibleVariations: string[]): string | undefined {
+    const normalizedKeys = rowKeys.map((key) => ({
+      original: key,
+      normalized: this.normalizeString(key),
+    }));
+    const normalizedVariations = possibleVariations
+      .map((variation) => this.normalizeString(variation))
+      .filter(Boolean)
+      .sort((left, right) => right.length - left.length);
+
+    for (const variation of normalizedVariations) {
+      const exactMatch = normalizedKeys.find((entry) => entry.normalized === variation);
+      if (exactMatch) {
+        return exactMatch.original;
+      }
+    }
+
+    for (const variation of normalizedVariations) {
+      if (variation.length < 4) {
+        continue;
+      }
+
+      const fuzzyMatch = normalizedKeys.find((entry) =>
+        entry.normalized.includes(variation) || variation.includes(entry.normalized),
+      );
+
+      if (fuzzyMatch) {
+        return fuzzyMatch.original;
+      }
+    }
+
+    return undefined;
   }
 
   normalizeString(str: string): string {

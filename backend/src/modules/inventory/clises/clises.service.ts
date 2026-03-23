@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
-import { CreateCliseDto, UpdateCliseDto } from './dto/clise.dto';
+import { BulkUpsertCliseItemDto, CreateCliseDto, UpdateCliseDto } from './dto/clise.dto';
 import { CliseQueryDto } from './dto/clise-query.dto';
 import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
 import { toFrontendClise } from '../../../common/utils/frontend-entity.util';
+import { normalizeOptionalDateInput } from '../../../common/utils/date-input.util';
 
 @Injectable()
 export class ClisesService {
@@ -13,6 +14,7 @@ export class ClisesService {
   private buildPersistenceData(dto: CreateCliseDto | UpdateCliseDto) {
     return {
       ...dto,
+      fecha_ingreso: normalizeOptionalDateInput(dto.fecha_ingreso),
       colores_json: dto.colores_json ? (dto.colores_json as Prisma.InputJsonValue) : undefined,
       raw_payload: dto.raw_payload ? (dto.raw_payload as Prisma.InputJsonValue) : undefined,
     };
@@ -36,7 +38,7 @@ export class ClisesService {
     return toFrontendClise(created);
   }
 
-  async bulkUpsert(dtos: CreateCliseDto[]) {
+  async bulkUpsert(dtos: BulkUpsertCliseItemDto[]) {
     const normalizedItems = dtos
       .map((dto) => ({
         ...dto,

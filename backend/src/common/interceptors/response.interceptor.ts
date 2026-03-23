@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { sanitizeForJson } from '../utils/serialization.util';
 
 export interface Response<T> {
   success: boolean;
@@ -22,16 +23,18 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
   ): Observable<Response<T>> {
     return next.handle().pipe(
       map((res) => {
+        const sanitized = sanitizeForJson(res);
+
         // If the result already follows the standard structure (e.g. from a custom logic), return it as is
-        if (res && typeof res === 'object' && 'success' in res && 'data' in res) {
-          return res;
+        if (sanitized && typeof sanitized === 'object' && 'success' in sanitized && 'data' in sanitized) {
+          return sanitized;
         }
 
         // Default structure for successful responses
         return {
           success: true,
-          data: res,
-          meta: res?.meta || {},
+          data: sanitized,
+          meta: sanitized && typeof sanitized === 'object' && 'meta' in sanitized ? sanitized.meta : {},
           error: null,
         };
       }),

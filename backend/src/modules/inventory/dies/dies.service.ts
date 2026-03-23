@@ -1,14 +1,23 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
-import { CreateDieDto, UpdateDieDto } from './dto/die.dto';
+import { BulkUpsertDieItemDto, CreateDieDto, UpdateDieDto } from './dto/die.dto';
 import { DieQueryDto } from './dto/die-query.dto';
 import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
 import { toFrontendDie } from '../../../common/utils/frontend-entity.util';
+import { normalizeOptionalDateInput } from '../../../common/utils/date-input.util';
 
 @Injectable()
 export class DiesService {
   constructor(private prisma: PrismaService) {}
+
+  private buildPersistenceData(dto: CreateDieDto | UpdateDieDto | BulkUpsertDieItemDto) {
+    return {
+      ...dto,
+      fecha_ingreso: normalizeOptionalDateInput(dto.fecha_ingreso),
+      raw_payload: dto.raw_payload ? (dto.raw_payload as Prisma.InputJsonValue) : undefined,
+    };
+  }
 
   async create(dto: CreateDieDto) {
     const existing = await this.prisma.die.findUnique({
@@ -20,12 +29,76 @@ export class DiesService {
 
     const created = await this.prisma.die.create({
       data: {
-        ...dto,
-        metros_acumulados: 0,
+        ...this.buildPersistenceData(dto),
+        serie: dto.serie,
+        metros_acumulados: dto.metros_acumulados ?? 0,
       },
     });
 
     return toFrontendDie(created);
+  }
+
+  async bulkUpsert(dtos: BulkUpsertDieItemDto[]) {
+    const normalizedItems = dtos
+      .map((dto) => ({
+        ...dto,
+        serie: String(dto.serie || '').trim(),
+      }))
+      .filter((dto) => dto.serie);
+
+    const uniqueItems = Array.from(new Map(normalizedItems.map((dto) => [dto.serie, dto])).values());
+
+    if (uniqueItems.length === 0) {
+      return { processed: 0, created: 0, updated: 0 };
+    }
+
+    const existing = await this.prisma.die.findMany({
+      where: {
+        serie: { in: uniqueItems.map((dto) => dto.serie) },
+      },
+      select: {
+        id: true,
+        serie: true,
+      },
+    });
+
+    const existingBySerie = new Map(existing.map((item) => [item.serie, item.id]));
+    let created = 0;
+    let updated = 0;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const dto of uniqueItems) {
+        const data = {
+          ...this.buildPersistenceData(dto),
+          serie: dto.serie,
+          metros_acumulados: dto.metros_acumulados ?? 0,
+        };
+
+        const existingId = existingBySerie.get(dto.serie);
+        if (existingId) {
+          await tx.die.update({
+            where: { id: existingId },
+            data: {
+              ...data,
+              deleted_at: null,
+            },
+          });
+          updated += 1;
+          continue;
+        }
+
+        await tx.die.create({
+          data,
+        });
+        created += 1;
+      }
+    });
+
+    return {
+      processed: uniqueItems.length,
+      created,
+      updated,
+    };
   }
 
   async findAll(params: DieQueryDto) {
@@ -99,7 +172,7 @@ export class DiesService {
     await this.findOne(id);
     const updated = await this.prisma.die.update({
       where: { id },
-      data: dto,
+      data: this.buildPersistenceData(dto),
       include: {
         clise_links: {
           include: {

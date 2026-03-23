@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { DiesService } from './dies.service';
-import { CreateDieDto, UpdateDieDto } from './dto/die.dto';
+import { BulkUpsertDiesDto, CreateDieDto, UpdateDieDto } from './dto/die.dto';
 import { DieQueryDto } from './dto/die-query.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -29,6 +29,13 @@ export class DiesController {
   @ApiOperation({ summary: 'Create a new die' })
   async create(@Body() dto: CreateDieDto) {
     return this.diesService.create(dto);
+  }
+
+  @Post('bulk-upsert')
+  @Roles('ADMIN', 'SUPERVISOR')
+  @ApiOperation({ summary: 'Bulk import/update dies' })
+  async bulkUpsert(@Body() dto: BulkUpsertDiesDto) {
+    return this.diesService.bulkUpsert(dto.items);
   }
 
   @Get()

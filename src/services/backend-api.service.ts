@@ -67,6 +67,7 @@ export class BackendApiService {
   getDies(query?: any) { return this.api.get<any>('/inventory/dies', { query }); }
   getDie(id: string) { return this.api.get<any>(`/inventory/dies/${id}`); }
   createDie(body: any) { return this.api.post<any>('/inventory/dies', body); }
+  bulkUpsertDies(body: any) { return this.api.post<any>('/inventory/dies/bulk-upsert', body); }
   updateDie(id: string, body: any) { return this.api.put<any>(`/inventory/dies/${id}`, body); }
   deleteDie(id: string) { return this.api.delete(`/inventory/dies/${id}`); }
 

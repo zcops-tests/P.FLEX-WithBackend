@@ -8,6 +8,7 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { PrismaService } from '../../database/prisma.service';
+import { sanitizeForJson } from '../utils/serialization.util';
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -126,6 +127,6 @@ export class AuditInterceptor implements NestInterceptor {
       return undefined;
     }
 
-    return JSON.parse(JSON.stringify(data));
+    return JSON.parse(JSON.stringify(sanitizeForJson(data)));
   }
 }

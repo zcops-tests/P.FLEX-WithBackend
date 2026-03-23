@@ -1,5 +1,6 @@
 import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '../../database/prisma.service';
 import { RedisService } from '../../database/redis.service';
 
@@ -14,6 +15,7 @@ export class HealthController {
   ) {}
 
   @Get('live')
+  @SkipThrottle()
   @ApiOperation({ summary: 'Liveness check' })
   @ApiResponse({ status: 200, description: 'Process is active' })
   live() {
@@ -21,6 +23,7 @@ export class HealthController {
   }
 
   @Get('ready')
+  @SkipThrottle()
   @ApiOperation({ summary: 'Readiness check' })
   @ApiResponse({ status: 200, description: 'Services are ready' })
   @ApiResponse({ status: 503, description: 'One or more services are down' })

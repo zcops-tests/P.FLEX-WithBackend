@@ -48,13 +48,8 @@ import { UserStatusGuard } from './modules/auth/guards/user-status.guard';
       validate: validateEnv,
     }),
     ThrottlerModule.forRoot([{
-      name: 'short',
       ttl: 60000, // 1 minute
       limit: 100,
-    }, {
-      name: 'login',
-      ttl: 600000, // 10 minutes
-      limit: 5,
     }]),
     BullModule.forRootAsync({
       imports: [ConfigModule],

@@ -16,7 +16,7 @@ export function resolvePagination(
 ): ResolvedPagination {
   const defaultPage = options.defaultPage ?? 1;
   const defaultPageSize = options.defaultPageSize ?? 20;
-  const maxPageSize = options.maxPageSize ?? 100;
+  const maxPageSize = options.maxPageSize ?? 500;
 
   const page = Math.max(defaultPage, params.page ?? defaultPage);
   const requestedPageSize = params.pageSize ?? defaultPageSize;

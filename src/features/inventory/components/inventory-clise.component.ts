@@ -1,7 +1,8 @@
 
-import { Component, inject, NgZone, ChangeDetectorRef } from '@angular/core';
+import { Component, inject, NgZone, ChangeDetectorRef, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { InventoryService } from '../services/inventory.service';
 import { CliseItem, DieItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
@@ -708,7 +709,7 @@ import { ExcelService } from '../../../services/excel.service';
     </div>
   `
 })
-export class InventoryCliseComponent {
+export class InventoryCliseComponent implements OnInit, OnDestroy {
   inventoryService = inject(InventoryService);
   excelService = inject(ExcelService);
   cdr = inject(ChangeDetectorRef);
@@ -737,11 +738,29 @@ export class InventoryCliseComponent {
   // Die Search Logic
   dieSearchTerm = '';
   dieSearchResults: DieItem[] = [];
+  private cliseItemsSubscription?: Subscription;
 
-  constructor() {
-    this.inventoryService.cliseItems$.subscribe(items => {
+  async ngOnInit() {
+    this.cliseItemsSubscription = this.inventoryService.cliseItems$.subscribe((items) => {
+      this.ngZone.run(() => {
         this.cliseItems = items;
+        this.currentPage = Math.min(this.currentPage, this.totalPages || 1);
+      });
     });
+
+    this.isLoading = true;
+    this.cdr.detectChanges();
+
+    try {
+      await this.inventoryService.reload();
+    } finally {
+      this.isLoading = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  ngOnDestroy() {
+    this.cliseItemsSubscription?.unsubscribe();
   }
 
   get paginatedCliseList() {
@@ -933,20 +952,28 @@ export class InventoryCliseComponent {
 
   async confirmImport() {
       if (this.isImporting) return;
+      if (this.previewData.length === 0) {
+        alert('No hay registros validos para importar. Revisa los conflictos detectados en el archivo.');
+        return;
+      }
 
      this.isImporting = true;
      this.importProgressText = 'Preparando lotes de importacion...';
      this.cdr.detectChanges();
 
       try {
-         await this.inventoryService.importClises(
-             [...this.previewData, ...this.conflictsData],
+         const result = await this.inventoryService.importClises(
+             this.previewData,
              ({ currentBatch, totalBatches, processedItems, totalItems }) => {
                  this.importProgressText = `Lote ${currentBatch} de ${totalBatches} importado (${processedItems}/${totalItems} registros).`;
                  this.cdr.detectChanges();
              },
          );
-          alert(`Se importaron ${this.previewData.length + this.conflictsData.length} registros.`);
+          const omittedItems = this.conflictsData.length + result.skipped;
+          const summary = omittedItems > 0
+            ? `Se importaron ${result.imported} registros. ${omittedItems} filas con conflictos no se importaron.`
+            : `Se importaron ${result.imported} registros.`;
+          alert(summary);
           this.cancelImport();
       } catch (error: any) {
           alert(`Error al importar: ${error?.message || 'No se pudo completar la importación.'}`);
