@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { WorkOrdersService } from './work-orders.service';
-import { CreateWorkOrderDto, WorkOrderStatus, UpdateWorkOrderStatusDto } from './dto/work-order.dto';
+import { BulkUpsertWorkOrdersDto, CreateWorkOrderDto, WorkOrderStatus, UpdateWorkOrderStatusDto } from './dto/work-order.dto';
 import { WorkOrderQueryDto } from './dto/work-order-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -33,6 +33,14 @@ export class WorkOrdersController {
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   create(@Body() createWorkOrderDto: CreateWorkOrderDto) {
     return this.workOrdersService.create(createWorkOrderDto);
+  }
+
+  @Post('bulk-upsert')
+  @Roles('ADMIN', 'PLANNER')
+  @ApiOperation({ summary: 'Crear o actualizar órdenes de trabajo en lote' })
+  @ApiResponse({ status: 201, description: 'Lote procesado exitosamente' })
+  bulkUpsert(@Body() dto: BulkUpsertWorkOrdersDto) {
+    return this.workOrdersService.bulkUpsert(dto.items);
   }
 
   @Get()

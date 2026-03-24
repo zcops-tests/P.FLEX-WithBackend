@@ -667,52 +667,38 @@ export class DashboardComponent implements OnDestroy {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  handleImport(data: any[]) {
-    const currentData = this.ordersService.ots;
-    const importedData = data;
-    let updatedData = [...currentData];
-
-    importedData.forEach((row: any) => {
-        if (!row.OT) return; 
-        const rowOtStr = String(row.OT).trim();
-        const index = updatedData.findIndex(item => String(item.OT).trim() === rowOtStr);
-        
-        if (index !== -1) {
-            const currentStatus = updatedData[index].Estado_pedido;
-            updatedData[index] = { ...updatedData[index], ...row };
-            if (currentStatus) {
-                updatedData[index].Estado_pedido = currentStatus;
-            }
-        } else {
-            updatedData.push({
-               ...row,
-               Estado_pedido: 'PENDIENTE' 
-            });
-        }
-    });
-    
-    this.ordersService.updateOts(updatedData);
-    alert(`Importación completada. Se han procesado ${importedData.length} registros.`);
-    this.showImportModal = false;
+  async handleImport(data: any[]) {
+    try {
+      const result = await this.ordersService.importWorkOrders(data);
+      this.showImportModal = false;
+      alert(`Importación completada.\n\nNuevos: ${result.created}\nActualizados: ${result.updated}\nTotal procesados: ${result.total}`);
+    } catch (error: any) {
+      console.error('Error importing work orders from dashboard:', error);
+      this.showImportModal = false;
+      alert(`No se pudo completar la importación de OTs.\n${error?.message || 'Error desconocido.'}`);
+    }
   }
 
-  handleOtSave(formData: Partial<OT>) {
-    const currentOts = this.ordersService.ots;
-    const existingIndex = currentOts.findIndex(o => String(o.OT) === String(formData.OT));
+  async handleOtSave(formData: Partial<OT>) {
+    const existing = this.ordersService.internalDatabase.find((ot) => String(ot.OT).trim() === String(formData.OT).trim());
 
-    let updatedOts = [...currentOts];
-
-    if (existingIndex !== -1) {
-       if (!confirm(`La OT ${formData.OT} ya existe. ¿Desea sobrescribirla?`)) {
-          return;
-       }
-       updatedOts[existingIndex] = { ...updatedOts[existingIndex], ...formData };
-    } else {
-       updatedOts.push(formData);
+    if (existing && !confirm(`La OT ${formData.OT} ya existe. ¿Desea sobrescribirla?`)) {
+      return;
     }
 
-    this.ordersService.updateOts(updatedOts);
-    this.showOtFormModal = false;
-    alert(`OT ${formData.OT} guardada correctamente.`);
+    try {
+      await this.ordersService.saveOt({
+        ...existing,
+        ...formData,
+        Estado_pedido: formData.Estado_pedido || existing?.Estado_pedido || 'PENDIENTE',
+        'FECHA INGRESO PLANTA': formData['FECHA INGRESO PLANTA'] || existing?.['FECHA INGRESO PLANTA'] || new Date().toISOString().split('T')[0],
+      }, { activate: true });
+
+      this.showOtFormModal = false;
+      alert(`OT ${formData.OT} guardada correctamente.`);
+    } catch (error: any) {
+      console.error('Error saving work order from dashboard:', error);
+      alert(`No se pudo guardar la OT.\n${error?.message || 'Error desconocido.'}`);
+    }
   }
 }

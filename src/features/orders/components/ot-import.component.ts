@@ -2,6 +2,7 @@
 import { Component, Output, EventEmitter, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FileExportService } from '../../../services/file-export.service';
+import { OT_IMPORT_HEADERS } from '../models/orders.models';
 
 @Component({
   selector: 'app-ot-import',
@@ -250,7 +251,7 @@ export class OtImportComponent {
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       
-      const rawData = await this.fileExport.sheetToJson(worksheet, { defval: '' });
+      const rawData = await this.fileExport.sheetToJson(worksheet, { defval: '', raw: false });
 
       if (!rawData || rawData.length === 0) {
         throw new Error('No se encontraron datos en la hoja.');
@@ -278,8 +279,8 @@ export class OtImportComponent {
   normalizeData(rawData: any[]): any[] {
      // 1. First pass: Map keys and basic cleaning
      const mappedData = rawData.map(row => {
-        const newRow: any = {};
-        
+        const newRow: any = Object.fromEntries(OT_IMPORT_HEADERS.map((header) => [header, '']));
+
         Object.assign(newRow, row);
         
         const rowKeys = Object.keys(row);

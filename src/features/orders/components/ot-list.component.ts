@@ -580,105 +580,56 @@ export class OtListComponent implements OnInit, OnDestroy {
   openForm(ot: OT | null) { this.editingOt = ot; this.showFormModal = true; }
   closeForm() { this.showFormModal = false; this.editingOt = null; }
   
-  updateOtField(ot: OT, field: keyof OT, value: any) {
+  async updateOtField(ot: OT, field: keyof OT, value: any) {
       const oldVal = (ot as any)[field];
-      (ot as any)[field] = value;
-      const allOts = this.ordersService.ots;
-      const index = allOts.findIndex(o => o.OT === ot.OT);
-      if (index !== -1) {
-          const updatedList = [...allOts];
-          updatedList[index] = { ...updatedList[index], [field]: value };
-          this.ordersService.updateOts(updatedList);
-          
-          if(field === 'Estado_pedido') {
-             this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Cambio Estado', `OT ${ot.OT} cambió de ${oldVal} a ${value}`);
-          }
+      const updatedOt = { ...ot, [field]: value };
+
+      if (field === 'Estado_pedido') {
+          await this.ordersService.updateStatus(updatedOt, String(value || ''));
+          this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Cambio Estado', `OT ${ot.OT} cambió de ${oldVal} a ${value}`);
+          return;
       }
+
+      await this.ordersService.saveOt(updatedOt);
   }
 
-  handleFormSave(formData: Partial<OT>) {
-    const current = this.ordersService.ots;
-    const idx = current.findIndex(o => String(o.OT) === String(formData.OT));
-    let updated = [...current];
+  async handleFormSave(formData: Partial<OT>) {
     let action = '';
 
-    if (idx !== -1 && this.editingOt) {
-      updated[idx] = { ...updated[idx], ...formData };
+    if (this.editingOt) {
       action = 'Edición de OT';
     } else {
-      if (idx !== -1 && !confirm(`La OT ${formData.OT} ya existe. ¿Sobrescribir?`)) return;
-      updated.push({ 
-          ...formData, 
-          Estado_pedido: 'PENDIENTE',
-          'FECHA INGRESO PLANTA': formData['FECHA INGRESO PLANTA'] || new Date().toISOString().split('T')[0]
-      } as OT);
       action = 'Creación de OT';
     }
-    this.ordersService.updateOts(updated);
+
+    await this.ordersService.saveOt({
+      ...formData,
+      Estado_pedido: formData.Estado_pedido || 'PENDIENTE',
+      'FECHA INGRESO PLANTA': formData['FECHA INGRESO PLANTA'] || new Date().toISOString().split('T')[0],
+    }, { activate: true });
+
     this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', action, `OT afectada: ${formData.OT}`);
     this.closeForm();
   }
 
-  deleteOt(ot: OT) {
+  async deleteOt(ot: OT) {
     if(confirm(`¿Eliminar OT ${ot.OT}?`)) {
-        this.ordersService.deleteOt(String(ot.OT));
+        await this.ordersService.deleteOt(String(ot.OT));
         this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Eliminar OT', `Se eliminó la OT ${ot.OT} permanentemente.`);
     }
   }
 
-  handleImport(data: any[]) {
-    // OPTIMIZED IMPORT LOGIC USING MAPS FOR O(1) LOOKUPS
-    const dbMap = new Map(this.ordersService.internalDatabase.map(item => [String(item.OT).trim().toUpperCase(), item]));
-    const activeOts = [...this.ordersService.ots];
-    const activeMap = new Map(activeOts.map((item, index) => [String(item.OT).trim().toUpperCase(), index]));
-
-    let addedCount = 0;
-    let updatedCount = 0;
-    let activeUpdatedCount = 0;
-
-    data.forEach((item: any) => {
-      if (!item.OT) return;
-      const otId = String(item.OT).trim().toUpperCase();
-
-      // 1. Internal DB Update
-      if (dbMap.has(otId)) {
-         // Update existing (merge properties)
-         // Use non-null assertion because has() returned true, ensuring we spread an object type
-         const existing = dbMap.get(otId)!;
-         dbMap.set(otId, { ...(existing as any), ...item });
-         updatedCount++;
-      } else {
-         // Insert new
-         dbMap.set(otId, item);
-         addedCount++;
-      }
-
-      // 2. Active List Update (Sync imported changes to active work list)
-      if (activeMap.has(otId)) {
-         const idx = activeMap.get(otId)!;
-         const currentActive = activeOts[idx];
-         
-         // Preserve existing status if import doesn't specify one
-         const currentStatus = currentActive.Estado_pedido;
-         activeOts[idx] = { ...currentActive as any, ...item };
-         
-         if (!item.Estado_pedido && currentStatus) {
-             activeOts[idx].Estado_pedido = currentStatus;
-         }
-         activeUpdatedCount++;
-      }
-    });
-
-    // Update Stores
-    this.ordersService.updateInternalDatabase(Array.from(dbMap.values()));
-    
-    if (activeUpdatedCount > 0) {
-        this.ordersService.updateOts(activeOts);
+  async handleImport(data: any[]) {
+    try {
+      const result = await this.ordersService.importWorkOrders(data);
+      this.showImportModal = false;
+      this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Importación Masiva', `Se procesaron ${result.total} registros. Nuevos: ${result.created}, Actualizados: ${result.updated}.`);
+      alert(`Proceso completado.\n\nBase de Datos:\n- Nuevos: ${result.created}\n- Actualizados: ${result.updated}\n- Total procesados: ${result.total}`);
+    } catch (error: any) {
+      console.error('Error importing work orders:', error);
+      this.showImportModal = false;
+      alert(`No se pudo completar la importación de OTs.\n${error?.message || 'Error desconocido.'}`);
     }
-
-    this.showImportModal = false;
-    this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Importación Masiva', `Se procesaron ${data.length} registros. Nuevos: ${addedCount}, Actualizados: ${updatedCount}.`);
-    alert(`Proceso completado.\n\nBase de Datos:\n- Nuevos: ${addedCount}\n- Actualizados: ${updatedCount}\n\nLista Activa:\n- Actualizados: ${activeUpdatedCount}`);
   }
 
   // DB Selector
@@ -698,17 +649,14 @@ export class OtListComponent implements OnInit, OnDestroy {
   isDbSelected(item: any) { return this.dbSelectedItems.has(String(item.OT)); }
   
   isAlreadyInList(item: any) { 
-      return this.ordersService.ots.some(o => String(o.OT).trim().toUpperCase() === String(item.OT).trim().toUpperCase()); 
+      return this.ordersService.isOtActive(item.OT); 
   }
 
   addSelectedToActiveList() {
       const db = this.ordersService.internalDatabase;
       const selected = db.filter(i => this.dbSelectedItems.has(String(i.OT)));
-      const current = this.ordersService.ots;
-      
-      // Strict check to prevent duplicates
       const newItems = selected
-          .filter(s => !current.some(c => String(c.OT).trim().toUpperCase() === String(s.OT).trim().toUpperCase()))
+          .filter(s => !this.ordersService.isOtActive(String(s.OT)))
           .map(s => ({
               ...s, 
               Estado_pedido: 'PENDIENTE',
@@ -716,7 +664,7 @@ export class OtListComponent implements OnInit, OnDestroy {
           }));
       
       if(newItems.length > 0) {
-          this.ordersService.updateOts([...current, ...newItems]);
+          this.ordersService.activateOts(newItems);
           this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Activar OTs', `Se activaron ${newItems.length} OTs desde la base de datos.`);
           alert(`${newItems.length} OTs agregadas.`);
       } else {

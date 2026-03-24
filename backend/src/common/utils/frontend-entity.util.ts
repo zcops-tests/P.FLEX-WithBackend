@@ -15,6 +15,105 @@ function toDate(value: Date | string | null | undefined): Date {
   return value ? new Date(value) : new Date();
 }
 
+const WORK_ORDER_IMPORT_HEADERS = [
+  'descripcion',
+  'Nro. Cotizacion',
+  'Nro. Ficha',
+  'Pedido',
+  'OT',
+  'ORDEN COMPRA',
+  'Razon Social',
+  'Vendedor',
+  'Glosa',
+  'MLL Pedido',
+  'FECHA PED',
+  'FECHA ENT',
+  'CANT PED',
+  'Und',
+  'Material',
+  'Ancho',
+  'Drawback',
+  'impresion',
+  'merma',
+  'Medida',
+  'Avance',
+  'desarrollo',
+  'sep_avance',
+  'calibre',
+  'num_colum',
+  'adhesivo',
+  'acabado',
+  'troquel',
+  'SentidoFinal',
+  'diametuco',
+  'ObsDes',
+  'ObsCot',
+  'medidavend',
+  'maquina',
+  'anchoEtiq',
+  'ancho_mate',
+  'forma',
+  'tipoimpre1',
+  'dispensado',
+  'cant_etq_xrollohojas',
+  'fechaPrd',
+  'codmaquina',
+  's_merma',
+  'mtl_sin_merma',
+  'total_mtl',
+  'total_M2',
+  'LARGO',
+  'col_ficha',
+  'prepicado_h',
+  'prepicado_v',
+  'semicorte',
+  'corte_seguridad',
+  'forma_emb',
+  'und_negocio',
+  'Linea_produccion',
+  'p_cant_rollo_ficha',
+  'Estado_pedido',
+  'r_ref_ot',
+  'logo_tuco',
+  'troquel_ficha',
+  'acabado_ficha',
+  't_acabado',
+  'ta_acabado',
+  'd_max_bob',
+  'FECHA INGRESO PLANTA',
+] as const;
+
+function normalizeRawPayload(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return {};
+  }
+
+  return payload as Record<string, unknown>;
+}
+
+function stringifyWorkOrderValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  return String(value);
+}
+
+function readWorkOrderRawValue(
+  payload: Record<string, unknown>,
+  key: typeof WORK_ORDER_IMPORT_HEADERS[number],
+  fallback: unknown,
+) {
+  const rawValue = payload[key];
+  return rawValue !== undefined && rawValue !== null && rawValue !== ''
+    ? rawValue
+    : stringifyWorkOrderValue(fallback);
+}
+
 function normalizeMachineType(value: string | null | undefined): string {
   const normalized = String(value || '').toUpperCase();
   if (normalized.includes('PRINT') || normalized.includes('IMP')) return 'Impresion';
@@ -143,36 +242,76 @@ export function toFrontendSystemConfig(config: any) {
 }
 
 export function toFrontendWorkOrder(workOrder: any) {
+  const rawPayload = normalizeRawPayload(workOrder.raw_payload);
+
   return {
     ...workOrder,
-    OT: workOrder.ot_number,
-    descripcion: workOrder.descripcion || '',
-    'Nro. Cotizacion': workOrder.nro_cotizacion || '',
-    'Nro. Ficha': workOrder.nro_ficha || '',
-    Pedido: workOrder.pedido || '',
-    'ORDEN COMPRA': workOrder.orden_compra || '',
-    'Razon Social': workOrder.cliente_razon_social || '',
-    Vendedor: workOrder.vendedor || '',
-    Glosa: workOrder.descripcion || '',
-    'FECHA PED': toDateString(workOrder.fecha_pedido),
-    'FECHA ENT': toDateString(workOrder.fecha_entrega),
-    'FECHA INGRESO PLANTA': toDateString(workOrder.fecha_ingreso_planta),
-    'CANT PED': toNumber(workOrder.cantidad_pedida) ?? '',
-    Und: workOrder.unidad || '',
-    Material: workOrder.material || '',
-    Ancho: String(toNumber(workOrder.ancho_mm) ?? ''),
-    Avance: String(toNumber(workOrder.avance_mm) ?? ''),
-    desarrollo: String(toNumber(workOrder.desarrollo_mm) ?? ''),
-    num_colum: String(workOrder.columnas ?? ''),
-    adhesivo: workOrder.adhesivo || '',
-    acabado: workOrder.acabado || '',
-    troquel: workOrder.troquel || '',
-    ObsDes: workOrder.observaciones_diseno || '',
-    ObsCot: workOrder.observaciones_cotizacion || '',
-    maquina: workOrder.maquina_texto || '',
-    total_mtl: String(toNumber(workOrder.total_metros) ?? ''),
-    total_M2: String(toNumber(workOrder.total_m2) ?? ''),
-    fechaPrd: toDateString(workOrder.fecha_programada_produccion),
+    ...Object.fromEntries(WORK_ORDER_IMPORT_HEADERS.map((header) => [header, rawPayload[header] ?? ''])),
+    OT: readWorkOrderRawValue(rawPayload, 'OT', workOrder.ot_number),
+    descripcion: readWorkOrderRawValue(rawPayload, 'descripcion', workOrder.descripcion),
+    'Nro. Cotizacion': readWorkOrderRawValue(rawPayload, 'Nro. Cotizacion', workOrder.nro_cotizacion),
+    'Nro. Ficha': readWorkOrderRawValue(rawPayload, 'Nro. Ficha', workOrder.nro_ficha),
+    Pedido: readWorkOrderRawValue(rawPayload, 'Pedido', workOrder.pedido),
+    'ORDEN COMPRA': readWorkOrderRawValue(rawPayload, 'ORDEN COMPRA', workOrder.orden_compra),
+    'Razon Social': readWorkOrderRawValue(rawPayload, 'Razon Social', workOrder.cliente_razon_social),
+    Vendedor: readWorkOrderRawValue(rawPayload, 'Vendedor', workOrder.vendedor),
+    Glosa: readWorkOrderRawValue(rawPayload, 'Glosa', workOrder.descripcion),
+    'MLL Pedido': readWorkOrderRawValue(rawPayload, 'MLL Pedido', toNumber(workOrder.cantidad_pedida) ?? ''),
+    'FECHA PED': readWorkOrderRawValue(rawPayload, 'FECHA PED', toDateString(workOrder.fecha_pedido)),
+    'FECHA ENT': readWorkOrderRawValue(rawPayload, 'FECHA ENT', toDateString(workOrder.fecha_entrega)),
+    'FECHA INGRESO PLANTA': readWorkOrderRawValue(rawPayload, 'FECHA INGRESO PLANTA', toDateString(workOrder.fecha_ingreso_planta)),
+    'CANT PED': readWorkOrderRawValue(rawPayload, 'CANT PED', toNumber(workOrder.cantidad_pedida) ?? ''),
+    Und: readWorkOrderRawValue(rawPayload, 'Und', workOrder.unidad),
+    Material: readWorkOrderRawValue(rawPayload, 'Material', workOrder.material),
+    Ancho: readWorkOrderRawValue(rawPayload, 'Ancho', toNumber(workOrder.ancho_mm) ?? ''),
+    Drawback: readWorkOrderRawValue(rawPayload, 'Drawback', ''),
+    impresion: readWorkOrderRawValue(rawPayload, 'impresion', ''),
+    merma: readWorkOrderRawValue(rawPayload, 'merma', ''),
+    Medida: readWorkOrderRawValue(rawPayload, 'Medida', ''),
+    Avance: readWorkOrderRawValue(rawPayload, 'Avance', toNumber(workOrder.avance_mm) ?? ''),
+    desarrollo: readWorkOrderRawValue(rawPayload, 'desarrollo', toNumber(workOrder.desarrollo_mm) ?? ''),
+    sep_avance: readWorkOrderRawValue(rawPayload, 'sep_avance', ''),
+    calibre: readWorkOrderRawValue(rawPayload, 'calibre', ''),
+    num_colum: readWorkOrderRawValue(rawPayload, 'num_colum', workOrder.columnas ?? ''),
+    adhesivo: readWorkOrderRawValue(rawPayload, 'adhesivo', workOrder.adhesivo),
+    acabado: readWorkOrderRawValue(rawPayload, 'acabado', workOrder.acabado),
+    troquel: readWorkOrderRawValue(rawPayload, 'troquel', workOrder.troquel),
+    SentidoFinal: readWorkOrderRawValue(rawPayload, 'SentidoFinal', ''),
+    diametuco: readWorkOrderRawValue(rawPayload, 'diametuco', ''),
+    ObsDes: readWorkOrderRawValue(rawPayload, 'ObsDes', workOrder.observaciones_diseno),
+    ObsCot: readWorkOrderRawValue(rawPayload, 'ObsCot', workOrder.observaciones_cotizacion),
+    medidavend: readWorkOrderRawValue(rawPayload, 'medidavend', ''),
+    maquina: readWorkOrderRawValue(rawPayload, 'maquina', workOrder.maquina_texto),
+    anchoEtiq: readWorkOrderRawValue(rawPayload, 'anchoEtiq', ''),
+    ancho_mate: readWorkOrderRawValue(rawPayload, 'ancho_mate', ''),
+    forma: readWorkOrderRawValue(rawPayload, 'forma', ''),
+    tipoimpre1: readWorkOrderRawValue(rawPayload, 'tipoimpre1', ''),
+    dispensado: readWorkOrderRawValue(rawPayload, 'dispensado', ''),
+    cant_etq_xrollohojas: readWorkOrderRawValue(rawPayload, 'cant_etq_xrollohojas', ''),
+    fechaPrd: readWorkOrderRawValue(rawPayload, 'fechaPrd', toDateString(workOrder.fecha_programada_produccion)),
+    codmaquina: readWorkOrderRawValue(rawPayload, 'codmaquina', ''),
+    s_merma: readWorkOrderRawValue(rawPayload, 's_merma', ''),
+    mtl_sin_merma: readWorkOrderRawValue(rawPayload, 'mtl_sin_merma', ''),
+    total_mtl: readWorkOrderRawValue(rawPayload, 'total_mtl', toNumber(workOrder.total_metros) ?? ''),
+    total_M2: readWorkOrderRawValue(rawPayload, 'total_M2', toNumber(workOrder.total_m2) ?? ''),
+    LARGO: readWorkOrderRawValue(rawPayload, 'LARGO', ''),
+    col_ficha: readWorkOrderRawValue(rawPayload, 'col_ficha', ''),
+    prepicado_h: readWorkOrderRawValue(rawPayload, 'prepicado_h', ''),
+    prepicado_v: readWorkOrderRawValue(rawPayload, 'prepicado_v', ''),
+    semicorte: readWorkOrderRawValue(rawPayload, 'semicorte', ''),
+    corte_seguridad: readWorkOrderRawValue(rawPayload, 'corte_seguridad', ''),
+    forma_emb: readWorkOrderRawValue(rawPayload, 'forma_emb', ''),
+    und_negocio: readWorkOrderRawValue(rawPayload, 'und_negocio', ''),
+    Linea_produccion: readWorkOrderRawValue(rawPayload, 'Linea_produccion', ''),
+    p_cant_rollo_ficha: readWorkOrderRawValue(rawPayload, 'p_cant_rollo_ficha', ''),
+    Estado_pedido: readWorkOrderRawValue(rawPayload, 'Estado_pedido', workOrder.status),
+    r_ref_ot: readWorkOrderRawValue(rawPayload, 'r_ref_ot', ''),
+    logo_tuco: readWorkOrderRawValue(rawPayload, 'logo_tuco', ''),
+    troquel_ficha: readWorkOrderRawValue(rawPayload, 'troquel_ficha', ''),
+    acabado_ficha: readWorkOrderRawValue(rawPayload, 'acabado_ficha', ''),
+    t_acabado: readWorkOrderRawValue(rawPayload, 't_acabado', ''),
+    ta_acabado: readWorkOrderRawValue(rawPayload, 'ta_acabado', ''),
+    d_max_bob: readWorkOrderRawValue(rawPayload, 'd_max_bob', ''),
   };
 }
 

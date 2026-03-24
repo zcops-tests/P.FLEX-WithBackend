@@ -53,6 +53,7 @@ export class BackendApiService {
   getWorkOrders(query?: any) { return this.api.get<any>('/work-orders', { query }); }
   getWorkOrder(id: string) { return this.api.get<any>(`/work-orders/${id}`); }
   createWorkOrder(body: any) { return this.api.post<any>('/work-orders', body); }
+  bulkUpsertWorkOrders(body: any) { return this.api.post<any>('/work-orders/bulk-upsert', body); }
   updateWorkOrder(id: string, body: any) { return this.api.put<any>(`/work-orders/${id}`, body); }
   updateWorkOrderStatus(id: string, body: any) { return this.api.patch<any>(`/work-orders/${id}/status`, body); }
   deleteWorkOrder(id: string) { return this.api.delete(`/work-orders/${id}`); }

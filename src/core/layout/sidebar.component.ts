@@ -137,6 +137,21 @@ interface MenuItem {
             </a>
         </div>
         }
+
+        <div class="p-2 border-t border-white/5">
+          <button
+            type="button"
+            (click)="logout()"
+            class="group flex w-full items-center px-3 py-2.5 rounded-xl text-red-300 hover:text-white hover:bg-red-500/10 border border-transparent hover:border-red-400/20 transition-all duration-200 cursor-pointer"
+            [class.justify-center]="state.isSidebarCollapsed()"
+            [title]="state.isSidebarCollapsed() ? 'Cerrar sesión' : ''"
+          >
+            <span class="material-icons text-xl opacity-80 group-hover:opacity-100 icon-glow" [class.mr-3]="!state.isSidebarCollapsed()">logout</span>
+            @if (!state.isSidebarCollapsed()) {
+              <span class="text-sm font-medium animate-fadeIn whitespace-nowrap">Cerrar sesión</span>
+            }
+          </button>
+        </div>
       </div>
 
       <!-- FOOTER / SYNC STATUS -->
@@ -419,6 +434,10 @@ export class SidebarComponent implements OnInit, OnDestroy {
 
   goToModeSelector() {
     this.router.navigate(['/operator']);
+  }
+
+  logout() {
+    void this.state.logout();
   }
 
   private readonly baseMenuItems: MenuItem[] = [
