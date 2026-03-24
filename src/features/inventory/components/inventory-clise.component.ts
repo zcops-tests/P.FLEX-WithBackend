@@ -6,414 +6,464 @@ import { Subscription } from 'rxjs';
 import { InventoryService } from '../services/inventory.service';
 import { CliseItem, DieItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
+import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-modal.component';
 
 @Component({
   selector: 'app-inventory-clise',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InventoryCliseDetailModalComponent],
   template: `
-    <div class="flex-1 flex flex-col p-6 max-w-[1920px] mx-auto w-full overflow-hidden h-full bg-[#0f172a] text-slate-200">
-          
-      <!-- HEADER -->
-      <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 flex-shrink-0">
+    <div class="flex-1 min-h-full flex flex-col bg-[#0b1326] text-[#dae2fd]">
+      <header class="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[#424754]/30 bg-[#0b1326] px-8">
         <div>
-          <div class="flex items-center gap-3">
-            <div class="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20">
-               <span class="material-icons text-blue-500 text-2xl">grid_view</span>
-            </div>
-            <h1 class="text-2xl font-bold tracking-tight text-white">Inventario de Clisés</h1>
-          </div>
-          <p class="text-slate-400 text-sm mt-1 ml-12">Gestión, trazabilidad y localización de herramental</p>
+          <h1 class="text-xl font-extrabold tracking-tight text-[#dae2fd]">Inventario de Clisés</h1>
+          <p class="mt-1 text-[10px] uppercase tracking-[0.28em] text-[#c2c6d6]/45">Industrial Ops v2.4</p>
         </div>
-        
-        <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-          <!-- Search -->
-          <div class="relative group w-full sm:w-64">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span class="material-icons text-slate-500 group-focus-within:text-blue-500 text-xl transition-colors">search</span>
-            </div>
-            <input [(ngModel)]="searchTerm" (ngModelChange)="currentPage = 1" 
-                   class="block w-full pl-10 pr-3 py-2.5 border border-slate-700 rounded-lg leading-5 bg-[#1e293b] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent sm:text-sm transition-all shadow-sm" 
-                   placeholder="Búsqueda rápida..." type="text"/>
-          </div>
-          
+
+        <div class="flex items-center gap-3">
           <input #fileInput type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
-          <button (click)="fileInput.click()" [disabled]="isLoading || isImporting" 
-                  class="inline-flex justify-center items-center px-4 py-2 border border-slate-700 shadow-sm text-sm font-medium rounded-lg text-slate-300 bg-[#1e293b] hover:bg-slate-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0f172a] focus:ring-blue-500 transition-all disabled:opacity-50">
-            <span *ngIf="!isLoading && !isImporting" class="material-icons text-lg mr-2">upload_file</span>
-            <span *ngIf="isLoading || isImporting" class="w-4 h-4 mr-2 rounded-full border-2 border-slate-400/40 border-t-white animate-spin"></span>
+          <button
+            (click)="fileInput.click()"
+            [disabled]="isLoading || isImporting"
+            class="inline-flex items-center gap-2 rounded-xl border border-[#424754]/60 px-5 py-2 text-sm font-semibold text-[#adc6ff] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-50">
+            <span *ngIf="!isLoading && !isImporting" class="material-icons text-lg">download</span>
+            <span *ngIf="isLoading || isImporting" class="h-4 w-4 rounded-full border-2 border-[#adc6ff]/30 border-t-[#adc6ff] animate-spin"></span>
             {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar') }}
           </button>
-          
-          <button (click)="openModal(null, 'edit')" 
-                  class="inline-flex justify-center items-center px-4 py-2 border border-transparent shadow-lg shadow-blue-500/20 text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0f172a] focus:ring-blue-500 transition-all">
-            <span class="material-icons text-lg mr-2">add</span> Nuevo Item
+          <button
+            (click)="openModal(null, 'edit')"
+            class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#448aff] to-[#2979ff] px-5 py-2 text-sm font-semibold text-white transition-all hover:shadow-[0_0_20px_rgba(68,138,255,0.4)] active:scale-95">
+            <span class="material-icons text-lg">add</span>
+            Nuevo Item
           </button>
         </div>
       </header>
 
-      <!-- KPI STATS -->
-      <section class="mb-8 flex-shrink-0">
-        <div class="bg-[#1e293b] rounded-2xl shadow-xl border border-slate-700/50 overflow-hidden">
-          <div class="flex flex-col lg:flex-row w-full items-stretch divide-y lg:divide-y-0 lg:divide-x divide-slate-700/50">
-            
-            <div class="lg:w-[20%] p-6 flex flex-col justify-center items-center bg-slate-800/30">
-              <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Items</span>
-              <div class="flex items-center gap-3">
-                <span class="material-icons text-slate-500 text-3xl">inventory_2</span>
-                <span class="text-4xl font-black text-white tracking-tight">{{ stats.total | number }}</span>
+      <div class="flex-1 space-y-8 p-8">
+
+        <section class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+          <div class="relative flex items-center rounded-lg border border-[#424754]/25 bg-[#171f33] p-6">
+            <div class="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-[#448aff]"></div>
+            <div class="flex items-center gap-5">
+              <span class="material-icons text-5xl text-[#c2c6d6]/35">inventory_2</span>
+              <div>
+                <p class="mb-1 text-[10px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Total Items</p>
+                <h2 class="text-4xl font-extrabold tracking-tight text-[#dae2fd]">{{ stats.total | number }}</h2>
               </div>
             </div>
-
-            <div class="lg:w-[30%] p-6 flex items-center gap-6 relative group cursor-pointer hover:bg-red-500/5 transition-colors">
-              <div class="relative flex-shrink-0 w-20 h-20">
-                <svg class="w-full h-full transform -rotate-90">
-                  <circle class="text-slate-700" cx="40" cy="40" fill="transparent" r="34" stroke="currentColor" stroke-width="6"></circle>
-                  <circle class="text-red-500 transition-all duration-1000 ease-out" cx="40" cy="40" fill="transparent" r="34" stroke="currentColor" 
-                          [attr.stroke-dasharray]="2 * Math.PI * 34" 
-                          [attr.stroke-dashoffset]="2 * Math.PI * 34 * (1 - (stats.alert / (stats.total || 1)))" 
-                          stroke-width="6" stroke-linecap="round"></circle>
-                </svg>
-                <div class="absolute inset-0 flex items-center justify-center">
-                  <span class="text-2xl font-black text-red-500">{{ stats.alert }}</span>
-                </div>
-              </div>
-              <div class="flex-1">
-                <h3 class="text-xs font-black text-red-500 uppercase tracking-wide mb-1 flex items-center gap-1">
-                  <span class="material-icons text-sm">warning</span> Alertas / Mant.
-                </h3>
-                <p class="text-sm font-medium text-slate-300">Clisés en revisión</p>
-                <p class="text-[11px] text-slate-500 mt-1 leading-tight">Acción requerida para evitar paros.</p>
-              </div>
-            </div>
-
-            <div class="lg:w-[30%] p-6 flex items-center gap-6 relative hover:bg-blue-500/5 transition-colors">
-              <div class="flex-1 text-right">
-                <h3 class="text-xs font-black text-blue-500 uppercase tracking-wide mb-1 flex items-center justify-end gap-1">
-                  Uso Acumulado (M) <span class="material-icons text-sm">speed</span>
-                </h3>
-                <div class="flex flex-col items-end">
-                  <span class="text-3xl font-black text-white leading-none">{{ stats.totalUsage / 1000 | number:'1.0-1' }}k</span>
-                  <span class="text-[10px] font-bold text-slate-500 uppercase">/ 1M Target</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="lg:w-[20%] p-6 flex flex-col justify-center items-center bg-emerald-500/5 border-l border-emerald-500/20">
-              <span class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2">Activos / OK</span>
-              <div class="flex items-center gap-2">
-                <span class="text-4xl font-black text-emerald-400">{{ stats.active | number }}</span>
-                <span class="material-icons text-emerald-500 text-xl">check_circle</span>
-              </div>
-              <span class="text-[9px] font-bold text-emerald-600 mt-1 uppercase tracking-wide">Listo para Producción</span>
-            </div>
-
           </div>
-        </div>
-      </section>
 
-      <!-- TABLE -->
-      <div class="bg-[#1e293b] rounded-xl shadow-lg border border-slate-700/60 overflow-hidden flex-1 flex flex-col relative">
-        <div *ngIf="isLoading" class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#1e293b]/85 backdrop-blur-sm">
-          <div class="w-14 h-14 rounded-full border-4 border-slate-700 border-t-blue-500 animate-spin mb-4"></div>
-          <h3 class="text-lg font-bold text-white">Analizando archivo de clisés...</h3>
-          <p class="text-sm text-slate-400 mt-1">Validando columnas y preparando la previsualización.</p>
-        </div>
-        <div class="overflow-auto custom-scrollbar flex-1">
-          <table class="w-full text-sm text-left">
-            <thead class="bg-[#020617]/50 text-slate-400 font-bold sticky top-0 z-10 backdrop-blur-sm">
-              <tr>
-                <th class="px-6 py-4 text-[10px] uppercase tracking-widest border-b border-slate-700">Item</th>
-                <th class="px-6 py-4 text-[10px] uppercase tracking-widest border-b border-slate-700">Cliente / Descripción</th>
-                <th class="px-6 py-4 text-[10px] uppercase tracking-widest border-b border-slate-700 text-center">Medida</th>
-                <th class="px-6 py-4 text-[10px] uppercase tracking-widest border-b border-slate-700 text-center">Parámetros (Z/Ubic)</th>
-                <th class="px-6 py-4 text-[10px] uppercase tracking-widest border-b border-slate-700 text-center">Espesor</th>
-                <th class="px-6 py-4 text-[10px] uppercase tracking-widest border-b border-slate-700 text-center">Estado</th>
-                <th class="px-6 py-4 text-[10px] uppercase tracking-widest border-b border-slate-700 text-right">Acción</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-700/50 bg-[#1e293b]">
-              <tr *ngFor="let item of paginatedCliseList" 
-                  class="hover:bg-slate-700/30 transition-colors group cursor-default"
-                  [ngClass]="{'bg-red-500/5': item.hasConflict}"
-                  (dblclick)="openModal(item, 'view')">
-                <td class="px-6 py-3 whitespace-nowrap">
-                  <div class="flex items-center gap-4">
-                    <div class="h-10 w-10 rounded-lg overflow-hidden border border-slate-600 bg-slate-800 flex-shrink-0 relative group/img">
-                      <img [src]="'https://picsum.photos/seed/' + item.id + '/100/100'" 
-                           class="h-full w-full object-cover opacity-80 group-hover/img:opacity-100 transition-opacity" alt="Thumb">
+          <div class="relative flex items-center rounded-lg border border-[#424754]/25 bg-[#171f33] p-6">
+            <div class="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-[#ff5252]"></div>
+            <div class="flex items-center gap-6">
+              <div class="relative flex h-16 w-16 items-center justify-center">
+                <svg class="gauge-svg h-full w-full" viewBox="0 0 100 100">
+                  <circle class="text-[#2d3449]" cx="50" cy="50" fill="transparent" r="45" stroke="currentColor" stroke-width="8"></circle>
+                  <circle
+                    class="text-[#ff5252]"
+                    cx="50"
+                    cy="50"
+                    fill="transparent"
+                    r="45"
+                    stroke="currentColor"
+                    [attr.stroke-dasharray]="2 * Math.PI * 45"
+                    [attr.stroke-dashoffset]="2 * Math.PI * 45 * (1 - (stats.alert / (stats.total || 1)))"
+                    stroke-linecap="round"
+                    stroke-width="8"></circle>
+                </svg>
+                <span class="absolute text-xl font-bold text-[#dae2fd]">{{ stats.alert }}</span>
+              </div>
+              <div>
+                <div class="mb-1 flex items-center gap-1.5 text-[#ff5252]">
+                  <span class="material-icons text-sm">warning</span>
+                  <p class="text-[10px] font-bold uppercase tracking-[0.28em]">Alertas / Mant.</p>
+                </div>
+                <h3 class="text-sm font-semibold text-[#dae2fd]">Clisés en revisión</h3>
+                <p class="mt-0.5 text-[10px] leading-tight text-[#c2c6d6]">Acción requerida para evitar paros.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="relative rounded-lg border border-[#424754]/25 bg-[#171f33] p-6">
+            <div class="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-[#adc6ff]"></div>
+            <div class="flex justify-between">
+              <div></div>
+              <div class="text-right">
+                <div class="mb-1 flex items-center justify-end gap-1.5 text-[#448aff]">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.28em]">Uso Acumulado (M)</p>
+                  <span class="material-icons text-sm">open_in_new</span>
+                </div>
+                <h2 class="text-4xl font-extrabold tracking-tight text-[#dae2fd]">{{ stats.totalUsage / 1000 | number:'1.0-1' }}k</h2>
+                <p class="mt-0.5 text-[10px] font-medium text-[#c2c6d6]">/ 1M Target</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="relative rounded-lg border border-[#424754]/25 bg-[#171f33] p-6">
+            <div class="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-[#00e676]"></div>
+            <div class="flex flex-col items-end">
+              <p class="mb-1 text-[10px] font-bold uppercase tracking-[0.28em] text-[#00e676]">Activos / OK</p>
+              <div class="flex items-center gap-2">
+                <h2 class="text-4xl font-extrabold tracking-tight text-[#00e676]">{{ stats.active | number }}</h2>
+                <span class="material-icons text-2xl text-[#00e676]">check_circle</span>
+              </div>
+              <p class="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6ffbbe]">Listo para Producción</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-xl border border-[#424754]/25 bg-[#131b2e] p-4">
+          <div class="flex flex-wrap items-end gap-4">
+            <div class="min-w-[240px] flex-1 space-y-1.5">
+              <label class="px-1 text-[10px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Buscar</label>
+              <div class="relative">
+                <span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#c2c6d6]">search</span>
+                <input [(ngModel)]="searchInput" (ngModelChange)="applyFilters()" class="w-full rounded-lg border-none bg-[#060e20] py-2 pl-10 pr-4 text-sm text-[#dae2fd] placeholder:text-[#c2c6d6]/30 focus:ring-1 focus:ring-[#448aff]/30" placeholder="Código o Cliente..." type="text"/>
+              </div>
+            </div>
+
+            <div class="w-48 space-y-1.5">
+              <label class="px-1 text-[10px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Columnas</label>
+              <select [(ngModel)]="filterColumnInput" (ngModelChange)="applyFilters()" class="w-full rounded-lg border-none bg-[#060e20] px-3 py-2 text-sm text-[#dae2fd] focus:ring-1 focus:ring-[#448aff]/30">
+                <option value="">Todas las Columnas</option>
+                <option *ngFor="let option of uniqueColumnOptions" [value]="option">{{ option }}</option>
+              </select>
+            </div>
+
+            <div class="w-24 space-y-1.5">
+              <label class="px-1 text-[10px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Piñón (Z)</label>
+              <select [(ngModel)]="filterZInput" (ngModelChange)="applyFilters()" class="w-full rounded-lg border-none bg-[#060e20] px-3 py-2 text-sm text-[#dae2fd] focus:ring-1 focus:ring-[#448aff]/30">
+                <option value="">Todas</option>
+                <option *ngFor="let option of uniqueZOptions" [value]="option">{{ option }}</option>
+              </select>
+            </div>
+
+            <div class="w-32 space-y-1.5">
+              <label class="px-1 text-[10px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Espesor</label>
+              <select [(ngModel)]="filterEspesorInput" (ngModelChange)="applyFilters()" class="w-full rounded-lg border-none bg-[#060e20] px-3 py-2 text-sm text-[#dae2fd] focus:ring-1 focus:ring-[#448aff]/30">
+                <option value="">Todos</option>
+                <option *ngFor="let option of uniqueEspesorOptions" [value]="option">{{ option }}</option>
+              </select>
+            </div>
+
+            <div class="w-44 space-y-1.5">
+              <label class="px-1 text-[10px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Medida</label>
+              <select [(ngModel)]="filterMeasureInput" (ngModelChange)="applyFilters()" class="w-full rounded-lg border-none bg-[#060e20] px-3 py-2 text-sm text-[#dae2fd] focus:ring-1 focus:ring-[#448aff]/30">
+                <option value="">Cualquier Medida</option>
+                <option *ngFor="let option of measureOptions" [value]="option.value">{{ option.label }}</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-2 pb-0.5">
+              <button (click)="applyFilters()" class="inline-flex h-9 items-center gap-2 rounded-lg bg-[#448aff] px-6 text-xs font-bold text-white shadow-lg shadow-[#448aff]/20 transition-all hover:brightness-110">
+                <span class="material-icons text-lg">filter_list</span>
+                Aplicar
+              </button>
+              <button (click)="resetFilters()" class="flex h-9 w-9 items-center justify-center rounded-lg text-[#c2c6d6] transition-all hover:bg-[#2d3449] hover:text-[#dae2fd]" title="Reiniciar Filtros">
+                <span class="material-icons text-lg">restart_alt</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="relative rounded-xl border border-[#424754]/20 bg-[#171f33] shadow-2xl shadow-[#060e20]/40">
+          <div *ngIf="isLoading" class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#171f33]/90 backdrop-blur-sm">
+            <div class="mb-4 h-14 w-14 animate-spin rounded-full border-4 border-[#2d3449] border-t-[#448aff]"></div>
+            <h3 class="text-lg font-bold text-[#dae2fd]">Analizando archivo de clisés...</h3>
+            <p class="mt-1 text-sm text-[#c2c6d6]">{{ loadingStatusText }}</p>
+            <div class="mt-4 w-full max-w-md px-6">
+              <div class="h-2 overflow-hidden rounded-full border border-[#424754] bg-[#060e20]">
+                <div class="h-full bg-[#448aff] transition-all duration-300" [style.width.%]="loadingProgress"></div>
+              </div>
+              <p class="mt-2 text-center text-xs text-[#c2c6d6]">{{ loadingProgress }}% completado</p>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[980px] border-collapse text-left">
+              <thead>
+                <tr class="border-b border-[#424754]/20 bg-[#222a3d]/50">
+                  <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Item ID</th>
+                  <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Cliente / Descripción</th>
+                  <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Medida</th>
+                  <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Piñón / Z</th>
+                  <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Espesor</th>
+                  <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Estado</th>
+                  <th class="px-6 py-4 text-right text-[11px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Acciones</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[#424754]/10">
+                <tr *ngFor="let item of paginatedCliseList; trackBy: trackByCliseId" class="group transition-colors hover:bg-[#222a3d]" [ngClass]="{ 'bg-[#93000a]/10': item.hasConflict }" (dblclick)="openModal(item, 'view')">
+                  <td class="px-6 py-5">
+                    <div class="flex items-center gap-3">
+                      <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-[#424754]/20 bg-[#060e20]">
+                        <img [src]="'https://picsum.photos/seed/' + item.id + '/100/100'" class="h-full w-full object-cover" alt="Clise">
+                      </div>
+                      <span class="text-sm font-bold text-[#448aff]">{{ item.item || '(Sin código)' }}</span>
                     </div>
-                    <span class="text-sm font-bold text-white font-mono tracking-tight">{{ item.item }}</span>
-                  </div>
-                </td>
-                <td class="px-6 py-3">
-                  <div class="flex flex-col">
-                    <span class="text-xs font-bold text-slate-400 mb-0.5">{{ item.cliente }}</span>
-                    <span class="text-sm text-slate-200 font-medium truncate max-w-[240px]" [title]="item.descripcion">
-                      {{ item.descripcion }}
+                  </td>
+                  <td class="px-6 py-5">
+                    <div class="flex flex-col">
+                      <span class="text-sm font-semibold text-[#dae2fd]">{{ item.cliente || 'Sin cliente' }}</span>
+                      <span class="text-xs text-[#c2c6d6]">{{ item.descripcion || 'Sin descripción' }}</span>
+                    </div>
+                  </td>
+                  <td class="px-6 py-5 text-sm text-[#dae2fd]">{{ getDisplayMeasure(item) }}</td>
+                  <td class="px-6 py-5">
+                    <div class="flex items-center gap-3">
+                      <span class="rounded bg-[#2d3449] px-2 py-0.5 font-mono text-xs text-[#b7c8e1]">{{ item.z || '---' }}</span>
+                      <span class="text-xs text-[#c2c6d6]">{{ item.ubicacion || 'Sin ubicación' }}</span>
+                    </div>
+                  </td>
+                  <td class="px-6 py-5 text-sm font-mono text-[#dae2fd]">{{ item.espesor || '-' }}</td>
+                  <td class="px-6 py-5">
+                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium" [ngClass]="getStatusBadgeClass(item)">
+                      <span class="mr-1.5 h-1.5 w-1.5 rounded-full" [ngClass]="getStatusDotClass(item)"></span>
+                      {{ getStatusLabel(item) }}
                     </span>
-                  </div>
-                </td>
-                <td class="px-6 py-3 whitespace-nowrap text-center">
-                  <span class="text-sm font-bold text-slate-300 font-mono">{{ item.ancho || '-' }} X {{ item.avance || '-' }}</span>
-                </td>
-                <td class="px-6 py-3 whitespace-nowrap text-center">
-                  <div class="flex items-center justify-center gap-4">
-                    <div class="flex flex-col items-center">
-                      <span class="text-[9px] text-slate-500 uppercase font-black mb-0.5">Z</span>
-                      <span class="text-sm font-bold text-white">{{ item.z }}</span>
+                  </td>
+                  <td class="px-6 py-5 text-right">
+                    <div class="flex items-center justify-end gap-1">
+                      <button (click)="openModal(item, 'edit')" class="p-2 text-[#c2c6d6] transition-colors hover:text-[#448aff]" title="Editar">
+                        <span class="material-icons text-lg">edit</span>
+                      </button>
+                      <button (click)="openHistory(item)" class="p-2 text-[#c2c6d6] transition-colors hover:text-[#448aff]" title="Historial">
+                        <span class="material-icons text-lg">history</span>
+                      </button>
+                      <button (click)="openModal(item, 'view')" class="p-2 text-[#c2c6d6] transition-colors hover:text-[#ff5252]" title="Ver detalle">
+                        <span class="material-icons text-lg">visibility</span>
+                      </button>
                     </div>
+                  </td>
+                </tr>
+
+                <tr *ngIf="paginatedCliseList.length === 0">
+                  <td colspan="7" class="px-6 py-14 text-center text-[#c2c6d6]">
                     <div class="flex flex-col items-center">
-                      <span class="text-[9px] text-slate-500 uppercase font-black mb-0.5">Ubic</span>
-                      <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-600">
-                        {{ item.ubicacion }}
-                      </span>
+                      <span class="material-icons mb-2 text-4xl opacity-40">search_off</span>
+                      <p>No se encontraron clisés con los filtros actuales.</p>
                     </div>
-                  </div>
-                </td>
-                <td class="px-6 py-3 whitespace-nowrap text-center">
-                  <span class="text-sm font-medium text-slate-400">{{ item.espesor || '-' }}</span>
-                </td>
-                <td class="px-6 py-3 whitespace-nowrap text-center">
-                  <span *ngIf="!item.hasConflict && (item.mtl_acum || 0) < 500000" class="inline-flex items-center px-2.5 py-1 rounded text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">OK</span>
-                  <span *ngIf="item.hasConflict" class="inline-flex items-center px-2.5 py-1 rounded text-[10px] font-black bg-red-500/10 text-red-400 border border-red-500/20 uppercase tracking-wider animate-pulse">REVISAR</span>
-                  <span *ngIf="!item.hasConflict && (item.mtl_acum || 0) >= 500000" class="inline-flex items-center px-2.5 py-1 rounded text-[10px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wider">MANT.</span>
-                </td>
-                <td class="px-6 py-3 whitespace-nowrap text-right">
-                  <div class="flex items-center justify-end gap-2">
-                    <button (click)="openModal(item, 'view')" class="text-slate-400 hover:text-blue-400 transition-colors p-1.5 hover:bg-slate-700/50 rounded-lg" title="Ver detalle">
-                      <span class="material-icons text-lg">visibility</span>
-                    </button>
-                    <button (click)="openModal(item, 'edit')" class="text-slate-400 hover:text-blue-400 transition-colors p-1.5 hover:bg-slate-700/50 rounded-lg" title="Editar">
-                      <span class="material-icons text-lg">edit</span>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              
-              <tr *ngIf="paginatedCliseList.length === 0">
-                 <td colspan="7" class="p-12 text-center text-slate-500">
-                    <div class="flex flex-col items-center">
-                       <span class="material-icons text-4xl mb-2 opacity-50">search_off</span>
-                       <p>No se encontraron resultados.</p>
-                    </div>
-                 </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        
-        <!-- Pagination -->
-        <div class="bg-[#020617]/30 border-t border-slate-700/50 p-4 flex justify-between items-center shrink-0">
-           <p class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Mostrando <span class="text-white">{{ showingStart }} - {{ showingEnd }}</span> de <span class="text-white">{{ totalItems }}</span>
-           </p>
-           <div class="flex gap-2">
-              <button (click)="changePage('prev')" [disabled]="currentPage === 1" 
-                      class="p-2 border border-slate-700 bg-[#1e293b] rounded-lg hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-white transition-colors">
-                 <span class="material-icons text-sm">chevron_left</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="flex items-center justify-between border-t border-[#424754]/10 bg-[#131b2e]/30 px-6 py-4">
+            <span class="text-xs text-[#c2c6d6]">{{ showingStart }} - {{ showingEnd }} de {{ totalItems | number }} items</span>
+            <div class="flex items-center gap-1">
+              <button (click)="changePage('prev')" [disabled]="currentPage === 1" class="flex h-8 w-8 items-center justify-center rounded-lg text-[#c2c6d6] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-40">
+                <span class="material-icons text-lg">chevron_left</span>
               </button>
-              <button (click)="changePage('next')" [disabled]="currentPage >= totalPages" 
-                      class="p-2 border border-slate-700 bg-[#1e293b] rounded-lg hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-white transition-colors">
-                 <span class="material-icons text-sm">chevron_right</span>
+
+              <ng-container *ngFor="let page of paginationSequence">
+                <span *ngIf="page === 'ellipsis'" class="flex h-8 w-8 items-center justify-center text-[#c2c6d6]">...</span>
+                <button *ngIf="page !== 'ellipsis'" (click)="goToPage(page)" class="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold transition-all" [ngClass]="page === currentPage ? 'bg-[#448aff] text-white' : 'text-[#c2c6d6] hover:bg-[#2d3449]'">
+                  {{ page }}
+                </button>
+              </ng-container>
+
+              <button (click)="changePage('next')" [disabled]="currentPage >= totalPages" class="flex h-8 w-8 items-center justify-center rounded-lg text-[#c2c6d6] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-40">
+                <span class="material-icons text-lg">chevron_right</span>
               </button>
-           </div>
-        </div>
+            </div>
+          </div>
+        </section>
       </div>
 
-      <!-- MODAL: CLISE FORM / DETAIL (New Dark Reference Design) -->
-      <div *ngIf="showCliseForm" class="fixed inset-0 z-[70] flex items-center justify-center p-0 bg-black/80 backdrop-blur-sm overflow-hidden" role="dialog" aria-modal="true">
-          <!-- Main Container -->
-          <div class="relative w-full max-w-[1200px] h-full sm:h-[95vh] bg-[#111618] sm:rounded-xl shadow-2xl flex flex-col border border-[#2a343b] overflow-hidden animate-fadeIn">
+      <app-inventory-clise-detail-modal
+        *ngIf="showCliseForm"
+        [currentClise]="currentClise"
+        [isReadOnly]="isReadOnly"
+        [activeDetailTab]="activeDetailTab"
+        [compatibleDies]="compatibleDies"
+        [dieSearchTerm]="dieSearchTerm"
+        [dieSearchResults]="dieSearchResults"
+        (closeRequested)="closeModal()"
+        (saveRequested)="saveClise()"
+        (printRequested)="printCliseLabel()"
+        (isReadOnlyChange)="isReadOnly = $event"
+        (dieSearchChange)="searchDies($event)"
+        (dieLinkRequested)="addLinkedDie($event)"
+        (dieUnlinkRequested)="removeLinkedDie($event)">
+      </app-inventory-clise-detail-modal>
+
+      <!-- MODAL: CLISE DETAIL (legacy inline, desactivado) -->
+      <div *ngIf="false && showCliseForm" class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-[#060e20]/90 backdrop-blur-md" role="dialog" aria-modal="true">
+          <div class="w-full max-w-5xl max-h-[972px] bg-[#131b2e] rounded-xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col border border-[#424754]/10 overflow-hidden animate-fadeIn">
               
               <!-- Header -->
-              <header class="flex items-center justify-between px-8 py-6 border-b border-[#2a343b] bg-[#111618] shrink-0">
-                  <div class="flex items-center gap-4">
-                      <div class="w-12 h-12 rounded-lg bg-[#1193d4]/20 flex items-center justify-center text-[#1193d4]">
-                          <span class="material-icons text-3xl">print</span>
+              <header class="flex flex-wrap items-center justify-between gap-4 px-6 py-3 border-b border-[#424754]/10 bg-[#171f33] shrink-0">
+                  <div class="flex min-w-0 items-center gap-3">
+                      <div class="rounded-lg bg-[#1193d4]/10 p-1.5">
+                          <span class="material-icons text-xl text-[#1193d4]">precision_manufacturing</span>
                       </div>
-                      <div>
-                          <div class="flex items-center gap-3">
-                             <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                                <span *ngIf="isReadOnly">Detalle de Clisé #{{ currentClise.item }}</span>
-                                <input *ngIf="!isReadOnly" [(ngModel)]="currentClise.item" class="bg-[#0d1113] border border-blue-500/50 rounded px-2 py-1 text-white text-xl font-bold w-48" placeholder="Código Item">
-                             </h1>
-                          </div>
-                          <div class="flex items-center gap-2 mt-1">
-                              <span class="inline-flex items-center rounded bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-400 ring-1 ring-inset ring-green-500/20 uppercase">
-                                  {{ currentClise.hasConflict ? 'Revisión' : 'Activo' }}
+                      <div class="min-w-0">
+                          <h3 class="truncate text-lg font-bold tracking-tight text-[#dae2fd]">
+                              {{ currentClise.descripcion || currentClise.item || 'Detalle de Clisé' }}
+                          </h3>
+                          <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#c2c6d6]">
+                              <span class="inline-flex items-center rounded-full px-2.5 py-0.5 font-medium" [ngClass]="getStatusBadgeClass(currentClise)">
+                                  <span class="mr-1.5 h-1.5 w-1.5 rounded-full" [ngClass]="getStatusDotClass(currentClise)"></span>
+                                  {{ getStatusLabel(currentClise) }}
                               </span>
-                              <span class="text-[#9db0b9] text-sm">• Datos de Sistema</span>
+                              <span>{{ currentClise.item || 'Sin código' }}</span>
+                              <span class="text-[#c2c6d6]/40">•</span>
+                              <span>{{ isReadOnly ? 'Modo detalle' : 'Modo edición' }}</span>
                           </div>
                       </div>
                   </div>
-                  <div class="flex items-center gap-3">
-                      <ng-container *ngIf="isReadOnly">
-                          <button (click)="isReadOnly = false" class="p-2 text-[#9db0b9] hover:text-white hover:bg-[#1c2327] rounded-lg transition-colors" title="Editar">
-                              <span class="material-icons">edit</span>
-                          </button>
-                          <button class="p-2 text-[#9db0b9] hover:text-white hover:bg-[#1c2327] rounded-lg transition-colors">
-                              <span class="material-icons">more_vert</span>
-                          </button>
-                          <div class="h-6 w-px bg-[#2a343b] mx-2"></div>
-                          <button (click)="closeModal()" class="p-2 text-[#9db0b9] hover:text-white hover:bg-red-500/20 hover:text-red-400 rounded-lg transition-colors" title="Cerrar">
-                              <span class="material-icons">close</span>
-                          </button>
-                      </ng-container>
+                  <div class="flex flex-wrap items-center gap-2">
+                      <button *ngIf="isReadOnly" (click)="isReadOnly = false" class="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] text-[#00285d] font-bold shadow-md hover:brightness-110 transition-all text-xs">
+                          <span class="material-icons text-base">edit</span>
+                          Editar
+                      </button>
                       <ng-container *ngIf="!isReadOnly">
-                          <button (click)="isReadOnly = true" class="px-4 py-2 text-gray-400 hover:text-white font-bold transition-colors">Cancelar</button>
-                          <button (click)="saveClise()" class="px-6 py-2 bg-[#1193d4] hover:bg-[#0c6fa1] text-white font-bold rounded-lg shadow-lg flex items-center gap-2 transition-all">
-                              <span class="material-icons text-sm">save</span> Guardar
+                          <button (click)="isReadOnly = true" class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[#9db0b9] hover:bg-[#1c2327] hover:text-white transition-colors text-xs font-semibold">
+                              <span class="material-icons text-base">close</span>
+                              Cancelar
+                          </button>
+                          <button (click)="saveClise()" class="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] text-[#00285d] font-bold shadow-md hover:brightness-110 transition-all text-xs">
+                              <span class="material-icons text-base">save</span>
+                              Guardar
                           </button>
                       </ng-container>
+                      <button (click)="closeModal()" class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[#9db0b9] hover:bg-[#1c2327] hover:text-[#ffb4ab] transition-colors text-xs font-semibold">
+                          <span class="material-icons text-base">close</span>
+                          Cerrar
+                      </button>
                   </div>
               </header>
 
               <!-- Content Body -->
-              <div class="flex flex-1 overflow-hidden font-sans">
-                  
-                  <!-- Left Scrollable Area -->
-                  <div class="w-full lg:w-2/3 overflow-y-auto custom-scrollbar border-r border-[#2a343b] bg-[#111618]">
-                      <div class="p-8 space-y-10">
+              <div class="flex-1 overflow-y-auto custom-scrollbar bg-[#0b1326]">
+                  <div class="p-6 space-y-4">
+                      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                        <div class="lg:col-span-8 space-y-4">
                           
                           <!-- General Info -->
-                          <section>
-                              <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                                  <span class="material-icons text-[#1193d4] text-xl">info</span>
-                                  Información General
-                              </h3>
-                              <div class="grid grid-cols-2 gap-x-8 gap-y-6 bg-[#1c2327]/50 p-6 rounded-xl border border-[#2a343b]">
-                                  <div class="group">
-                                      <p class="text-[#9db0b9] text-xs uppercase tracking-wider font-semibold mb-1">Cliente</p>
-                                      <input [readonly]="isReadOnly" [(ngModel)]="currentClise.cliente" class="text-white text-base font-medium bg-transparent border-b border-transparent focus:border-blue-500 outline-none w-full placeholder-gray-600" placeholder="---">
+                          <section class="space-y-4">
+                              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <div class="bg-[#1c2327] px-4 py-3 rounded-lg border-l-4 border-[#1193d4] shadow-sm">
+                                      <label class="block text-[9px] uppercase tracking-[0.2em] font-bold text-[#9db0b9] mb-1">ITEM / Identificador</label>
+                                      <input [readonly]="isReadOnly" [(ngModel)]="currentClise.item" class="w-full bg-transparent outline-none text-lg font-bold text-[#adc6ff]" placeholder="---">
                                   </div>
-                                  <div>
-                                      <p class="text-[#9db0b9] text-xs uppercase tracking-wider font-semibold mb-1">Item Relacionado</p>
-                                      <input [readonly]="isReadOnly" [(ngModel)]="currentClise.descripcion" class="text-white text-base font-medium bg-transparent border-b border-transparent focus:border-blue-500 outline-none w-full truncate placeholder-gray-600" placeholder="---">
+                                  <div class="bg-[#1c2327] px-4 py-3 rounded-lg border-l-4 border-[#b7c8e1] shadow-sm">
+                                      <label class="block text-[9px] uppercase tracking-[0.2em] font-bold text-[#9db0b9] mb-1">CLIENTE</label>
+                                      <input [readonly]="isReadOnly" [(ngModel)]="currentClise.cliente" class="w-full bg-transparent outline-none text-base font-bold text-white uppercase" placeholder="---">
                                   </div>
-                                  <div>
-                                      <p class="text-[#9db0b9] text-xs uppercase tracking-wider font-semibold mb-1">Orden de Trabajo (OT)</p>
-                                      <p class="text-white text-base font-medium">---</p>
+                                  <div class="bg-[#1c2327] px-4 py-3 rounded-lg border-l-4 border-[#4edea3] shadow-sm">
+                                      <label class="block text-[9px] uppercase tracking-[0.2em] font-bold text-[#9db0b9] mb-1">UBICACIÓN</label>
+                                      <div class="flex items-center gap-2">
+                                          <span class="material-icons text-[#4edea3] text-base">location_on</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ubicacion" class="w-full bg-transparent outline-none text-base font-bold text-white uppercase" placeholder="---">
+                                      </div>
                                   </div>
-                                  <div>
-                                      <p class="text-[#9db0b9] text-xs uppercase tracking-wider font-semibold mb-1">Fecha Ingreso</p>
-                                      <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ingreso" type="date" class="text-white text-base font-medium bg-transparent border-b border-transparent focus:border-blue-500 outline-none w-full">
-                                  </div>
+                              </div>
+
+                              <div class="bg-[#1c2327]/60 rounded-xl p-4 border border-[#2a343b]">
+                                  <label class="block text-[10px] uppercase tracking-[0.15em] font-bold text-[#9db0b9] mb-2">DESCRIPCIÓN</label>
+                                  <textarea [readonly]="isReadOnly" [(ngModel)]="currentClise.descripcion" rows="2" class="w-full bg-transparent border-none outline-none resize-none text-sm text-white leading-relaxed" placeholder="Sin descripción"></textarea>
                               </div>
                           </section>
 
                           <!-- Specs -->
-                          <section>
+                          <section class="bg-[#222a3d]/40 rounded-xl p-4">
                               <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
                                   <span class="material-icons text-[#1193d4] text-xl">settings</span>
                                   Especificaciones Técnicas
                               </h3>
-                              <div class="bg-[#1c2327]/50 rounded-xl border border-[#2a343b] divide-y divide-[#2a343b]">
-                                  <div class="grid grid-cols-3 p-4">
-                                      <div class="px-2">
-                                          <p class="text-[#9db0b9] text-xs font-normal">N° FICHA FLER</p>
-                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.n_ficha_fler" class="text-white text-sm font-medium mt-1 bg-transparent w-full outline-none" placeholder="---">
+                              <div class="grid grid-cols-2 md:grid-cols-5 gap-y-4 gap-x-3">
+                                  
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">Z</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.z" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="---">
                                       </div>
-                                      <div class="px-2 border-l border-[#2a343b]">
-                                          <p class="text-[#9db0b9] text-xs font-normal">RODILLO (Z)</p>
-                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.z" class="text-white text-sm font-medium mt-1 bg-transparent w-full outline-none" placeholder="---">
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">ESTÁNDAR</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.estandar" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="---">
                                       </div>
-                                      <div class="px-2 border-l border-[#2a343b]">
-                                          <p class="text-[#9db0b9] text-xs font-normal">TIPO IMPRESIÓN</p>
-                                          <p class="text-white text-sm font-medium mt-1">Flexografía</p>
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">MEDIDAS</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.medidas" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="---">
                                       </div>
-                                  </div>
-                                  <div class="grid grid-cols-3 p-4">
-                                      <div class="px-2">
-                                          <p class="text-[#9db0b9] text-xs font-normal">ANCHO</p>
-                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ancho" class="text-white text-sm font-medium mt-1 bg-transparent w-16 outline-none" placeholder="0"> mm
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">TROQUEL</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.troquel" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="---">
                                       </div>
-                                      <div class="px-2 border-l border-[#2a343b]">
-                                          <p class="text-[#9db0b9] text-xs font-normal">AVANCE</p>
-                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.avance" class="text-white text-sm font-medium mt-1 bg-transparent w-16 outline-none" placeholder="0"> mm
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">ESPESOR</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.espesor" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="---">
                                       </div>
-                                      <div class="px-2 border-l border-[#2a343b]">
-                                          <p class="text-[#9db0b9] text-xs font-normal">DISTORSIÓN</p>
-                                          <p class="text-white text-sm font-medium mt-1">---</p>
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">ANCHO</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ancho" type="number" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="0">
                                       </div>
-                                  </div>
-                                  <div class="grid grid-cols-3 p-4">
-                                      <div class="px-2">
-                                          <p class="text-[#9db0b9] text-xs font-normal">COLORES</p>
-                                          <div class="flex gap-1 mt-1 flex-wrap">
-                                               <!-- Placeholder if no data, text input if needed -->
-                                              <input [readonly]="isReadOnly" [(ngModel)]="currentClise.colores" class="text-white text-sm font-medium bg-transparent w-full outline-none" placeholder="---">
-                                          </div>
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">AVANCE</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.avance" type="number" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="0">
                                       </div>
-                                      <div class="px-2 border-l border-[#2a343b]">
-                                          <p class="text-[#9db0b9] text-xs font-normal">ACABADO</p>
-                                          <p class="text-white text-sm font-medium mt-1">---</p>
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">COL</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.col" type="number" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="0">
                                       </div>
-                                      <div class="px-2 border-l border-[#2a343b]">
-                                          <p class="text-[#9db0b9] text-xs font-normal">TIPO MATERIAL</p>
-                                          <p class="text-white text-sm font-medium mt-1">---</p>
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">REP</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.rep" type="number" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="0">
                                       </div>
-                                  </div>
+                                      <div class="space-y-1">
+                                          <span class="text-[10px] uppercase tracking-wider text-[#9db0b9]">CANTIDAD</span>
+                                          <input [readonly]="isReadOnly" [(ngModel)]="currentClise.n_clises" type="number" class="w-full bg-transparent outline-none text-sm font-semibold text-white" placeholder="0">
+                                      </div>
                               </div>
                           </section>
 
-                          <!-- Metrics -->
+                          <!-- Operational Info -->
                           <section>
                               <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
                                   <span class="material-icons text-[#1193d4] text-xl">analytics</span>
-                                  Métricas de Uso
+                                  Información Operativa
                               </h3>
                               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div class="bg-[#1c2327]/50 p-5 rounded-xl border border-[#2a343b] flex flex-col gap-3">
-                                      <div class="flex items-center justify-between mb-1">
-                                          <div class="flex items-center gap-2">
-                                              <div class="p-1.5 bg-blue-500/10 rounded-md text-blue-400">
-                                                  <span class="material-icons text-lg">straighten</span>
-                                              </div>
-                                              <p class="text-[#9db0b9] text-xs uppercase font-semibold tracking-wide">Metros Acumulados</p>
+                                  <div class="bg-[#1c2327]/50 rounded-xl border border-[#2a343b] p-4">
+                                      <h4 class="text-[10px] font-bold text-[#b7c8e1] uppercase tracking-[0.15em] mb-3">Datos Operativos</h4>
+                                      <div class="grid grid-cols-1 gap-2">
+                                          <div class="flex justify-between items-center text-xs border-b border-[#2a343b] pb-1">
+                                              <span class="text-[#9db0b9]">INGRESO</span>
+                                              <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ingreso" class="bg-transparent outline-none text-right font-medium text-white w-40" placeholder="---">
                                           </div>
-                                          <span class="text-[10px] text-[#9db0b9] bg-[#2a343b] px-1.5 py-0.5 rounded">Total: {{ (currentClise.mtl_acum || 0) / 1000 | number:'1.1-1' }}km</span>
-                                      </div>
-                                      
-                                      <div class="space-y-3">
-                                          <!-- Real Data Loop -->
-                                          <ng-container *ngIf="currentClise.colorUsage && currentClise.colorUsage.length > 0; else noColorData">
-                                              <div *ngFor="let color of currentClise.colorUsage" class="flex items-center justify-between text-sm group">
-                                                  <div class="flex items-center gap-3">
-                                                      <div class="w-3 h-3 rounded-full ring-2 ring-opacity-20" [ngStyle]="{'background-color': getColorHex(color.name), '--tw-ring-color': getColorHex(color.name)}"></div>
-                                                      <span class="text-white font-medium">{{ color.name }}</span>
-                                                  </div>
-                                                  <div class="flex items-center gap-4 flex-1 justify-end">
-                                                      <div class="w-24 h-1.5 bg-[#2a343b] rounded-full overflow-hidden">
-                                                          <!-- Calculate width relative to max or total if needed, here just 100 for simplicity or logic -->
-                                                          <div class="h-full rounded-full w-full" [style.background-color]="getColorHex(color.name)"></div>
-                                                      </div>
-                                                      <span class="text-white font-mono min-w-[60px] text-right">{{ color.meters | number }} m</span>
-                                                  </div>
-                                              </div>
-                                          </ng-container>
-                                          <ng-template #noColorData>
-                                              <div class="text-center p-4 text-gray-500 text-xs italic">
-                                                  No hay desglose por color registrado.
-                                              </div>
-                                          </ng-template>
+                                          <div class="flex justify-between items-center text-xs border-b border-[#2a343b] pb-1">
+                                              <span class="text-[#9db0b9]">MAQ</span>
+                                              <input [readonly]="isReadOnly" [(ngModel)]="currentClise.maq" class="bg-transparent outline-none text-right font-medium text-white w-40" placeholder="---">
+                                          </div>
+                                          <div class="flex justify-between items-center text-xs border-b border-[#2a343b] pb-1">
+                                              <span class="text-[#9db0b9]">N° FICHA FLER</span>
+                                              <input [readonly]="isReadOnly" [(ngModel)]="currentClise.n_ficha_fler" class="bg-transparent outline-none text-right font-medium text-white w-40" placeholder="---">
+                                          </div>
+                                          <div class="flex justify-between items-center text-xs">
+                                              <span class="text-[#9db0b9]">MTL ACUM.</span>
+                                              <input [readonly]="isReadOnly" [(ngModel)]="currentClise.mtl_acum" type="number" class="bg-transparent outline-none text-right font-bold text-[#4edea3] w-40" placeholder="0">
+                                          </div>
                                       </div>
                                   </div>
-                                  
-                                  <div class="bg-[#1c2327]/50 p-4 rounded-xl border border-[#2a343b] flex items-center gap-4">
-                                      <div class="p-3 bg-purple-500/10 rounded-lg text-purple-400">
-                                          <span class="material-icons">loop</span>
+
+                                  <div class="bg-[#1c2327]/50 rounded-xl border border-[#2a343b] p-4">
+                                      <h4 class="text-[10px] font-bold text-[#b7c8e1] uppercase tracking-[0.15em] mb-3">COLORES</h4>
+                                      <div class="flex flex-wrap gap-1.5 mb-3">
+                                          <span *ngFor="let tag of cliseColorTags" class="px-2 py-0.5 bg-[#2d3449] rounded text-[9px] font-bold border border-[#424754]/10 text-[#dae2fd]">
+                                              {{ tag }}
+                                          </span>
+                                          <span *ngIf="cliseColorTags.length === 0" class="text-xs italic text-[#9db0b9]">
+                                              Sin colores registrados.
+                                          </span>
                                       </div>
-                                      <div>
-                                          <p class="text-[#9db0b9] text-xs uppercase">Ciclos de Impresión</p>
-                                          <p class="text-2xl font-bold text-white tracking-tight">--- <span class="text-sm text-[#9db0b9] font-normal">órdenes</span></p>
-                                      </div>
+                                      <textarea [readonly]="isReadOnly" [(ngModel)]="currentClise.colores" rows="2" class="w-full bg-transparent border-none outline-none resize-none text-sm font-medium text-white" placeholder="---"></textarea>
                                   </div>
                               </div>
                           </section>
 
                           <!-- Dies -->
-                          <section>
+                          <section class="bg-[#222a3d]/40 rounded-xl p-4" [ngClass]="activeDetailTab === 'metrics' ? 'ring-1 ring-[#adc6ff]/35' : ''">
                               <div class="flex items-center justify-between mb-4">
                                   <h3 class="text-lg font-bold text-white flex items-center gap-2">
                                       <span class="material-icons text-[#1193d4] text-xl">content_cut</span>
@@ -491,7 +541,7 @@ import { ExcelService } from '../../../services/excel.service';
                           </section>
 
                           <!-- History -->
-                          <section>
+                          <section class="bg-[#222a3d]/40 rounded-xl p-4" [ngClass]="activeDetailTab === 'metrics' ? 'ring-1 ring-[#adc6ff]/35' : ''">
                               <div class="flex items-center justify-between mb-4">
                                   <h3 class="text-lg font-bold text-white flex items-center gap-2">
                                       <span class="material-icons text-[#1193d4] text-xl">history</span>
@@ -532,10 +582,10 @@ import { ExcelService } from '../../../services/excel.service';
                           </section>
 
                           <!-- Notes -->
-                          <section class="pb-10">
+                          <section class="pb-2">
                               <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
                                   <span class="material-icons text-[#1193d4] text-xl">sticky_note_2</span>
-                                  Observaciones
+                                  Observaciones (OBS)
                               </h3>
                               <div class="bg-yellow-500/5 border border-yellow-500/20 p-4 rounded-lg">
                                   <textarea [readonly]="isReadOnly" [(ngModel)]="currentClise.obs" class="w-full bg-transparent border-none text-yellow-100/80 text-sm leading-relaxed outline-none resize-none" rows="3" placeholder="Sin observaciones."></textarea>
@@ -546,42 +596,48 @@ import { ExcelService } from '../../../services/excel.service';
                   </div>
 
                   <!-- Right Sidebar -->
-                  <div class="w-full lg:w-1/3 bg-[#161b1e] flex flex-col h-full border-l border-[#2a343b] overflow-y-auto custom-scrollbar">
-                      <div class="p-6 flex flex-col gap-6">
-                          
-                          <!-- Preview Box -->
-                          <div class="flex flex-col gap-3">
-                              <div class="flex justify-between items-center">
-                                  <p class="text-white text-sm font-bold uppercase tracking-wider">Vista Previa</p>
-                                  <button class="text-xs text-[#1193d4] hover:text-[#0c6fa1] font-medium flex items-center gap-1">
-                                      <span class="material-icons text-sm">download</span> PDF
-                                  </button>
+                  <div class="lg:col-span-4 flex flex-col gap-4">
+                          <div class="bg-[#1c2327]/40 rounded-xl p-4 h-full flex flex-col">
+                              <h4 class="text-[10px] font-bold text-[#1193d4] uppercase tracking-[0.15em] mb-3">Referencia Visual</h4>
+                              <div class="flex-1 bg-[#0d1113] rounded-lg overflow-hidden relative group border border-[#2a343b] min-h-[220px]">
+                                  <img [src]="currentClise.imagen || ('https://picsum.photos/seed/' + currentClise.id + '/400/400')" class="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-all duration-500" alt="Vista previa del clisé">
+                                  <div class="absolute inset-0 bg-gradient-to-t from-[#111618]/70 via-transparent to-transparent"></div>
+                                  <div class="absolute bottom-2 left-2 right-2">
+                                      <div class="bg-[#31394d]/80 backdrop-blur-md px-2 py-1.5 rounded flex items-center justify-between">
+                                          <span class="text-[8px] font-bold text-white">VISTA PREVIA</span>
+                                          <button (click)="printCliseLabel()" class="hover:text-[#1193d4] transition-colors">
+                                              <span class="material-icons text-sm">zoom_in</span>
+                                          </button>
+                                      </div>
+                                  </div>
                               </div>
-                              <div class="w-full aspect-square bg-[#1c2327] rounded-xl border border-[#2a343b] flex items-center justify-center relative overflow-hidden group">
-                                  <img [src]="'https://picsum.photos/seed/' + currentClise.id + '/400/400'" class="absolute inset-0 w-full h-full object-cover opacity-70 transition-transform duration-500 group-hover:scale-110" alt="Preview">
-                                  <div class="absolute inset-0 bg-gradient-to-t from-[#1c2327] via-transparent to-transparent opacity-80"></div>
-                                  <div class="absolute bottom-4 left-4">
-                                      <span class="px-2 py-1 bg-black/60 backdrop-blur-md rounded text-xs text-white border border-white/10">v{{ currentClise.n_clises || 1 }}.0</span>
+                              <div class="mt-3 grid grid-cols-2 gap-2">
+                                  <div class="bg-[#2a343b]/30 p-2 rounded border border-[#2a343b] text-center">
+                                      <p class="text-[8px] text-[#9db0b9] uppercase mb-0.5">Última Revisión</p>
+                                      <p class="text-[10px] font-bold text-white">{{ lastHistoryEntry?.date || 'Sin historial' }}</p>
+                                  </div>
+                                  <div class="bg-[#2a343b]/30 p-2 rounded border border-[#2a343b] text-center">
+                                      <p class="text-[8px] text-[#9db0b9] uppercase mb-0.5">Estado Físico</p>
+                                      <div class="flex items-center justify-center gap-1" [ngClass]="getPhysicalStateClass()">
+                                          <span class="material-icons text-[10px]">verified</span>
+                                          <p class="text-[10px] font-bold">{{ getPhysicalStateLabel() }}</p>
+                                      </div>
                                   </div>
                               </div>
                           </div>
 
-                          <div class="h-px bg-[#2a343b] w-full"></div>
-
-                          <!-- Location -->
                           <div class="flex flex-col gap-3">
                               <div class="flex justify-between items-center mb-1">
                                   <p class="text-white text-sm font-bold uppercase tracking-wider">Ubicación Física</p>
                                   <span class="text-xs bg-[#1c2327] px-2 py-1 rounded text-[#9db0b9] border border-[#2a343b]">
-                                      Planta Monterrey
+                                      {{ currentClise.troquel || 'Sin troquel' }}
                                   </span>
                               </div>
                               <div class="bg-[#1c2327] rounded-xl p-4 border border-[#2a343b] flex flex-col gap-4">
                                   <div class="flex justify-between text-xs text-[#9db0b9] mb-1">
                                       <span>Estante {{ (currentClise.ubicacion || '---').split('-')[0] }}</span>
-                                      <span>---</span>
+                                      <span>{{ currentClise.ubicacion || '---' }}</span>
                                   </div>
-                                  <!-- Visual Grid Placeholder (Static representation) -->
                                   <div class="grid grid-cols-4 gap-2 w-full aspect-video">
                                       <div *ngFor="let box of [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]" 
                                            class="rounded flex items-center justify-center text-[10px] bg-[#2a343b] text-[#4a5e69]">
@@ -589,20 +645,34 @@ import { ExcelService } from '../../../services/excel.service';
                                       </div>
                                   </div>
                                   <div class="text-xs text-[#9db0b9] text-center mt-1">
-                                      Posición Actual: <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ubicacion" class="bg-transparent border-b border-[#1193d4] text-white font-mono w-16 text-center outline-none">
+                                      Posición Actual: <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ubicacion" class="bg-transparent border-b border-[#1193d4] text-white font-mono w-28 text-center outline-none">
                                   </div>
                               </div>
                           </div>
 
-                          <div class="mt-auto pt-6">
+                          <div>
                               <button *ngIf="isReadOnly" (click)="printCliseLabel()" class="w-full bg-[#1193d4] hover:bg-[#0c6fa1] text-white font-bold py-4 px-6 rounded-lg shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98]">
                                   <span class="material-icons">print</span>
                                   Imprimir Etiqueta ID
                               </button>
                           </div>
-                      </div>
                   </div>
 
+              </div>
+
+              <div class="px-6 py-2.5 bg-[#0d1113] border-t border-[#2a343b] flex flex-wrap justify-between items-center gap-3">
+                  <div class="flex items-center gap-4">
+                      <div class="flex items-center gap-1.5">
+                          <span class="w-2 h-2 rounded-full" [ngClass]="getStatusDotClass(currentClise)"></span>
+                          <span class="text-[9px] font-bold text-[#9db0b9] uppercase tracking-tight">{{ getStatusLabel(currentClise) }}</span>
+                      </div>
+                      <div class="text-[9px] text-[#9db0b9]/70">
+                          ID: <span class="font-mono text-white">{{ currentClise.id || 'Sin ID' }}</span>
+                      </div>
+                  </div>
+                  <div class="text-[9px] text-[#9db0b9] italic">
+                      Actualizado por: <span class="font-bold text-white">{{ lastHistoryEntry?.user || 'Sistema' }}</span>
+                  </div>
               </div>
           </div>
       </div>
@@ -641,7 +711,7 @@ import { ExcelService } from '../../../services/excel.service';
                         {{ conflictsData.length }} Conflictos Detectados
                     </div>
                     <p class="text-xs text-slate-500 ml-auto italic">
-                        Los registros con conflictos (falta de código o cliente) se marcarán para revisión manual.
+                        Todos los registros se importarán. Los conflictos quedarán marcados para revisión manual.
                     </p>
                 </div>
 
@@ -651,6 +721,12 @@ import { ExcelService } from '../../../services/excel.service';
                         <div class="w-14 h-14 rounded-full border-4 border-slate-700 border-t-blue-500 animate-spin mb-4"></div>
                         <h3 class="text-lg font-bold text-white">Importando clisés...</h3>
                         <p class="text-sm text-slate-400 mt-1">{{ importProgressText || 'No cierres esta ventana hasta que finalice.' }}</p>
+                        <div class="w-full max-w-md mt-4 px-6">
+                            <div class="h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                                <div class="h-full bg-blue-500 transition-all duration-300" [style.width.%]="importProgressPercent"></div>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-2 text-center">{{ importProgressPercent }}% completado</p>
+                        </div>
                     </div>
                     <table class="w-full text-sm text-left border-collapse">
                         <thead class="text-xs text-slate-400 uppercase bg-[#0f172a] sticky top-0 z-10 font-bold tracking-wider">
@@ -707,7 +783,15 @@ import { ExcelService } from '../../../services/excel.service';
       </div>
 
     </div>
-  `
+  `,
+  styles: [`
+    .gauge-svg { transform: rotate(-90deg); }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #131b2e; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #2d3449; border-radius: 999px; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+  `]
 })
 export class InventoryCliseComponent implements OnInit, OnDestroy {
   inventoryService = inject(InventoryService);
@@ -717,7 +801,16 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
   Math = Math;
 
   cliseItems: CliseItem[] = [];
+  searchInput = '';
   searchTerm = '';
+  filterColumnInput = '';
+  filterColumn = '';
+  filterZInput = '';
+  filterZ = '';
+  filterEspesorInput = '';
+  filterEspesor = '';
+  filterMeasureInput = '';
+  filterMeasure = '';
   currentPage = 1;
   pageSize = 20;
   
@@ -730,6 +823,9 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
   // Import State
  isLoading = false;
  isImporting = false;
+ loadingProgress = 0;
+ loadingStatusText = 'Preparando archivo...';
+ importProgressPercent = 0;
  importProgressText = '';
  showImportPreviewModal = false;
   previewData: CliseItem[] = [];
@@ -739,6 +835,7 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
   dieSearchTerm = '';
   dieSearchResults: DieItem[] = [];
   private cliseItemsSubscription?: Subscription;
+  private loadingProgressInterval?: number;
 
   async ngOnInit() {
     this.cliseItemsSubscription = this.inventoryService.cliseItems$.subscribe((items) => {
@@ -761,21 +858,72 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.cliseItemsSubscription?.unsubscribe();
+    this.stopLoadingProgressSimulation();
   }
 
   get paginatedCliseList() {
     const start = (this.currentPage - 1) * this.pageSize;
-    const term = this.searchTerm.toLowerCase();
-    const filtered = this.cliseItems.filter(i => 
-        (this.searchTerm === '' || i.item.toLowerCase().includes(term) || i.descripcion.toLowerCase().includes(term))
-    );
-    return filtered.slice(start, start + this.pageSize);
+    return this.filteredCliseList.slice(start, start + this.pageSize);
   }
 
-  get totalItems() { return this.cliseItems.length; }
-  get totalPages() { return Math.ceil(this.totalItems / this.pageSize); }
-  get showingStart() { return (this.currentPage - 1) * this.pageSize + 1; }
+  get filteredCliseList() {
+    const term = this.searchTerm.toLowerCase().trim();
+    return this.cliseItems.filter((item) => {
+      const matchesSearch = !term
+        || item.item.toLowerCase().includes(term)
+        || item.cliente.toLowerCase().includes(term)
+        || item.descripcion.toLowerCase().includes(term);
+      const matchesColumn = !this.filterColumn || String(item.col ?? '').trim() === this.filterColumn;
+      const matchesZ = !this.filterZ || item.z === this.filterZ;
+      const matchesEspesor = !this.filterEspesor || item.espesor === this.filterEspesor;
+      const matchesMeasure = !this.filterMeasure || this.getMeasureCategory(item) === this.filterMeasure;
+
+      return matchesSearch && matchesColumn && matchesZ && matchesEspesor && matchesMeasure;
+    });
+  }
+
+  get totalItems() { return this.filteredCliseList.length; }
+  get totalPages() { return Math.ceil(this.totalItems / this.pageSize) || 1; }
+  get showingStart() { return this.totalItems === 0 ? 0 : (this.currentPage - 1) * this.pageSize + 1; }
   get showingEnd() { return Math.min(this.currentPage * this.pageSize, this.totalItems); }
+  get uniqueColumnOptions() {
+      return [...new Set(this.cliseItems.map((item) => String(item.col ?? '').trim()).filter(Boolean))].sort((a, b) => Number(a) - Number(b));
+  }
+
+  get uniqueZOptions() {
+      return [...new Set(this.cliseItems.map((item) => item.z).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }
+
+  get uniqueEspesorOptions() {
+      return [...new Set(this.cliseItems.map((item) => item.espesor).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }
+
+  get measureOptions() {
+      return [
+        { value: 'small', label: 'Pequeño' },
+        { value: 'medium', label: 'Mediano' },
+        { value: 'large', label: 'Grande' },
+      ];
+  }
+
+  get paginationSequence(): Array<number | 'ellipsis'> {
+      if (this.totalPages <= 5) {
+          return Array.from({ length: this.totalPages }, (_, index) => index + 1);
+      }
+
+      const pages = new Set<number>([1, this.totalPages, this.currentPage - 1, this.currentPage, this.currentPage + 1]);
+      const orderedPages = [...pages].filter((page) => page >= 1 && page <= this.totalPages).sort((a, b) => a - b);
+      const sequence: Array<number | 'ellipsis'> = [];
+
+      orderedPages.forEach((page, index) => {
+          if (index > 0 && page - orderedPages[index - 1] > 1) {
+              sequence.push('ellipsis');
+          }
+          sequence.push(page);
+      });
+
+      return sequence;
+  }
 
   get stats() {
       const list = this.cliseItems;
@@ -854,14 +1002,42 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
       return '#94a3b8'; // Default slate
   }
 
+  applyFilters() {
+      this.searchTerm = this.searchInput.trim();
+      this.filterColumn = this.filterColumnInput;
+      this.filterZ = this.filterZInput;
+      this.filterEspesor = this.filterEspesorInput;
+      this.filterMeasure = this.filterMeasureInput;
+      this.currentPage = 1;
+  }
+
+  resetFilters() {
+      this.searchInput = '';
+      this.searchTerm = '';
+      this.filterColumnInput = '';
+      this.filterColumn = '';
+      this.filterZInput = '';
+      this.filterZ = '';
+      this.filterEspesorInput = '';
+      this.filterEspesor = '';
+      this.filterMeasureInput = '';
+      this.filterMeasure = '';
+      this.currentPage = 1;
+  }
+
   changePage(dir: 'prev' | 'next') {
       if(dir === 'next' && this.currentPage < this.totalPages) this.currentPage++;
       if(dir === 'prev' && this.currentPage > 1) this.currentPage--;
   }
 
+  goToPage(page: number) {
+      this.currentPage = Math.min(Math.max(page, 1), this.totalPages);
+  }
+
   // --- CRUD ---
   openModal(item: any, mode: 'view' | 'edit') {
       this.isReadOnly = mode === 'view';
+      this.activeDetailTab = 'general';
       if (item) this.currentClise = JSON.parse(JSON.stringify(item));
       else this.currentClise = { item: '', linkedDies: [], id: Math.random().toString(36).substr(2, 9) };
       this.showCliseForm = true;
@@ -871,6 +1047,11 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
       this.showCliseForm = false;
       this.dieSearchTerm = '';
       this.dieSearchResults = [];
+  }
+
+  openHistory(item: CliseItem) {
+      this.openModal(item, 'view');
+      this.activeDetailTab = 'metrics';
   }
 
   saveClise() {
@@ -897,7 +1078,8 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
       <head>
         <title>Etiqueta ${c.item}</title>
         <style>
-          body { font-family: 'Arial', sans-serif; padding: 20px; text-align: center; }
+          :root { --app-font-stack: sans-serif, 'Inter', system-ui; }
+          body { font-family: var(--app-font-stack); padding: 20px; text-align: center; }
           .label { border: 2px solid black; padding: 20px; width: 300px; margin: 0 auto; }
           h1 { margin: 0 0 10px; font-size: 24px; }
           p { margin: 5px 0; font-size: 14px; }
@@ -924,14 +1106,26 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
     if (!file) return;
 
     this.isLoading = true;
+    this.loadingProgress = 4;
+    this.loadingStatusText = 'Preparando archivo para analisis...';
     this.cdr.detectChanges();
+    this.startLoadingProgressSimulation();
+    await this.waitForNextPaint();
 
     this.ngZone.runOutsideAngular(async () => {
       try {
-        await new Promise(resolve => setTimeout(resolve, 300)); 
+        this.ngZone.run(() => {
+          this.loadingProgress = Math.max(this.loadingProgress, 12);
+          this.loadingStatusText = 'Leyendo archivo Excel...';
+          this.cdr.detectChanges();
+        });
+        await new Promise(resolve => setTimeout(resolve, 120));
         const rawData = await this.excelService.readExcel(file);
         
         this.ngZone.run(() => {
+            this.stopLoadingProgressSimulation();
+            this.loadingProgress = 100;
+            this.loadingStatusText = 'Archivo procesado. Preparando previsualizacion...';
             const { valid, conflicts } = this.inventoryService.normalizeCliseData(rawData);
             this.previewData = valid;
             this.conflictsData = conflicts;
@@ -941,10 +1135,13 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
         });
       } catch (error: any) {
         this.ngZone.run(() => {
+            this.stopLoadingProgressSimulation();
             console.error('Error importing:', error);
             alert(`Error al leer el archivo: ${error.message}`);
             this.isLoading = false;
             event.target.value = '';
+            this.loadingProgress = 0;
+            this.loadingStatusText = 'Preparando archivo...';
         });
       }
     });
@@ -952,26 +1149,27 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
 
   async confirmImport() {
       if (this.isImporting) return;
-      if (this.previewData.length === 0) {
-        alert('No hay registros validos para importar. Revisa los conflictos detectados en el archivo.');
-        return;
-      }
+      const itemsToImport = [...this.conflictsData, ...this.previewData];
+      if (itemsToImport.length === 0) return;
 
      this.isImporting = true;
+     this.importProgressPercent = 0;
      this.importProgressText = 'Preparando lotes de importacion...';
      this.cdr.detectChanges();
+     await this.waitForNextPaint();
 
       try {
          const result = await this.inventoryService.importClises(
-             this.previewData,
+             itemsToImport,
              ({ currentBatch, totalBatches, processedItems, totalItems }) => {
+                 this.importProgressPercent = Math.max(5, Math.round((processedItems / Math.max(totalItems, 1)) * 100));
                  this.importProgressText = `Lote ${currentBatch} de ${totalBatches} importado (${processedItems}/${totalItems} registros).`;
                  this.cdr.detectChanges();
              },
          );
-          const omittedItems = this.conflictsData.length + result.skipped;
-          const summary = omittedItems > 0
-            ? `Se importaron ${result.imported} registros. ${omittedItems} filas con conflictos no se importaron.`
+          this.importProgressPercent = 100;
+          const summary = result.conflicts > 0
+            ? `Se importaron ${result.imported} registros. ${result.conflicts} quedaron marcados para revision.`
             : `Se importaron ${result.imported} registros.`;
           alert(summary);
           this.cancelImport();
@@ -979,6 +1177,7 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
           alert(`Error al importar: ${error?.message || 'No se pudo completar la importación.'}`);
      } finally {
          this.isImporting = false;
+         this.importProgressPercent = 0;
          this.importProgressText = '';
          this.cdr.detectChanges();
      }
@@ -987,8 +1186,107 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
   cancelImport() {
       if (this.isImporting) return;
       this.showImportPreviewModal = false;
+      this.importProgressPercent = 0;
       this.importProgressText = '';
       this.previewData = [];
       this.conflictsData = [];
+  }
+
+  private startLoadingProgressSimulation() {
+      this.stopLoadingProgressSimulation();
+      this.loadingProgressInterval = window.setInterval(() => {
+          this.ngZone.run(() => {
+              if (!this.isLoading) {
+                  this.stopLoadingProgressSimulation();
+                  return;
+              }
+
+              this.loadingProgress = Math.min(this.loadingProgress + 4, 90);
+              this.loadingStatusText = this.loadingProgress >= 70
+                ? 'Validando columnas y preparando la previsualizacion...'
+                : 'Leyendo hojas y normalizando registros...';
+              this.cdr.detectChanges();
+          });
+      }, 180);
+  }
+
+  private stopLoadingProgressSimulation() {
+      if (this.loadingProgressInterval !== undefined) {
+          window.clearInterval(this.loadingProgressInterval);
+          this.loadingProgressInterval = undefined;
+      }
+  }
+
+  private waitForNextPaint() {
+      return new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+  }
+
+  get lastHistoryEntry() {
+      return this.currentClise.history && this.currentClise.history.length > 0
+        ? this.currentClise.history[0]
+        : null;
+  }
+
+  get cliseColorTags() {
+      const raw = this.currentClise.colores || '';
+      return raw
+        .split(/[;,/]+/)
+        .flatMap((part) => part.split(','))
+        .map((part) => part.trim())
+        .filter(Boolean);
+  }
+
+  getPhysicalStateLabel() {
+      if (this.currentClise.hasConflict) return 'REVISAR';
+      if ((this.currentClise.mtl_acum || 0) >= 500000) return 'MANT.';
+      return 'ÓPTIMO';
+  }
+
+  getPhysicalStateClass() {
+      if (this.currentClise.hasConflict) return 'text-[#ff8a80]';
+      if ((this.currentClise.mtl_acum || 0) >= 500000) return 'text-[#ffb4ab]';
+      return 'text-[#4edea3]';
+  }
+
+  trackByCliseId(_: number, item: CliseItem) {
+      return item.id;
+  }
+
+  getDisplayMeasure(item: CliseItem) {
+      if (item.medidas) return item.medidas;
+      if (item.ancho || item.avance) {
+          return `${item.ancho || '-'} x ${item.avance || '-'}`;
+      }
+      return 'Sin medida';
+  }
+
+  getStatusLabel(item: Partial<CliseItem>) {
+      if (item.hasConflict) return 'Revisar';
+      if ((item.mtl_acum || 0) >= 500000) return 'Mantenimiento';
+      return 'Listo para Uso';
+  }
+
+  getStatusBadgeClass(item: Partial<CliseItem>) {
+      if (item.hasConflict) return 'bg-[#ff5252]/10 text-[#ff5252]';
+      if ((item.mtl_acum || 0) >= 500000) return 'bg-[#ff5252]/10 text-[#ff8a80]';
+      return 'bg-[#00e676]/10 text-[#00e676]';
+  }
+
+  getStatusDotClass(item: Partial<CliseItem>) {
+      if (item.hasConflict) return 'bg-[#ff5252]';
+      if ((item.mtl_acum || 0) >= 500000) return 'bg-[#ff8a80]';
+      return 'bg-[#00e676]';
+  }
+
+  private getMeasureCategory(item: CliseItem) {
+      const width = item.ancho || 0;
+      const advance = item.avance || 0;
+      const area = width * advance;
+
+      if (area <= 120000) return 'small';
+      if (area <= 350000) return 'medium';
+      return 'large';
   }
 }

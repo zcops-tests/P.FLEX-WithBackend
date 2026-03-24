@@ -182,14 +182,24 @@ export function toFrontendClise(clise: any) {
     : typeof clise.raw_payload?.colores === 'string'
       ? String(clise.raw_payload.colores).split(',').map((entry: string) => entry.trim()).filter(Boolean)
       : [];
+  const displayItemCode = typeof clise.raw_payload?.display_item_code === 'string'
+    ? String(clise.raw_payload.display_item_code).trim()
+    : String(clise.item_code || '').trim();
+  const hasConflict = Boolean(
+    clise.raw_payload?.import_conflict
+    || !displayItemCode
+    || !String(clise.cliente || '').trim(),
+  );
 
   return {
     ...clise,
-    item: clise.item_code,
+    item: displayItemCode,
+    backend_item_code: clise.item_code,
+    hasConflict,
     z: clise.z_value || '',
     medidas: clise.raw_payload?.medidas || [clise.ancho_mm, clise.avance_mm].filter((value) => value !== null && value !== undefined).join(' x '),
-    troquel: clise.die_links?.[0]?.die?.serie || clise.raw_payload?.troquel || '',
-    linkedDies: (clise.die_links || []).map((link: any) => link.die?.serie).filter(Boolean),
+    troquel: clise.die_links?.[0]?.die?.raw_payload?.display_serie || clise.die_links?.[0]?.die?.serie || clise.raw_payload?.troquel || '',
+    linkedDies: (clise.die_links || []).map((link: any) => link.die?.raw_payload?.display_serie || link.die?.serie).filter(Boolean),
     ancho: toNumber(clise.ancho_mm),
     avance: toNumber(clise.avance_mm),
     col: clise.columnas ?? null,
@@ -226,9 +236,21 @@ export function toFrontendClise(clise: any) {
 }
 
 export function toFrontendDie(die: any) {
+  const displaySerie = typeof die.raw_payload?.display_serie === 'string'
+    ? String(die.raw_payload.display_serie).trim()
+    : String(die.serie || '').trim();
+  const hasConflict = Boolean(
+    die.raw_payload?.import_conflict
+    || !displaySerie
+    || !String(die.cliente || '').trim(),
+  );
+
   return {
     ...die,
-    linkedClises: (die.clise_links || []).map((link: any) => link.clise?.item_code).filter(Boolean),
+    serie: displaySerie,
+    backend_serie: die.serie,
+    hasConflict,
+    linkedClises: (die.clise_links || []).map((link: any) => link.clise?.raw_payload?.display_item_code || link.clise?.item_code).filter(Boolean),
     z: die.z_value || '',
     ingreso: toDateString(die.fecha_ingreso),
     sep_ava: die.separacion_avance || '',

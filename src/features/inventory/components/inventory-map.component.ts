@@ -1,6 +1,7 @@
 
-import { Component, inject } from '@angular/core';
+import { Component, inject, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { InventoryService } from '../services/inventory.service';
 import { RackConfig, RackBox } from '../models/inventory.models';
 
@@ -119,12 +120,15 @@ import { RackConfig, RackBox } from '../models/inventory.models';
 })
 export class InventoryMapComponent {
   inventoryService = inject(InventoryService);
+  destroyRef = inject(DestroyRef);
   layoutData: RackConfig[] = [];
   selectedBox: RackBox | null = null;
   activeTab: 'clise' | 'die' = 'clise';
 
   constructor() {
-    this.inventoryService.layoutData$.subscribe(data => this.layoutData = data);
+    this.inventoryService.layoutData$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(data => this.layoutData = data);
   }
 
   get cliseRacks() {

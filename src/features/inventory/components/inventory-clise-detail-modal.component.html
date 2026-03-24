@@ -1,0 +1,369 @@
+<div class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-[#060e20]/90 backdrop-blur-md" role="dialog" aria-modal="true">
+  <div class="w-full max-w-5xl max-h-[972px] bg-[#131b2e] rounded-xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col border border-[#424754]/10 overflow-hidden animate-fadeIn">
+    <div class="px-6 py-3 bg-[#171f33] flex justify-between items-center gap-4 border-b border-[#424754]/10">
+      <div class="flex items-center gap-2 min-w-0">
+        <div class="bg-[#adc6ff]/10 p-1.5 rounded-lg">
+          <span class="material-icons text-[#adc6ff] text-xl">precision_manufacturing</span>
+        </div>
+        <h3 class="truncate text-lg font-bold tracking-tight text-[#dae2fd]">
+          {{ currentClise.descripcion || currentClise.item || 'Detalle de Clisé' }}
+        </h3>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          (click)="closeRequested.emit()"
+          class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[#c2c6d6] hover:bg-[#2d3449] transition-all text-xs font-semibold">
+          <span class="material-icons text-base">close</span>
+          Cerrar
+        </button>
+
+        <button
+          *ngIf="isReadOnly"
+          (click)="setEditMode(false)"
+          class="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] text-[#00285d] font-bold shadow-md hover:brightness-110 active:scale-95 transition-all text-xs">
+          <span class="material-icons text-base">edit</span>
+          Editar
+        </button>
+
+        <ng-container *ngIf="!isReadOnly">
+          <button
+            (click)="setEditMode(true)"
+            class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[#c2c6d6] hover:bg-[#2d3449] transition-all text-xs font-semibold">
+            <span class="material-icons text-base">undo</span>
+            Cancelar
+          </button>
+          <button
+            (click)="saveRequested.emit()"
+            class="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] text-[#00285d] font-bold shadow-md hover:brightness-110 active:scale-95 transition-all text-xs">
+            <span class="material-icons text-base">save</span>
+            Guardar
+          </button>
+        </ng-container>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto custom-scrollbar">
+      <div class="p-6 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="bg-[#171f33] px-4 py-2.5 rounded-lg border-l-4 border-[#adc6ff] shadow-sm">
+            <label class="block text-[9px] uppercase tracking-[0.2em] font-bold text-[#c2c6d6] mb-0.5">Item / Identificador</label>
+            <input [readonly]="isReadOnly" [(ngModel)]="currentClise.item" class="w-full bg-transparent border-none outline-none text-lg font-black text-[#adc6ff]" placeholder="---">
+          </div>
+          <div class="bg-[#171f33] px-4 py-2.5 rounded-lg border-l-4 border-[#b7c8e1] shadow-sm">
+            <label class="block text-[9px] uppercase tracking-[0.2em] font-bold text-[#c2c6d6] mb-0.5">Cliente Principal</label>
+            <input [readonly]="isReadOnly" [(ngModel)]="currentClise.cliente" class="w-full bg-transparent border-none outline-none text-base font-bold text-[#dae2fd] uppercase" placeholder="---">
+          </div>
+          <div class="bg-[#171f33] px-4 py-2.5 rounded-lg border-l-4 border-[#4edea3] shadow-sm">
+            <label class="block text-[9px] uppercase tracking-[0.2em] font-bold text-[#c2c6d6] mb-0.5">Ubicación Actual</label>
+            <div class="flex items-center gap-1.5">
+              <span class="material-icons text-[#4edea3] text-base">location_on</span>
+              <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ubicacion" class="w-full bg-transparent border-none outline-none text-base font-bold text-[#dae2fd] uppercase" placeholder="---">
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div class="lg:col-span-8 space-y-4">
+            <div class="bg-[#222a3d]/40 rounded-xl p-4">
+              <div class="mb-3">
+                <h4 class="text-[10px] font-bold text-[#adc6ff] uppercase tracking-[0.15em] flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-[#adc6ff]"></span>
+                  Descripción
+                </h4>
+              </div>
+              <textarea [readonly]="isReadOnly" [(ngModel)]="currentClise.descripcion" rows="2" class="w-full bg-transparent border-none outline-none resize-none text-sm text-[#dae2fd] leading-relaxed" placeholder="Sin descripción"></textarea>
+            </div>
+
+            <div class="bg-[#222a3d]/40 rounded-xl p-4">
+              <h4 class="text-[10px] font-bold text-[#adc6ff] uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#adc6ff]"></span>
+                Especificaciones Técnicas
+              </h4>
+              <div class="grid grid-cols-2 sm:grid-cols-5 gap-y-4 gap-x-3">
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Z (Dientes)</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.z" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="---">
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Estándar</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.estandar" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="---">
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Medidas</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.medidas" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="---">
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Troquel</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.troquel" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="---">
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Ancho</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ancho" type="number" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="0">
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Avance</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.avance" type="number" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="0">
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Columnas</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.col" type="number" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="0">
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Repeticiones</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.rep" type="number" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="0">
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Cantidad</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.n_clises" type="number" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="0">
+                </div>
+                <div class="space-y-0.5">
+                  <span class="text-[9px] font-medium text-[#c2c6d6]/70 uppercase tracking-tighter">Espesor</span>
+                  <input [readonly]="isReadOnly" [(ngModel)]="currentClise.espesor" class="w-full bg-transparent border-none outline-none text-sm font-semibold text-[#dae2fd]" placeholder="---">
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="bg-[#222a3d]/40 rounded-xl p-4">
+                <h4 class="text-[10px] font-bold text-[#b7c8e1] uppercase tracking-[0.15em] mb-3">Información Operativa</h4>
+                <div class="grid grid-cols-1 gap-2">
+                  <div class="flex justify-between items-center text-xs border-b border-[#424754]/20 pb-1">
+                    <span class="text-[#c2c6d6]">Ingreso</span>
+                    <input [readonly]="isReadOnly" [(ngModel)]="currentClise.ingreso" class="bg-transparent border-none outline-none text-right font-medium text-[#dae2fd] w-40" placeholder="---">
+                  </div>
+                  <div class="flex justify-between items-center text-xs border-b border-[#424754]/20 pb-1">
+                    <span class="text-[#c2c6d6]">Máquina (MAQ)</span>
+                    <input [readonly]="isReadOnly" [(ngModel)]="currentClise.maq" class="bg-transparent border-none outline-none text-right font-medium text-[#dae2fd] w-40" placeholder="---">
+                  </div>
+                  <div class="flex justify-between items-center text-xs border-b border-[#424754]/20 pb-1">
+                    <span class="text-[#c2c6d6]">N° Ficha Fler</span>
+                    <input [readonly]="isReadOnly" [(ngModel)]="currentClise.n_ficha_fler" class="bg-transparent border-none outline-none text-right font-medium text-[#dae2fd] w-40" placeholder="---">
+                  </div>
+                  <div class="flex justify-between items-center text-xs">
+                    <span class="text-[#c2c6d6]">MTL Acumulado</span>
+                    <input [readonly]="isReadOnly" [(ngModel)]="currentClise.mtl_acum" type="number" class="bg-transparent border-none outline-none text-right font-bold text-[#4edea3] w-40" placeholder="0">
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-[#222a3d]/40 rounded-xl p-4">
+                <h4 class="text-[10px] font-bold text-[#b7c8e1] uppercase tracking-[0.15em] mb-3">Colores</h4>
+                <div class="flex flex-wrap gap-1.5">
+                  <span *ngFor="let tag of cliseColorTags" class="px-2 py-0.5 bg-[#2d3449] rounded text-[9px] font-bold border border-[#424754]/10 text-[#dae2fd]">
+                    {{ tag }}
+                  </span>
+                  <span *ngIf="cliseColorTags.length === 0" class="text-xs italic text-[#c2c6d6]">Sin colores registrados.</span>
+                </div>
+                <textarea [readonly]="isReadOnly" [(ngModel)]="currentClise.colores" rows="2" class="w-full mt-3 bg-transparent border-none outline-none resize-none text-xs text-[#c2c6d6]" placeholder="Ej. CYAN, MAGENTA, YELLOW"></textarea>
+              </div>
+            </div>
+
+            <div class="bg-[#222a3d]/40 rounded-xl p-4">
+              <h4 class="text-[10px] font-bold text-[#c2c6d6] uppercase tracking-[0.15em] mb-2">Observaciones (OBS)</h4>
+              <div class="bg-[#060e20]/50 rounded-lg p-3 min-h-[60px] border border-[#424754]/20">
+                <textarea [readonly]="isReadOnly" [(ngModel)]="currentClise.obs" rows="3" class="w-full bg-transparent border-none outline-none resize-none italic text-xs text-[#c2c6d6] leading-relaxed" placeholder="Sin observaciones."></textarea>
+              </div>
+            </div>
+
+            <div class="bg-[#222a3d]/40 rounded-xl p-4" [ngClass]="activeDetailTab === 'metrics' ? 'ring-1 ring-[#adc6ff]/35' : ''">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-[10px] font-bold text-[#adc6ff] uppercase tracking-[0.15em] flex items-center gap-2">
+                  <span class="material-icons text-sm">content_cut</span>
+                  Troqueles Vinculados
+                </h4>
+              </div>
+
+              <div *ngIf="!isReadOnly" class="relative mb-4">
+                <div class="flex items-center bg-[#060e20] border border-[#424754]/20 rounded-lg px-3 py-2 focus-within:border-[#4d8eff] transition-colors">
+                  <span class="material-icons text-[#c2c6d6] mr-2">search</span>
+                  <input
+                    type="text"
+                    [ngModel]="dieSearchTerm"
+                    (ngModelChange)="requestSearch($event)"
+                    placeholder="Buscar y agregar troquel..."
+                    class="bg-transparent border-none text-[#dae2fd] text-sm w-full focus:outline-none placeholder:text-[#c2c6d6]/50">
+                </div>
+
+                <div *ngIf="dieSearchResults.length > 0" class="absolute z-20 top-full left-0 right-0 mt-1 bg-[#171f33] border border-[#424754]/20 rounded-lg shadow-xl overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
+                  <button
+                    *ngFor="let result of dieSearchResults"
+                    (click)="requestLink(result)"
+                    class="w-full px-4 py-2 hover:bg-[#2d3449] text-left flex justify-between items-center">
+                    <div>
+                      <div class="text-[#dae2fd] font-bold text-sm">{{ result.serie }}</div>
+                      <div class="text-xs text-[#c2c6d6]">{{ result.medida || 'Sin medida' }} • Z: {{ result.z || '---' }}</div>
+                    </div>
+                    <span class="material-icons text-[#adc6ff] text-sm">add_circle</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <ng-container *ngIf="compatibleDies.length > 0; else noDies">
+                  <div *ngFor="let die of compatibleDies" class="bg-[#171f33] p-4 rounded-xl border border-[#424754]/20 relative">
+                    <button
+                      *ngIf="!isReadOnly && isExplicitlyLinked(die.id)"
+                      (click)="requestUnlink(die.id)"
+                      class="absolute top-2 right-2 text-[#c2c6d6] hover:text-[#ffb4ab] transition-colors"
+                      title="Desvincular">
+                      <span class="material-icons text-sm">close</span>
+                    </button>
+
+                    <div class="flex justify-between items-start mb-2">
+                      <div class="flex items-center gap-2">
+                        <span class="material-icons text-[#adc6ff]">crop_square</span>
+                        <div>
+                          <p class="text-[#dae2fd] text-sm font-bold">{{ die.serie }}</p>
+                          <p class="text-[#c2c6d6] text-xs">{{ die.forma || 'Troquel' }}</p>
+                        </div>
+                      </div>
+                      <span class="inline-flex items-center rounded bg-[#4edea3]/10 px-2 py-0.5 text-[10px] font-medium text-[#4edea3] uppercase">
+                        {{ die.estado || 'OK' }}
+                      </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs mt-3">
+                      <div class="bg-[#060e20] p-2 rounded">
+                        <span class="block text-[#c2c6d6] text-[10px] uppercase">Z</span>
+                        <span class="text-[#dae2fd] font-medium">{{ die.z || '---' }}</span>
+                      </div>
+                      <div class="bg-[#060e20] p-2 rounded">
+                        <span class="block text-[#c2c6d6] text-[10px] uppercase">Medidas</span>
+                        <span class="text-[#dae2fd] font-medium">{{ die.medida || '---' }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </ng-container>
+                <ng-template #noDies>
+                  <div class="md:col-span-2 text-center p-6 text-[#c2c6d6] text-sm border border-[#424754]/20 border-dashed rounded-lg bg-[#171f33]/30">
+                    <p>No se encontraron troqueles vinculados a "{{ currentClise.troquel || '---' }}".</p>
+                  </div>
+                </ng-template>
+              </div>
+            </div>
+
+            <div class="bg-[#222a3d]/40 rounded-xl p-4" [ngClass]="activeDetailTab === 'metrics' ? 'ring-1 ring-[#adc6ff]/35' : ''">
+              <h4 class="text-[10px] font-bold text-[#adc6ff] uppercase tracking-[0.15em] mb-3 flex items-center gap-2">
+                <span class="material-icons text-sm">history</span>
+                Historial de Cambios
+              </h4>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                  <thead>
+                    <tr class="border-b border-[#424754]/20">
+                      <th class="pb-2 text-[8px] font-bold text-[#c2c6d6] uppercase tracking-widest">Fecha</th>
+                      <th class="pb-2 text-[8px] font-bold text-[#c2c6d6] uppercase tracking-widest">Usuario</th>
+                      <th class="pb-2 text-[8px] font-bold text-[#c2c6d6] uppercase tracking-widest text-center">Acción</th>
+                      <th class="pb-2 text-[8px] font-bold text-[#c2c6d6] uppercase tracking-widest">Detalle</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-[#424754]/20">
+                    <ng-container *ngIf="currentClise.history && currentClise.history.length > 0; else emptyHistory">
+                      <tr *ngFor="let h of currentClise.history">
+                        <td class="py-2 text-[10px] whitespace-nowrap text-[#dae2fd]">{{ h.date }}</td>
+                        <td class="py-2 text-[10px] font-semibold text-[#dae2fd]">{{ h.user }}</td>
+                        <td class="py-2 text-center">
+                          <span class="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase" [ngClass]="getHistoryBadgeClass(h.type)">
+                            {{ h.type }}
+                          </span>
+                        </td>
+                        <td class="py-2 text-[10px] text-[#c2c6d6]">{{ h.description }}</td>
+                      </tr>
+                    </ng-container>
+                    <ng-template #emptyHistory>
+                      <tr>
+                        <td colspan="4" class="py-8 text-center text-xs italic text-[#c2c6d6]">
+                          No hay historial registrado.
+                        </td>
+                      </tr>
+                    </ng-template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-4 flex flex-col gap-4">
+            <div class="bg-[#222a3d]/40 rounded-xl p-4 h-80 flex flex-col">
+              <h4 class="text-[10px] font-bold text-[#adc6ff] uppercase tracking-[0.15em] mb-3">Referencia Visual</h4>
+              <div class="flex-1 bg-[#060e20] rounded-lg overflow-hidden relative group border border-[#424754]/20 min-h-[60px]">
+                <img [src]="currentClise.imagen || ('https://picsum.photos/seed/' + currentClise.id + '/400/400')" class="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-all duration-500" alt="Industrial plate detail">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#060e20]/60 via-transparent to-transparent"></div>
+                <div class="absolute bottom-2 left-2 right-2">
+                  <div class="bg-[#31394d]/80 backdrop-blur-md px-2 py-1.5 rounded flex items-center justify-between">
+                    <span class="text-[8px] font-bold text-[#dae2fd]">VISTA PREVIA</span>
+                    <button (click)="printRequested.emit()" class="hover:text-[#adc6ff] transition-colors">
+                      <span class="material-icons text-sm">zoom_in</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-3 grid grid-cols-2 gap-2">
+                <div class="bg-[#2d3449]/30 p-2 rounded border border-[#424754]/20 text-center">
+                  <p class="text-[8px] text-[#c2c6d6] uppercase mb-0.5">Última Revisión</p>
+                  <p class="text-[10px] font-bold text-[#dae2fd]">{{ lastHistoryEntry?.date || 'Sin historial' }}</p>
+                </div>
+                <div class="bg-[#2d3449]/30 p-2 rounded border border-[#424754]/20 text-center">
+                  <p class="text-[8px] text-[#c2c6d6] uppercase mb-0.5">Estado Físico</p>
+                  <div class="flex items-center justify-center gap-0.5" [ngClass]="getPhysicalStateClass()">
+                    <span class="material-icons text-[10px]">verified</span>
+                    <p class="text-[10px] font-bold">{{ getPhysicalStateLabel() }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-[#222a3d]/40 rounded-xl p-4">
+              <h4 class="text-[10px] font-bold text-[#adc6ff] uppercase tracking-[0.15em] mb-3">Estado General</h4>
+              <div class="space-y-3">
+                <div class="flex items-center justify-between text-xs text-[#c2c6d6]">
+                  <span>Estado actual</span>
+                  <span class="inline-flex items-center rounded-full px-2.5 py-0.5 font-medium" [ngClass]="getStatusBadgeClass(currentClise)">
+                    <span class="mr-1.5 h-1.5 w-1.5 rounded-full" [ngClass]="getStatusDotClass(currentClise)"></span>
+                    {{ getStatusLabel(currentClise) }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between text-xs text-[#c2c6d6]">
+                  <span>Ubicación</span>
+                  <span class="font-mono text-[#dae2fd]">{{ currentClise.ubicacion || '---' }}</span>
+                </div>
+                <div class="flex items-center justify-between text-xs text-[#c2c6d6]">
+                  <span>Troquel</span>
+                  <span class="font-mono text-[#dae2fd]">{{ currentClise.troquel || '---' }}</span>
+                </div>
+                <div class="flex items-center justify-between text-xs text-[#c2c6d6]">
+                  <span>Uso acumulado</span>
+                  <span class="font-bold text-[#4edea3]">{{ currentClise.mtl_acum || 0 | number }} m</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <button *ngIf="isReadOnly" (click)="printRequested.emit()" class="w-full bg-[#1193d4] hover:bg-[#0c6fa1] text-white font-bold py-4 px-6 rounded-lg shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-[0.98]">
+                <span class="material-icons">print</span>
+                Imprimir Etiqueta ID
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="px-6 py-2.5 bg-[#060e20] border-t border-[#424754]/10 flex justify-between items-center gap-3 flex-wrap">
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full" [ngClass]="getStatusDotClass(currentClise)"></span>
+          <span class="text-[9px] font-bold text-[#c2c6d6] uppercase tracking-tight">{{ getStatusLabel(currentClise) }}</span>
+        </div>
+        <div class="text-[9px] text-[#c2c6d6]/70">
+          ID: <span class="font-mono text-[#dae2fd]">{{ currentClise.id || 'Sin ID' }}</span>
+        </div>
+      </div>
+      <div class="text-[9px] text-[#c2c6d6] italic">
+        Actualizado por: <span class="font-bold text-[#dae2fd]">{{ lastHistoryEntry?.user || 'Sistema' }}</span>
+      </div>
+    </div>
+  </div>
+</div>

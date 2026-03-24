@@ -16,6 +16,7 @@ export interface CliseColorUsage {
 export interface CliseItem {
   id: string;
   item: string;
+  backendItemCode?: string;
   ubicacion: string;
   descripcion: string;
   cliente: string;
@@ -48,6 +49,7 @@ export interface DieItem {
   medida: string;
   ubicacion: string;
   serie: string;
+  backendSerie?: string;
   linkedClises: string[];
   ancho_mm: number | null;
   avance_mm: number | null;

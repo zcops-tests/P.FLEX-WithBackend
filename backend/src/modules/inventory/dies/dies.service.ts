@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { BulkUpsertDieItemDto, CreateDieDto, UpdateDieDto } from './dto/die.dto';
@@ -10,6 +11,31 @@ import { normalizeOptionalDateInput } from '../../../common/utils/date-input.uti
 @Injectable()
 export class DiesService {
   constructor(private prisma: PrismaService) {}
+
+  private prepareBulkUpsertItem(dto: BulkUpsertDieItemDto) {
+    const displaySerie = String(dto.serie || '').trim();
+    const cliente = String(dto.cliente || '').trim();
+    const conflictReasons: string[] = [];
+
+    if (!displaySerie) conflictReasons.push('SERIE_REQUIRED');
+    if (!cliente) conflictReasons.push('CLIENT_REQUIRED');
+
+    const rawPayload = dto.raw_payload && typeof dto.raw_payload === 'object'
+      ? { ...dto.raw_payload }
+      : {};
+
+    return {
+      ...dto,
+      serie: displaySerie || `__IMPORTED_DIE__${randomUUID()}`,
+      cliente: cliente || undefined,
+      raw_payload: {
+        ...rawPayload,
+        display_serie: displaySerie,
+        import_conflict: conflictReasons.length > 0,
+        conflict_reasons: conflictReasons,
+      },
+    };
+  }
 
   private buildPersistenceData(dto: CreateDieDto | UpdateDieDto | BulkUpsertDieItemDto) {
     return {
@@ -39,12 +65,7 @@ export class DiesService {
   }
 
   async bulkUpsert(dtos: BulkUpsertDieItemDto[]) {
-    const normalizedItems = dtos
-      .map((dto) => ({
-        ...dto,
-        serie: String(dto.serie || '').trim(),
-      }))
-      .filter((dto) => dto.serie);
+    const normalizedItems = dtos.map((dto) => this.prepareBulkUpsertItem(dto));
 
     const uniqueItems = Array.from(new Map(normalizedItems.map((dto) => [dto.serie, dto])).values());
 

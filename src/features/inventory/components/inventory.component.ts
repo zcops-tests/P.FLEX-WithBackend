@@ -1,7 +1,8 @@
 
-import { Component, inject } from '@angular/core';
+import { Component, DestroyRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { InventoryCliseComponent } from './inventory-clise.component';
 import { InventoryDieComponent } from './inventory-die.component';
 import { InventoryMapComponent } from './inventory-map.component';
@@ -45,10 +46,11 @@ import { InventoryStockComponent } from './inventory-stock.component';
 })
 export class InventoryComponent {
   route: ActivatedRoute = inject(ActivatedRoute);
+  destroyRef = inject(DestroyRef);
   inventoryType = 'clise';
 
   constructor() {
-    this.route.params.subscribe(params => {
+    this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
       this.inventoryType = params['type'] || 'clise';
     });
   }

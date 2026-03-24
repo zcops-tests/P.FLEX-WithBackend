@@ -9,8 +9,7 @@ import { StateService } from '../../services/state.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <!-- Load Fonts specifically for this view -->
-    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <!-- Load Icons specifically for this view -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 
     <div class="terminal-body font-sans min-h-screen flex flex-col relative overflow-x-hidden selection:bg-blue-500 selection:text-white">
@@ -200,7 +199,7 @@ import { StateService } from '../../services/state.service';
     </div>
   `,
   styles: [`
-    .font-tech { font-family: 'Rajdhani', sans-serif; }
+    .font-tech { font-family: var(--app-font-stack); }
     
     .terminal-body {
         background-color: #020408;

@@ -9,8 +9,7 @@ import { StateService, Machine } from '../../services/state.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <!-- Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 
     <div class="bg-gradient-mesh font-sans min-h-screen w-full flex flex-col relative overflow-hidden selection:bg-blue-500 selection:text-white text-gray-100">
@@ -117,7 +116,7 @@ import { StateService, Machine } from '../../services/state.service';
     </div>
   `,
   styles: [`
-    .font-tech { font-family: 'Rajdhani', sans-serif; }
+    .font-tech { font-family: var(--app-font-stack); }
     
     .orb {
         position: absolute;

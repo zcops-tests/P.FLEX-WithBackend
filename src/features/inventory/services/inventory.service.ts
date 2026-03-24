@@ -164,14 +164,11 @@ export class InventoryService {
     onProgress?: (progress: { currentBatch: number; totalBatches: number; processedItems: number; totalItems: number }) => void,
   ) {
     const chunkSize = 200;
-    const payloadItems = items
-      .filter((item) => String(item.item || '').trim() && String(item.cliente || '').trim())
-      .map((item) => this.mapCliseToPayload(item));
-    const skippedItems = items.length - payloadItems.length;
+    const payloadItems = items.map((item) => this.mapCliseToPayload(item));
     const totalItems = payloadItems.length;
 
     if (totalItems === 0) {
-      return { imported: 0, skipped: skippedItems };
+      return { imported: 0, conflicts: 0 };
     }
 
     const totalBatches = Math.max(1, Math.ceil(totalItems / chunkSize));
@@ -193,7 +190,10 @@ export class InventoryService {
     await this.reload();
     this.mapItemsToLayout();
     this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Importacion Clises', `Se importaron ${totalItems} clises al inventario.`);
-    return { imported: totalItems, skipped: skippedItems };
+    return {
+      imported: totalItems,
+      conflicts: items.filter((item) => item.hasConflict).length,
+    };
   }
 
   async updateClise(item: CliseItem) {
@@ -221,16 +221,16 @@ export class InventoryService {
     this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Alta Troqueles', `Se agregaron ${items.length} troqueles.`);
   }
 
-  async importDies(items: DieItem[]) {
+  async importDies(
+    items: DieItem[],
+    onProgress?: (progress: { currentBatch: number; totalBatches: number; processedItems: number; totalItems: number }) => void,
+  ) {
     const chunkSize = 200;
-    const payloadItems = items
-      .filter((item) => String(item.serie || '').trim() && String(item.cliente || '').trim())
-      .map((item) => this.mapDieToPayload(item));
-    const skippedItems = items.length - payloadItems.length;
+    const payloadItems = items.map((item) => this.mapDieToPayload(item));
     const totalItems = payloadItems.length;
 
     if (totalItems === 0) {
-      return { imported: 0, skipped: skippedItems };
+      return { imported: 0, conflicts: 0 };
     }
 
     const totalBatches = Math.max(1, Math.ceil(totalItems / chunkSize));
@@ -241,12 +241,21 @@ export class InventoryService {
       const batch = payloadItems.slice(start, end);
 
       await this.backend.bulkUpsertDies({ items: batch });
+      onProgress?.({
+        currentBatch: index + 1,
+        totalBatches,
+        processedItems: Math.min(end, totalItems),
+        totalItems,
+      });
     }
 
     await this.reload();
     this.mapItemsToLayout();
     this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Importacion Troqueles', `Se importaron ${totalItems} troqueles.`);
-    return { imported: totalItems, skipped: skippedItems };
+    return {
+      imported: totalItems,
+      conflicts: items.filter((item) => item.hasConflict).length,
+    };
   }
 
   async updateDie(item: DieItem) {
@@ -316,31 +325,31 @@ export class InventoryService {
       const medidas = this.parseMeasures(row.medidas);
       const ancho = this.excelService.parseNumber(row.ancho) ?? medidas.ancho;
       const avance = this.excelService.parseNumber(row.avance) ?? medidas.avance;
-      const colores = String(row.colores || '').trim();
+      const colores = this.excelService.toDisplayString(row.colores);
 
       return {
         id: Math.random().toString(36).slice(2, 11),
-        item: String(row.item || '').trim(),
-        ubicacion: String(row.ubicacion || '').trim(),
-        descripcion: String(row.descripcion || '').trim(),
-        cliente: String(row.cliente || '').trim(),
-        z: String(row.z || ''),
-        estandar: String(row.estandar || '').trim(),
-        medidas: String(row.medidas || '').trim() || this.formatMeasures(ancho, avance),
-        troquel: String(row.troquel || '').trim(),
+        item: this.excelService.toDisplayString(row.item),
+        ubicacion: this.excelService.toDisplayString(row.ubicacion),
+        descripcion: this.excelService.toDisplayString(row.descripcion),
+        cliente: this.excelService.toDisplayString(row.cliente),
+        z: this.excelService.toDisplayString(row.z),
+        estandar: this.excelService.toDisplayString(row.estandar),
+        medidas: this.excelService.toDisplayString(row.medidas) || this.formatMeasures(ancho, avance),
+        troquel: this.excelService.toDisplayString(row.troquel),
         linkedDies: [],
         ancho,
         avance,
         col: this.excelService.parseNumber(row.col),
         rep: this.excelService.parseNumber(row.rep),
         n_clises: this.excelService.parseNumber(row.n_clises),
-        espesor: String(row.espesor || '').trim(),
+        espesor: this.excelService.toDisplayString(row.espesor),
         ingreso: this.normalizeExcelDate(row.ingreso),
-        obs: String(row.obs || '').trim(),
-        maq: String(row.maq || '').trim(),
-        colores,
+        obs: this.excelService.toDisplayString(row.obs),
+        maq: this.excelService.toDisplayString(row.maq),
+        colores: this.excelService.toDisplayString(row.colores),
         colorUsage: this.parseColors(colores),
-        n_ficha_fler: String(row.n_ficha_fler || '').trim(),
+        n_ficha_fler: this.excelService.toDisplayString(row.n_ficha_fler),
         mtl_acum: this.excelService.parseNumber(row.mtl_acum),
         sourceRow: row.__sourceRow || undefined,
         history: [],
@@ -348,8 +357,8 @@ export class InventoryService {
       };
     });
 
-    const valid = mapped.filter(item => item.item && item.cliente);
-    const conflicts = mapped.filter(item => !item.item || !item.cliente);
+    const valid = mapped.filter(item => !this.hasCliseConflict(item));
+    const conflicts = mapped.filter(item => this.hasCliseConflict(item));
     conflicts.forEach(item => item.hasConflict = true);
     return { valid, conflicts };
   }
@@ -358,36 +367,36 @@ export class InventoryService {
     const normalized = this.excelService.normalizeData(rawData, this.DIE_MAPPING);
     const mapped: DieItem[] = normalized.map(row => ({
       id: Math.random().toString(36).slice(2, 11),
-      serie: String(row.serie || '').trim(),
-      cliente: String(row.cliente || '').trim(),
-      medida: String(row.medida || '').trim(),
-      ubicacion: String(row.ubicacion || '').trim(),
-      z: String(row.z || '').trim(),
+      serie: this.excelService.toDisplayString(row.serie),
+      cliente: this.excelService.toDisplayString(row.cliente),
+      medida: this.excelService.toDisplayString(row.medida),
+      ubicacion: this.excelService.toDisplayString(row.ubicacion),
+      z: this.excelService.toDisplayString(row.z),
       ancho_mm: this.excelService.parseNumber(row.ancho_mm),
       avance_mm: this.excelService.parseNumber(row.avance_mm),
       ancho_plg: this.excelService.parseNumber(row.ancho_plg),
       avance_plg: this.excelService.parseNumber(row.avance_plg),
       columnas: this.excelService.parseNumber(row.columnas),
       repeticiones: this.excelService.parseNumber(row.repeticiones),
-      material: String(row.material || '').trim(),
-      forma: String(row.forma || '').trim(),
-      estado: String(row.estado || 'OK').trim() || 'OK',
+      material: this.excelService.toDisplayString(row.material),
+      forma: this.excelService.toDisplayString(row.forma),
+      estado: this.excelService.toDisplayString(row.estado) || 'OK',
       ingreso: this.normalizeExcelDate(row.ingreso),
-      pb: String(row.pb || '').trim(),
-      sep_ava: String(row.sep_ava || '').trim(),
+      pb: this.excelService.toDisplayString(row.pb),
+      sep_ava: this.excelService.toDisplayString(row.sep_ava),
       cantidad: this.excelService.parseNumber(row.cantidad),
-      almacen: String(row.almacen || '').trim(),
+      almacen: this.excelService.toDisplayString(row.almacen),
       mtl_acum: this.excelService.parseNumber(row.mtl_acum),
-      tipo_troquel: String(row.tipo_troquel || '').trim(),
-      observaciones: String(row.observaciones || '').trim(),
+      tipo_troquel: this.excelService.toDisplayString(row.tipo_troquel),
+      observaciones: this.excelService.toDisplayString(row.observaciones),
       sourceRow: row.__sourceRow || undefined,
       history: [],
       linkedClises: [],
       hasConflict: false
     }));
 
-    const valid = mapped.filter(item => item.serie && item.cliente);
-    const conflicts = mapped.filter(item => !item.serie || !item.cliente);
+    const valid = mapped.filter(item => !this.hasDieConflict(item));
+    const conflicts = mapped.filter(item => this.hasDieConflict(item));
     conflicts.forEach(item => item.hasConflict = true);
     return { valid, conflicts };
   }
@@ -399,18 +408,18 @@ export class InventoryService {
       const millares = this.excelService.parseNumber(row.millares) || 0;
       return {
         id: Math.random().toString(36).slice(2, 11),
-        ot: String(row.ot || '').trim(),
-        client: String(row.client || '').trim(),
-        product: String(row.product || '').trim(),
+        ot: this.excelService.toDisplayString(row.ot),
+        client: this.excelService.toDisplayString(row.client),
+        product: this.excelService.toDisplayString(row.product),
         quantity: rolls,
         unit: 'Rollos',
         rolls,
         millares,
-        location: String(row.location || 'RECEPCION').trim(),
+        location: this.excelService.toDisplayString(row.location) || 'RECEPCION',
         status: this.normalizeStockStatus(row.status),
         entryDate: new Date().toISOString(),
-        notes: String(row.notes || ''),
-        palletId: String(row.palletId || `PAL-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`)
+        notes: this.excelService.toDisplayString(row.notes),
+        palletId: this.excelService.toDisplayString(row.palletId) || `PAL-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`
       };
     });
 
@@ -438,63 +447,69 @@ export class InventoryService {
   }
 
   private mapClise(item: any): CliseItem {
+    const visibleItemCode = String(item.item ?? item.raw_payload?.display_item_code ?? item.item_code ?? '').trim();
     return {
       id: item.id,
-      item: item.item_code,
+      item: visibleItemCode,
+      backendItemCode: String(item.backend_item_code || item.item_code || visibleItemCode || '').trim() || undefined,
       ubicacion: item.ubicacion || '',
       descripcion: item.descripcion || '',
       cliente: item.cliente || '',
-      z: item.z_value || '',
+      z: item.z || item.z_value || '',
       estandar: item.estandar || '',
-      medidas: item.medidas || this.formatMeasures(item.ancho_mm ? Number(item.ancho_mm) : null, item.avance_mm ? Number(item.avance_mm) : null),
+      medidas: item.medidas || this.formatMeasures(this.toNullableNumber(item.ancho ?? item.ancho_mm), this.toNullableNumber(item.avance ?? item.avance_mm)),
       troquel: item.troquel || '',
       linkedDies: [],
-      ancho: item.ancho_mm ? Number(item.ancho_mm) : null,
-      avance: item.avance_mm ? Number(item.avance_mm) : null,
+      ancho: this.toNullableNumber(item.ancho ?? item.ancho_mm),
+      avance: this.toNullableNumber(item.avance ?? item.avance_mm),
       col: item.columnas ?? null,
       rep: item.repeticiones ?? null,
       n_clises: item.numero_clises ?? null,
-      espesor: item.espesor_mm ? String(item.espesor_mm) : '',
+      espesor: item.espesor || (this.toNullableNumber(item.espesor_mm) ?? '').toString(),
       ingreso: item.fecha_ingreso ? new Date(item.fecha_ingreso).toISOString().split('T')[0] : '',
       obs: item.observaciones || '',
       maq: item.maquina_texto || '',
       colores: item.colores || '',
       colorUsage: (item.colorUsage || item.color_usage || []).map((entry: any) => ({ name: entry.name || entry.color_name, meters: Number(entry.meters || 0) })),
-      n_ficha_fler: item.ficha_fler || '',
-      mtl_acum: item.metros_acumulados ? Number(item.metros_acumulados) : 0,
+      n_ficha_fler: item.n_ficha_fler || item.ficha_fler || '',
+      mtl_acum: this.toNullableNumber(item.mtl_acum ?? item.metros_acumulados) ?? 0,
       history: [],
       sourceRow: item.raw_payload?.source_row || undefined,
+      hasConflict: Boolean(item.hasConflict ?? item.has_conflict ?? item.raw_payload?.import_conflict),
     };
   }
 
   private mapDie(item: any): DieItem {
+    const visibleSerie = String(item.serie ?? item.raw_payload?.display_serie ?? '').trim();
     return {
       id: item.id,
       medida: item.medida || '',
       ubicacion: item.ubicacion || '',
-      serie: item.serie,
+      serie: visibleSerie,
+      backendSerie: String(item.backend_serie || item.serie || visibleSerie || '').trim() || undefined,
       linkedClises: [],
-      ancho_mm: item.ancho_mm ? Number(item.ancho_mm) : null,
-      avance_mm: item.avance_mm ? Number(item.avance_mm) : null,
-      ancho_plg: item.ancho_plg ? Number(item.ancho_plg) : null,
-      avance_plg: item.avance_plg ? Number(item.avance_plg) : null,
-      z: item.z_value || '',
+      ancho_mm: this.toNullableNumber(item.ancho_mm),
+      avance_mm: this.toNullableNumber(item.avance_mm),
+      ancho_plg: this.toNullableNumber(item.ancho_plg),
+      avance_plg: this.toNullableNumber(item.avance_plg),
+      z: item.z || item.z_value || '',
       columnas: item.columnas ?? null,
       repeticiones: item.repeticiones ?? null,
       material: item.material || '',
       forma: item.forma || '',
       cliente: item.cliente || '',
       observaciones: item.observaciones || '',
-      ingreso: item.fecha_ingreso ? new Date(item.fecha_ingreso).toISOString().split('T')[0] : '',
+      ingreso: item.ingreso || (item.fecha_ingreso ? new Date(item.fecha_ingreso).toISOString().split('T')[0] : ''),
       pb: item.pb || '',
-      sep_ava: item.separacion_avance || '',
+      sep_ava: item.sep_ava || item.separacion_avance || '',
       estado: item.estado || 'OK',
       cantidad: item.cantidad ?? null,
       almacen: item.almacen || '',
-      mtl_acum: item.metros_acumulados ? Number(item.metros_acumulados) : 0,
+      mtl_acum: this.toNullableNumber(item.mtl_acum ?? item.metros_acumulados) ?? 0,
       tipo_troquel: item.tipo_troquel || '',
       sourceRow: item.raw_payload?.source_row || undefined,
       history: [],
+      hasConflict: Boolean(item.hasConflict ?? item.has_conflict ?? item.raw_payload?.import_conflict),
     };
   }
 
@@ -535,11 +550,13 @@ export class InventoryService {
   }
 
   private mapCliseToPayload(item: CliseItem) {
+    const itemCode = String(item.item || '').trim();
+    const cliente = String(item.cliente || '').trim();
     return {
-      item_code: item.item,
+      item_code: itemCode || item.backendItemCode || undefined,
       ubicacion: item.ubicacion || undefined,
       descripcion: item.descripcion || undefined,
-      cliente: item.cliente || undefined,
+      cliente: cliente || undefined,
       z_value: item.z || undefined,
       estandar: item.estandar || undefined,
       ancho_mm: item.ancho ?? undefined,
@@ -555,6 +572,9 @@ export class InventoryService {
       metros_acumulados: item.mtl_acum ?? 0,
       colores_json: item.colorUsage?.length ? item.colorUsage.map((entry) => entry.name) : (item.colores ? item.colores.split(',').map((entry) => entry.trim()).filter(Boolean) : undefined),
       raw_payload: {
+        display_item_code: itemCode,
+        import_conflict: this.hasCliseConflict(item),
+        conflict_reasons: this.buildCliseConflictReasons(item),
         medidas: item.medidas || undefined,
         troquel: item.troquel || undefined,
         colores: item.colores || undefined,
@@ -565,8 +585,10 @@ export class InventoryService {
   }
 
   private mapDieToPayload(item: DieItem) {
+    const serie = String(item.serie || '').trim();
+    const cliente = String(item.cliente || '').trim();
     return {
-      serie: item.serie,
+      serie: serie || item.backendSerie || undefined,
       medida: item.medida || undefined,
       ubicacion: item.ubicacion || undefined,
       ancho_mm: item.ancho_mm ?? undefined,
@@ -578,7 +600,7 @@ export class InventoryService {
       repeticiones: item.repeticiones ?? undefined,
       material: item.material || undefined,
       forma: item.forma || undefined,
-      cliente: item.cliente || undefined,
+      cliente: cliente || undefined,
       observaciones: item.observaciones || undefined,
       fecha_ingreso: item.ingreso || undefined,
       pb: item.pb || undefined,
@@ -589,6 +611,9 @@ export class InventoryService {
       metros_acumulados: item.mtl_acum ?? 0,
       tipo_troquel: item.tipo_troquel || undefined,
       raw_payload: {
+        display_serie: serie,
+        import_conflict: this.hasDieConflict(item),
+        conflict_reasons: this.buildDieConflictReasons(item),
         source_row: item.sourceRow || undefined,
         source_columns: item.sourceRow ? Object.keys(item.sourceRow) : undefined,
       },
@@ -652,6 +677,7 @@ export class InventoryService {
   }
 
   private normalizeExcelDate(value: unknown): string {
+    const normalizedValue = this.excelService.toDisplayString(value);
     if (!value) return new Date().toISOString().split('T')[0];
     if (value instanceof Date && !Number.isNaN(value.getTime())) {
       return value.toISOString().slice(0, 10);
@@ -665,7 +691,7 @@ export class InventoryService {
         : serialDate.toISOString().slice(0, 10);
     }
 
-    const text = String(value).trim();
+    const text = normalizedValue.trim();
     if (!text) {
       return new Date().toISOString().split('T')[0];
     }
@@ -710,7 +736,7 @@ export class InventoryService {
   }
 
   private parseMeasures(value: unknown): { ancho: number | null; avance: number | null } {
-    const text = String(value || '').trim();
+    const text = this.excelService.toDisplayString(value);
     if (!text) {
       return { ancho: null, avance: null };
     }
@@ -736,5 +762,33 @@ export class InventoryService {
       .map((entry) => entry.trim())
       .filter(Boolean)
       .map((name) => ({ name, meters: 0 }));
+  }
+
+  private hasCliseConflict(item: CliseItem) {
+    return this.buildCliseConflictReasons(item).length > 0;
+  }
+
+  private hasDieConflict(item: DieItem) {
+    return this.buildDieConflictReasons(item).length > 0;
+  }
+
+  private buildCliseConflictReasons(item: CliseItem) {
+    const reasons: string[] = [];
+    if (!String(item.item || '').trim()) reasons.push('ITEM_REQUIRED');
+    if (!String(item.cliente || '').trim()) reasons.push('CLIENT_REQUIRED');
+    return reasons;
+  }
+
+  private buildDieConflictReasons(item: DieItem) {
+    const reasons: string[] = [];
+    if (!String(item.serie || '').trim()) reasons.push('SERIE_REQUIRED');
+    if (!String(item.cliente || '').trim()) reasons.push('CLIENT_REQUIRED');
+    return reasons;
+  }
+
+  private toNullableNumber(value: unknown) {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 }

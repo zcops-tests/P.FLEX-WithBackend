@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { BulkUpsertCliseItemDto, CreateCliseDto, UpdateCliseDto } from './dto/clise.dto';
@@ -10,6 +11,31 @@ import { normalizeOptionalDateInput } from '../../../common/utils/date-input.uti
 @Injectable()
 export class ClisesService {
   constructor(private prisma: PrismaService) {}
+
+  private prepareBulkUpsertItem(dto: BulkUpsertCliseItemDto) {
+    const displayItemCode = String(dto.item_code || '').trim();
+    const cliente = String(dto.cliente || '').trim();
+    const conflictReasons: string[] = [];
+
+    if (!displayItemCode) conflictReasons.push('ITEM_REQUIRED');
+    if (!cliente) conflictReasons.push('CLIENT_REQUIRED');
+
+    const rawPayload = dto.raw_payload && typeof dto.raw_payload === 'object'
+      ? { ...dto.raw_payload }
+      : {};
+
+    return {
+      ...dto,
+      item_code: displayItemCode || `__IMPORTED_CLISE__${randomUUID()}`,
+      cliente: cliente || undefined,
+      raw_payload: {
+        ...rawPayload,
+        display_item_code: displayItemCode,
+        import_conflict: conflictReasons.length > 0,
+        conflict_reasons: conflictReasons,
+      },
+    };
+  }
 
   private buildPersistenceData(dto: CreateCliseDto | UpdateCliseDto) {
     return {
@@ -39,12 +65,7 @@ export class ClisesService {
   }
 
   async bulkUpsert(dtos: BulkUpsertCliseItemDto[]) {
-    const normalizedItems = dtos
-      .map((dto) => ({
-        ...dto,
-        item_code: String(dto.item_code || '').trim(),
-      }))
-      .filter((dto) => dto.item_code);
+    const normalizedItems = dtos.map((dto) => this.prepareBulkUpsertItem(dto));
 
     const uniqueItems = Array.from(new Map(normalizedItems.map((dto) => [dto.item_code, dto])).values());
 

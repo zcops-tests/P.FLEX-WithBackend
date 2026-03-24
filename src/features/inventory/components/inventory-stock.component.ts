@@ -1,7 +1,8 @@
 
-import { Component, inject, NgZone, ChangeDetectorRef } from '@angular/core';
+import { Component, inject, NgZone, ChangeDetectorRef, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { InventoryService } from '../services/inventory.service';
 import { StockItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
@@ -373,6 +374,7 @@ export class InventoryStockComponent {
   excelService = inject(ExcelService);
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
+  destroyRef = inject(DestroyRef);
   
   stockItems: StockItem[] = [];
   searchTerm = '';
@@ -390,7 +392,9 @@ export class InventoryStockComponent {
   conflictsData: StockItem[] = [];
 
   constructor() {
-    this.inventoryService.stockItems$.subscribe(items => this.stockItems = items);
+    this.inventoryService.stockItems$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(items => this.stockItems = items);
   }
 
   get filteredItems() {

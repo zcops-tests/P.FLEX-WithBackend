@@ -30,7 +30,7 @@ export class ExcelService {
         const matchingKey = this.findMatchingKey(rowKeys, possibleVariations);
 
         if (matchingKey) {
-          newRow[targetKey] = row[matchingKey];
+          newRow[targetKey] = this.unwrapCellValue(row[matchingKey]);
         }
       });
 
@@ -81,13 +81,55 @@ export class ExcelService {
       .trim();
   }
 
+  toDisplayString(val: any): string {
+    const normalizedValue = this.unwrapCellValue(val);
+    if (normalizedValue === undefined || normalizedValue === null) return '';
+    if (normalizedValue instanceof Date) return normalizedValue.toISOString();
+    return String(normalizedValue).trim();
+  }
+
   parseNumber(val: any): number | null {
-    if (val === undefined || val === null || val === '') return null;
-    let strVal = String(val).trim();
+    const normalizedValue = this.unwrapCellValue(val);
+    if (normalizedValue === undefined || normalizedValue === null || normalizedValue === '') return null;
+    let strVal = String(normalizedValue).trim();
     if (strVal === '-' || strVal === '---') return 0;
 
     strVal = strVal.replace(/[^0-9.\-]/g, '');
     const num = parseFloat(strVal);
     return Number.isNaN(num) ? null : num;
+  }
+
+  private unwrapCellValue(value: any): any {
+    if (value === null || value === undefined) return value;
+    if (value instanceof Date || typeof value !== 'object') return value;
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => this.toDisplayString(entry))
+        .filter(Boolean)
+        .join(' ');
+    }
+
+    const candidateKeys = ['text', 'w', 'v', 'value', 'result', 'raw'];
+    for (const key of candidateKeys) {
+      if (key in value) {
+        const nestedValue = this.unwrapCellValue(value[key]);
+        if (nestedValue !== undefined && nestedValue !== null && nestedValue !== '') {
+          return nestedValue;
+        }
+      }
+    }
+
+    if (Array.isArray(value.richText)) {
+      return value.richText
+        .map((entry: any) => this.toDisplayString(entry?.text ?? entry))
+        .filter(Boolean)
+        .join('');
+    }
+
+    const nestedPrimitive = Object.values(value)
+      .map((entry) => this.unwrapCellValue(entry))
+      .find((entry) => entry !== undefined && entry !== null && entry !== '');
+
+    return nestedPrimitive ?? '';
   }
 }
