@@ -7,6 +7,7 @@ import { InventoryService } from '../services/inventory.service';
 import { CliseItem, DieItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
 import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-modal.component';
+import { StateService } from '../../../services/state.service';
 
 @Component({
   selector: 'app-inventory-clise',
@@ -21,16 +22,19 @@ import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-mod
         </div>
 
         <div class="flex items-center gap-3">
-          <input #fileInput type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
+          <ng-container *ngIf="canManageInventory">
+            <input #fileInput type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
+            <button
+              (click)="fileInput.click()"
+              [disabled]="isLoading || isImporting"
+              class="inline-flex items-center gap-2 rounded-xl border border-[#424754]/60 px-5 py-2 text-sm font-semibold text-[#adc6ff] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-50">
+              <span *ngIf="!isLoading && !isImporting" class="material-icons text-lg">download</span>
+              <span *ngIf="isLoading || isImporting" class="h-4 w-4 rounded-full border-2 border-[#adc6ff]/30 border-t-[#adc6ff] animate-spin"></span>
+              {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar') }}
+            </button>
+          </ng-container>
           <button
-            (click)="fileInput.click()"
-            [disabled]="isLoading || isImporting"
-            class="inline-flex items-center gap-2 rounded-xl border border-[#424754]/60 px-5 py-2 text-sm font-semibold text-[#adc6ff] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-50">
-            <span *ngIf="!isLoading && !isImporting" class="material-icons text-lg">download</span>
-            <span *ngIf="isLoading || isImporting" class="h-4 w-4 rounded-full border-2 border-[#adc6ff]/30 border-t-[#adc6ff] animate-spin"></span>
-            {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar') }}
-          </button>
-          <button
+            *ngIf="canManageInventory"
             (click)="openModal(null, 'edit')"
             class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#448aff] to-[#2979ff] px-5 py-2 text-sm font-semibold text-white transition-all hover:shadow-[0_0_20px_rgba(68,138,255,0.4)] active:scale-95">
             <span class="material-icons text-lg">add</span>
@@ -224,7 +228,7 @@ import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-mod
                   </td>
                   <td class="px-6 py-5 text-right">
                     <div class="flex items-center justify-end gap-1">
-                      <button (click)="openModal(item, 'edit')" class="p-2 text-[#c2c6d6] transition-colors hover:text-[#448aff]" title="Editar">
+                      <button *ngIf="canManageInventory" (click)="openModal(item, 'edit')" class="p-2 text-[#c2c6d6] transition-colors hover:text-[#448aff]" title="Editar">
                         <span class="material-icons text-lg">edit</span>
                       </button>
                       <button (click)="openHistory(item)" class="p-2 text-[#c2c6d6] transition-colors hover:text-[#448aff]" title="Historial">
@@ -275,6 +279,7 @@ import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-mod
         *ngIf="showCliseForm"
         [currentClise]="currentClise"
         [isReadOnly]="isReadOnly"
+        [canEdit]="canManageInventory"
         [activeDetailTab]="activeDetailTab"
         [compatibleDies]="compatibleDies"
         [dieSearchTerm]="dieSearchTerm"
@@ -287,6 +292,105 @@ import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-mod
         (dieLinkRequested)="addLinkedDie($event)"
         (dieUnlinkRequested)="removeLinkedDie($event)">
       </app-inventory-clise-detail-modal>
+
+      <!-- MODAL: IMPORT PREVIEW -->
+      <div *ngIf="showImportPreviewModal" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true">
+         <div class="bg-[#1e293b] rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden border border-slate-700 animate-fadeIn">
+            <div class="bg-[#0f172a] px-6 py-4 border-b border-slate-700 flex justify-between items-center shrink-0">
+               <div>
+                   <h3 class="font-bold text-white text-lg flex items-center gap-2">
+                       <span class="material-icons text-blue-500">upload_file</span>
+                       Previsualización de Importación
+                   </h3>
+                   <p class="text-xs text-slate-400 mt-1">
+                       Se han procesado {{ previewData.length + conflictsData.length }} registros en total.
+                   </p>
+               </div>
+               <button (click)="cancelImport()" [disabled]="isImporting" class="text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                   <span class="material-icons">close</span>
+               </button>
+            </div>
+
+            <div class="flex-1 overflow-hidden flex flex-col bg-[#1e293b]">
+                <div class="px-6 py-3 bg-[#1e293b] border-b border-slate-700 flex gap-4 items-center">
+                    <div class="px-4 py-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-bold flex items-center gap-2">
+                        <span class="material-icons text-sm">check_circle</span>
+                        {{ previewData.length }} Válidos
+                    </div>
+                    <div class="px-4 py-2 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold flex items-center gap-2" [class.animate-pulse]="conflictsData.length > 0">
+                        <span class="material-icons text-sm">warning</span>
+                        {{ conflictsData.length }} Conflictos Detectados
+                    </div>
+                    <p class="text-xs text-slate-500 ml-auto italic">
+                        Todos los registros se importarán. Los conflictos quedarán marcados para revisión manual.
+                    </p>
+                </div>
+
+                <div class="flex-1 overflow-auto custom-scrollbar p-6 relative">
+                    <div *ngIf="isImporting" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#1e293b]/80 backdrop-blur-sm">
+                        <div class="w-14 h-14 rounded-full border-4 border-slate-700 border-t-blue-500 animate-spin mb-4"></div>
+                        <h3 class="text-lg font-bold text-white">Importando clisés...</h3>
+                        <p class="text-sm text-slate-400 mt-1">{{ importProgressText || 'No cierres esta ventana hasta que finalice.' }}</p>
+                        <div class="w-full max-w-md mt-4 px-6">
+                            <div class="h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                                <div class="h-full bg-blue-500 transition-all duration-300" [style.width.%]="importProgressPercent"></div>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-2 text-center">{{ importProgressPercent }}% completado</p>
+                        </div>
+                    </div>
+                    <table class="w-full text-sm text-left border-collapse">
+                        <thead class="text-xs text-slate-400 uppercase bg-[#0f172a] sticky top-0 z-10 font-bold tracking-wider">
+                            <tr>
+                                <th class="px-4 py-3 border-b border-slate-700 w-16 text-center">#</th>
+                                <th class="px-4 py-3 border-b border-slate-700 w-32 text-center">Estado</th>
+                                <th class="px-4 py-3 border-b border-slate-700">Código (Item)</th>
+                                <th class="px-4 py-3 border-b border-slate-700">Cliente</th>
+                                <th class="px-4 py-3 border-b border-slate-700">Descripción</th>
+                                <th class="px-4 py-3 border-b border-slate-700">Ubicación</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700">
+                            <tr *ngFor="let item of previewConflictRows; let i = index; trackBy: trackByCliseId" class="bg-red-500/5 hover:bg-red-500/10 transition-colors">
+                                <td class="px-4 py-2 text-slate-500 font-mono text-xs text-center">{{ i + 1 }}</td>
+                                <td class="px-4 py-2 text-center">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 uppercase tracking-wide">
+                                        Falta Dato
+                                    </span>
+                                </td>
+                                <td class="px-4 py-2 font-mono font-bold" [ngClass]="item.item ? 'text-white' : 'text-red-500 italic'">{{ item.item || '(VACÍO)' }}</td>
+                                <td class="px-4 py-2" [ngClass]="item.cliente ? 'text-slate-300' : 'text-red-500 italic'">{{ item.cliente || '(VACÍO)' }}</td>
+                                <td class="px-4 py-2 text-slate-400 truncate max-w-xs">{{ item.descripcion || '---' }}</td>
+                                <td class="px-4 py-2 text-slate-400">{{ item.ubicacion || '-' }}</td>
+                            </tr>
+                            <tr *ngFor="let item of previewValidRows; let i = index; trackBy: trackByCliseId" class="hover:bg-slate-700/30 transition-colors">
+                                <td class="px-4 py-2 text-slate-500 font-mono text-xs text-center">{{ previewConflictRows.length + i + 1 }}</td>
+                                <td class="px-4 py-2 text-center">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">OK</span>
+                                </td>
+                                <td class="px-4 py-2 font-mono text-white font-bold">{{ item.item }}</td>
+                                <td class="px-4 py-2 text-slate-300">{{ item.cliente }}</td>
+                                <td class="px-4 py-2 text-slate-400 truncate max-w-xs">{{ item.descripcion }}</td>
+                                <td class="px-4 py-2 text-slate-400">{{ item.ubicacion || '-' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div *ngIf="hasHiddenPreviewRows" class="mt-4 rounded-lg border border-slate-700 bg-[#0f172a] px-4 py-3 text-xs text-slate-400">
+                        Mostrando {{ previewConflictRows.length + previewValidRows.length }} de {{ previewData.length + conflictsData.length }} filas para mantener la importación fluida.
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-[#0f172a] px-6 py-4 border-t border-slate-700 flex justify-end gap-4 shrink-0">
+               <button (click)="cancelImport()" [disabled]="isImporting" class="px-6 py-2.5 rounded-lg border border-slate-600 text-slate-300 font-bold hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                   Cancelar Importación
+               </button>
+               <button (click)="confirmImport()" [disabled]="isImporting" class="px-6 py-2.5 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed min-w-[260px] justify-center">
+                   <span class="material-icons text-sm">save_alt</span>
+                   Importar Todo (Resolver Conflictos Después)
+               </button>
+            </div>
+         </div>
+      </div>
 
       <!-- MODAL: CLISE DETAIL (legacy inline, desactivado) -->
       <div *ngIf="false && showCliseForm" class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-[#060e20]/90 backdrop-blur-md" role="dialog" aria-modal="true">
@@ -677,8 +781,8 @@ import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-mod
           </div>
       </div>
 
-      <!-- MODAL: IMPORT PREVIEW -->
-      <div *ngIf="showImportPreviewModal" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <!-- MODAL: IMPORT PREVIEW (legacy position, desactivado) -->
+      <div *ngIf="false && showImportPreviewModal" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true">
          <div class="bg-[#1e293b] rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden border border-slate-700 animate-fadeIn">
             
             <!-- Header -->
@@ -741,7 +845,7 @@ import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-mod
                         </thead>
                         <tbody class="divide-y divide-slate-700">
                             <!-- Conflicts First -->
-                            <tr *ngFor="let item of conflictsData; let i = index" class="bg-red-500/5 hover:bg-red-500/10 transition-colors">
+                            <tr *ngFor="let item of previewConflictRows; let i = index; trackBy: trackByCliseId" class="bg-red-500/5 hover:bg-red-500/10 transition-colors">
                                 <td class="px-4 py-2 text-slate-500 font-mono text-xs text-center">{{ i + 1 }}</td>
                                 <td class="px-4 py-2 text-center">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 uppercase tracking-wide">
@@ -754,8 +858,8 @@ import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-mod
                                 <td class="px-4 py-2 text-slate-400">{{ item.ubicacion || '-' }}</td>
                             </tr>
                             <!-- Valid Items -->
-                            <tr *ngFor="let item of previewData; let i = index" class="hover:bg-slate-700/30 transition-colors">
-                                <td class="px-4 py-2 text-slate-500 font-mono text-xs text-center">{{ conflictsData.length + i + 1 }}</td>
+                            <tr *ngFor="let item of previewValidRows; let i = index; trackBy: trackByCliseId" class="hover:bg-slate-700/30 transition-colors">
+                                <td class="px-4 py-2 text-slate-500 font-mono text-xs text-center">{{ previewConflictRows.length + i + 1 }}</td>
                                 <td class="px-4 py-2 text-center">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">OK</span>
                                 </td>
@@ -766,6 +870,9 @@ import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-mod
                             </tr>
                         </tbody>
                     </table>
+                    <div *ngIf="hasHiddenPreviewRows" class="mt-4 rounded-lg border border-slate-700 bg-[#0f172a] px-4 py-3 text-xs text-slate-400">
+                        Mostrando {{ previewConflictRows.length + previewValidRows.length }} de {{ previewData.length + conflictsData.length }} filas para mantener la importación fluida.
+                    </div>
                 </div>
             </div>
 
@@ -796,9 +903,11 @@ import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-mod
 export class InventoryCliseComponent implements OnInit, OnDestroy {
   inventoryService = inject(InventoryService);
   excelService = inject(ExcelService);
+  state = inject(StateService);
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
   Math = Math;
+  private readonly writeRoles = ['Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles'] as const;
 
   cliseItems: CliseItem[] = [];
   searchInput = '';
@@ -830,12 +939,17 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
  showImportPreviewModal = false;
   previewData: CliseItem[] = [];
   conflictsData: CliseItem[] = [];
+  readonly importPreviewLimit = 120;
 
   // Die Search Logic
   dieSearchTerm = '';
   dieSearchResults: DieItem[] = [];
   private cliseItemsSubscription?: Subscription;
   private loadingProgressInterval?: number;
+
+  get canManageInventory() {
+    return this.state.hasAnyRole(this.writeRoles);
+  }
 
   async ngOnInit() {
     this.cliseItemsSubscription = this.inventoryService.cliseItems$.subscribe((items) => {
@@ -1036,7 +1150,9 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
 
   // --- CRUD ---
   openModal(item: any, mode: 'view' | 'edit') {
-      this.isReadOnly = mode === 'view';
+      if (!item && !this.canManageInventory) return;
+      const effectiveMode = this.canManageInventory ? mode : 'view';
+      this.isReadOnly = effectiveMode === 'view';
       this.activeDetailTab = 'general';
       if (item) this.currentClise = JSON.parse(JSON.stringify(item));
       else this.currentClise = { item: '', linkedDies: [], id: Math.random().toString(36).substr(2, 9) };
@@ -1054,18 +1170,28 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
       this.activeDetailTab = 'metrics';
   }
 
-  saveClise() {
+  async saveClise() {
+      if (!this.canManageInventory) return;
       if (this.currentClise.id) {
           const item = this.currentClise as CliseItem;
-          // Check if exists
-          const exists = this.cliseItems.find(i => i.id === item.id);
-          if (exists) {
-             this.inventoryService.updateClise(item);
-          } else {
-             this.inventoryService.addClises([item]);
+          if (!String(item.item || '').trim()) {
+              alert('Complete el código del clisé antes de guardar.');
+              return;
+          }
+          if (!String(item.cliente || '').trim()) {
+              alert('Complete el cliente antes de guardar.');
+              return;
+          }
+
+          try {
+              const saved = await this.inventoryService.saveClise(item);
+              this.currentClise = { ...saved };
+              this.closeModal();
+          } catch (error: any) {
+              console.error('Error saving clise:', error);
+              alert(`No se pudo guardar el clisé.\n${error?.message || 'Error desconocido.'}`);
           }
       }
-      this.closeModal();
   }
 
   printCliseLabel() {
@@ -1102,12 +1228,17 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
 
   // --- IMPORT ---
   async handleImport(event: any) {
-    const file = event.target.files[0];
+    if (!this.canManageInventory) return;
+    const input = event?.target as HTMLInputElement | undefined;
+    const file = input?.files?.[0];
     if (!file) return;
 
     this.isLoading = true;
     this.loadingProgress = 4;
     this.loadingStatusText = 'Preparando archivo para analisis...';
+    this.previewData = [];
+    this.conflictsData = [];
+    this.showImportPreviewModal = false;
     this.cdr.detectChanges();
     this.startLoadingProgressSimulation();
     await this.waitForNextPaint();
@@ -1119,35 +1250,42 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
           this.loadingStatusText = 'Leyendo archivo Excel...';
           this.cdr.detectChanges();
         });
+
         await new Promise(resolve => setTimeout(resolve, 120));
         const rawData = await this.excelService.readExcel(file);
-        
+        const { valid, conflicts } = this.inventoryService.normalizeCliseData(rawData);
+
         this.ngZone.run(() => {
-            this.stopLoadingProgressSimulation();
-            this.loadingProgress = 100;
-            this.loadingStatusText = 'Archivo procesado. Preparando previsualizacion...';
-            const { valid, conflicts } = this.inventoryService.normalizeCliseData(rawData);
-            this.previewData = valid;
-            this.conflictsData = conflicts;
-            this.showImportPreviewModal = true;
-            this.isLoading = false;
-            event.target.value = '';
+          this.stopLoadingProgressSimulation();
+          this.loadingProgress = 100;
+          this.loadingStatusText = 'Archivo procesado. Preparando previsualizacion...';
+          this.previewData = valid;
+          this.conflictsData = conflicts;
+          this.showImportPreviewModal = true;
+          this.isLoading = false;
+          if (input) {
+            input.value = '';
+          }
+          this.cdr.detectChanges();
         });
       } catch (error: any) {
         this.ngZone.run(() => {
-            this.stopLoadingProgressSimulation();
-            console.error('Error importing:', error);
-            alert(`Error al leer el archivo: ${error.message}`);
-            this.isLoading = false;
-            event.target.value = '';
-            this.loadingProgress = 0;
-            this.loadingStatusText = 'Preparando archivo...';
+          this.stopLoadingProgressSimulation();
+          alert(`Error al leer el archivo: ${error?.message || 'No se pudo procesar el archivo.'}`);
+          this.isLoading = false;
+          this.loadingProgress = 0;
+          this.loadingStatusText = 'Preparando archivo...';
+          if (input) {
+            input.value = '';
+          }
+          this.cdr.detectChanges();
         });
       }
     });
   }
 
   async confirmImport() {
+      if (!this.canManageInventory) return;
       if (this.isImporting) return;
       const itemsToImport = [...this.conflictsData, ...this.previewData];
       if (itemsToImport.length === 0) return;
@@ -1169,8 +1307,8 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
          );
           this.importProgressPercent = 100;
           const summary = result.conflicts > 0
-            ? `Se importaron ${result.imported} registros. ${result.conflicts} quedaron marcados para revision.`
-            : `Se importaron ${result.imported} registros.`;
+            ? `Se importaron ${result.imported} registros.\nNuevos: ${result.created}\nActualizados: ${result.updated}\n${result.conflicts} quedaron marcados para revision.`
+            : `Se importaron ${result.imported} registros.\nNuevos: ${result.created}\nActualizados: ${result.updated}`;
           alert(summary);
           this.cancelImport();
       } catch (error: any) {
@@ -1190,6 +1328,18 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
       this.importProgressText = '';
       this.previewData = [];
       this.conflictsData = [];
+  }
+
+  get previewConflictRows() {
+      return this.conflictsData.slice(0, this.importPreviewLimit);
+  }
+
+  get previewValidRows() {
+      return this.previewData.slice(0, this.importPreviewLimit);
+  }
+
+  get hasHiddenPreviewRows() {
+      return this.previewConflictRows.length + this.previewValidRows.length < this.previewData.length + this.conflictsData.length;
   }
 
   private startLoadingProgressSimulation() {

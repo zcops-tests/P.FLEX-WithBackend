@@ -107,3 +107,10 @@ export class UpdateIncidentStatusDto {
   @IsOptional()
   root_cause?: string;
 }
+
+export class UpdateIncidentRootCauseDto {
+  @ApiProperty({ example: 'Root cause analysis result' })
+  @IsString()
+  @IsOptional()
+  root_cause?: string;
+}

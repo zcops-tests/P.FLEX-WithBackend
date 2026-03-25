@@ -96,6 +96,59 @@ export class SyncService {
     };
   }
 
+  async getStatus() {
+    const [latestChange, latestMutation, pendingMutations, issues, pendingCount, conflictCount, errorCount] = await Promise.all([
+      this.prisma.changeLog.findFirst({
+        orderBy: [{ changed_at: 'desc' }, { id: 'desc' }],
+      }),
+      this.prisma.syncMutationLog.findFirst({
+        orderBy: { processed_at: 'desc' },
+      }),
+      this.prisma.syncMutationLog.findMany({
+        where: { status: 'PENDING' },
+        orderBy: { processed_at: 'desc' },
+        take: 10,
+      }),
+      this.prisma.syncMutationLog.findMany({
+        where: { status: { in: ['CONFLICT', 'REJECTED'] } },
+        orderBy: { processed_at: 'desc' },
+        take: 10,
+      }),
+      this.prisma.syncMutationLog.count({ where: { status: 'PENDING' } }),
+      this.prisma.syncMutationLog.count({ where: { status: 'CONFLICT' } }),
+      this.prisma.syncMutationLog.count({ where: { status: 'REJECTED' } }),
+    ]);
+
+    return {
+      connected: true,
+      last_server_change_at: latestChange?.changed_at?.toISOString() || null,
+      last_sync_activity_at: latestMutation?.processed_at?.toISOString() || latestChange?.changed_at?.toISOString() || null,
+      counts: {
+        pending: pendingCount,
+        conflicts: conflictCount,
+        errors: errorCount,
+      },
+      pending_mutations: pendingMutations.map((item) => ({
+        mutation_id: item.mutation_id,
+        entity: item.entity,
+        entity_id: item.entity_id,
+        action: item.action,
+        client_id: item.client_id,
+        processed_at: item.processed_at.toISOString(),
+      })),
+      issues: issues.map((item) => ({
+        mutation_id: item.mutation_id,
+        entity: item.entity,
+        entity_id: item.entity_id,
+        action: item.action,
+        client_id: item.client_id,
+        status: item.status,
+        message: this.extractPayloadMessage(item.response_payload),
+        processed_at: item.processed_at.toISOString(),
+      })),
+    };
+  }
+
   async pushMutations(dto: SyncPushRequestDto, userId: string) {
     const pushResults: Array<{ mutation_id: string; status: SyncMutationStatus; response?: any; message?: string }> = [];
     const { mutations, device_id } = dto;
@@ -291,5 +344,14 @@ export class SyncService {
       return 'ERROR';
     }
     return 'SUCCESS';
+  }
+
+  private extractPayloadMessage(payload: unknown) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return '';
+    }
+
+    const message = (payload as Record<string, unknown>).message;
+    return typeof message === 'string' ? message : '';
   }
 }

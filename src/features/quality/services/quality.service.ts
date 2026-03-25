@@ -65,9 +65,22 @@ export class QualityService {
     this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Reportar Incidencia', `Nueva incidencia ${newIncident.code}: ${newIncident.title}`);
   }
 
-  updateIncident(updated: Incident) {
-    this._incidents.next(this.incidents.map(i => i.id === updated.id ? updated : i));
+  async updateIncident(updated: Incident) {
+    const saved = await this.backend.updateIncidentRootCause(updated.id, {
+      root_cause: updated.rootCause || '',
+    });
+    const mapped = this.mapIncident(saved);
+    this._incidents.next(this.incidents.map(i => i.id === updated.id ? mapped : i));
     this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Actualizar Incidencia', `Actualizacion de ${updated.code}`);
+  }
+
+  async updateIncidentRootCause(incidentId: string, rootCause: string) {
+    const saved = await this.backend.updateIncidentRootCause(incidentId, {
+      root_cause: rootCause,
+    });
+    const mapped = this.mapIncident(saved);
+    this._incidents.next(this.incidents.map(i => i.id === incidentId ? mapped : i));
+    return mapped;
   }
 
   async addCapaAction(incidentId: string, action: Partial<CapaAction>) {
@@ -109,10 +122,14 @@ export class QualityService {
     this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Completar Accion', `Estado de accion modificado en incidencia ${incidentId}`);
   }
 
-  async closeIncident(incidentId: string) {
-    await this.backend.updateIncidentStatus(incidentId, { status: 'CLOSED' });
+  async closeIncident(incidentId: string, rootCause?: string) {
+    const saved = await this.backend.updateIncidentStatus(incidentId, {
+      status: 'CLOSED',
+      root_cause: rootCause || '',
+    });
     const incident = this.incidents.find(i => i.id === incidentId);
-    this._incidents.next(this.incidents.map(i => i.id === incidentId ? { ...i, status: 'Cerrada' } : i));
+    const mapped = this.mapIncident(saved);
+    this._incidents.next(this.incidents.map(i => i.id === incidentId ? mapped : i));
     this.audit.log(this.state.userName(), this.state.userRole(), 'CALIDAD', 'Cerrar Incidencia', `Incidencia ${incident?.code} marcada como resuelta.`);
   }
 

@@ -94,6 +94,7 @@ export class BackendApiService {
   getIncident(id: string) { return this.api.get<any>(`/quality/incidents/${id}`); }
   createIncident(body: any) { return this.api.post<any>('/quality/incidents', body); }
   updateIncidentStatus(id: string, body: any) { return this.api.patch<any>(`/quality/incidents/${id}/status`, body); }
+  updateIncidentRootCause(id: string, body: any) { return this.api.patch<any>(`/quality/incidents/${id}/root-cause`, body); }
   addCapaAction(id: string, body: any) { return this.api.post<any>(`/quality/incidents/${id}/capa`, body); }
   completeCapaAction(id: string) { return this.api.patch<any>(`/quality/capa-actions/${id}/complete`, {}); }
 
@@ -116,7 +117,10 @@ export class BackendApiService {
   getAnalyticsDowntime(query?: any) { return this.api.get<any>('/analytics/downtime', { query }); }
   consolidateAnalytics(body: any) { return this.api.post<any>('/analytics/consolidate', body); }
 
+  getAuditLogs(query?: any) { return this.api.get<any>('/audit/logs', { query }); }
+
   syncPull(query?: any) { return this.api.get<any>('/sync/pull', { query }); }
+  getSyncStatus() { return this.api.get<any>('/sync/status'); }
   syncPush(body: any) { return this.api.post<any>('/sync/push', body); }
 
   createImport(body: any) { return this.api.post<any>('/imports', body); }

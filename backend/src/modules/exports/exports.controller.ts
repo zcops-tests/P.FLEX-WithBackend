@@ -22,14 +22,14 @@ export class ExportsController {
   constructor(private readonly exportsService: ExportsService) {}
 
   @Post('request')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'MANAGER', 'SUPERVISOR', 'QUALITY_MANAGER', 'AUDITOR', 'FINISHING_MANAGER')
   @ApiOperation({ summary: 'Request an asynchronous data export' })
   async requestExport(@Body() dto: ExportRequestDto, @Request() req) {
     return this.exportsService.requestExport(dto, req.user.sub || req.user.id);
   }
 
   @Get('status/:jobId')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'MANAGER', 'SUPERVISOR', 'QUALITY_MANAGER', 'AUDITOR', 'FINISHING_MANAGER')
   @ApiOperation({ summary: 'Get export job status' })
   async getStatus(@Param('jobId') jobId: string) {
     return this.exportsService.getJobStatus(jobId);

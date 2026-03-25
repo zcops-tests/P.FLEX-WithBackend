@@ -22,21 +22,21 @@ export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get('oee')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'MANAGER', 'SUPERVISOR', 'QUALITY_MANAGER', 'FINISHING_MANAGER')
   @ApiOperation({ summary: 'Get OEE report' })
   async getOee(@Query() query: KpiQueryDto) {
     return this.analyticsService.getOee(query);
   }
 
   @Get('waste')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'MANAGER', 'SUPERVISOR', 'QUALITY_MANAGER', 'FINISHING_MANAGER')
   @ApiOperation({ summary: 'Get waste report' })
   async getWaste(@Query() query: KpiQueryDto) {
     return this.analyticsService.getWaste(query);
   }
 
   @Get('downtime')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'MANAGER', 'SUPERVISOR', 'QUALITY_MANAGER', 'FINISHING_MANAGER')
   @ApiOperation({ summary: 'Get downtime Pareto report' })
   async getDowntime(@Query() query: KpiQueryDto) {
     return this.analyticsService.getDowntime(query);

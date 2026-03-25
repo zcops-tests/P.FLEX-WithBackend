@@ -25,21 +25,20 @@ export class DiesController {
   constructor(private readonly diesService: DiesService) {}
 
   @Post()
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'SUPERVISOR', 'WAREHOUSE', 'CLICHE_DIE_MANAGER')
   @ApiOperation({ summary: 'Create a new die' })
   async create(@Body() dto: CreateDieDto) {
     return this.diesService.create(dto);
   }
 
   @Post('bulk-upsert')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'SUPERVISOR', 'WAREHOUSE', 'CLICHE_DIE_MANAGER')
   @ApiOperation({ summary: 'Bulk import/update dies' })
   async bulkUpsert(@Body() dto: BulkUpsertDiesDto) {
     return this.diesService.bulkUpsert(dto.items);
   }
 
   @Get()
-  @Roles('ADMIN', 'SUPERVISOR', 'OPERATOR', 'WAREHOUSE')
   @ApiOperation({ summary: 'Get all dies with filters' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
@@ -49,14 +48,13 @@ export class DiesController {
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'SUPERVISOR', 'OPERATOR', 'WAREHOUSE')
   @ApiOperation({ summary: 'Get a specific die by ID' })
   async findOne(@Param('id') id: string) {
     return this.diesService.findOne(id);
   }
 
   @Put(':id')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'SUPERVISOR', 'WAREHOUSE', 'CLICHE_DIE_MANAGER')
   @ApiOperation({ summary: 'Update an existing die' })
   async update(@Param('id') id: string, @Body() dto: UpdateDieDto) {
     return this.diesService.update(id, dto);

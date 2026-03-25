@@ -31,14 +31,12 @@ export class ShiftsController {
   }
 
   @Get()
-  @Roles('ADMIN', 'SUPERVISOR')
   @ApiOperation({ summary: 'Get all active shifts' })
   async findAll() {
     return this.shiftsService.findAll();
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'SUPERVISOR')
   @ApiOperation({ summary: 'Get a specific shift by ID' })
   async findOne(@Param('id') id: string) {
     return this.shiftsService.findOne(id);

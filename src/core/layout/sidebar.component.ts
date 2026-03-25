@@ -10,7 +10,7 @@ interface MenuItem {
   icon: string;
   route: string;
   badge?: string;
-  children?: { label: string; route: string; }[];
+  children?: { label: string; route: string; roles?: UserRole[]; }[];
   roles?: UserRole[];
 }
 
@@ -264,7 +264,7 @@ interface MenuItem {
             <!-- Submenu -->
             @if (item.children && !state.isSidebarCollapsed() && isExpanded(item.label)) {
             <div class="ml-4 pl-2 border-l border-white/5 space-y-1 mb-2 animate-slideDown">
-                @for (sub of item.children; track sub.label) {
+                @for (sub of getVisibleChildren(item); track sub.label) {
                 <a [routerLink]="sub.route" 
                     routerLinkActive="text-blue-300 bg-white/5 border-white/10"
                     class="flex items-center px-3 py-2 rounded-lg text-xs font-medium text-gray-500 hover:text-white hover:bg-white/5 border border-transparent transition-all whitespace-nowrap">
@@ -441,38 +441,38 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   private readonly baseMenuItems: MenuItem[] = [
-    { label: 'DASHBOARD', icon: 'dashboard', route: '/dashboard' },
-    { label: 'OTS', icon: 'assignment', route: '/ots', badge: '3' },
-    { label: 'PROGRAMACIÓN', icon: 'calendar_month', route: '/schedule', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente'] },
+    { label: 'DASHBOARD', icon: 'dashboard', route: '/dashboard', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente', 'Asistente de Producción', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles', 'Encargado de Tintas', 'Encargado de Troquelado y Rebobinado', 'Jefe de Calidad', 'Auditor'] },
+    { label: 'OTS', icon: 'assignment', route: '/ots', badge: '3', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente', 'Asistente de Producción', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles', 'Encargado de Tintas', 'Encargado de Troquelado y Rebobinado', 'Jefe de Calidad', 'Auditor'] },
+    { label: 'PROGRAMACIÓN', icon: 'calendar_month', route: '/schedule', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente', 'Asistente de Producción', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles', 'Encargado de Tintas', 'Encargado de Troquelado y Rebobinado'] },
     { 
       label: 'REPORTES', icon: 'precision_manufacturing', route: '/reports',
       children: [
-        { label: 'IMPRESIÓN', route: '/reports/print' },
-        { label: 'TROQUELADO', route: '/reports/diecut' },
-        { label: 'REBOBINADO', route: '/reports/rewind' },
-        { label: 'EMPAQUETADO', route: '/reports/packaging' }
+        { label: 'IMPRESIÓN', route: '/reports/print', roles: ['Sistemas', 'Supervisor', 'Operario', 'Asistente de Producción', 'Jefe de Calidad'] },
+        { label: 'TROQUELADO', route: '/reports/diecut', roles: ['Sistemas', 'Supervisor', 'Operario', 'Asistente de Producción', 'Encargado de Troquelado y Rebobinado', 'Jefe de Calidad'] },
+        { label: 'REBOBINADO', route: '/reports/rewind', roles: ['Sistemas', 'Supervisor', 'Operario', 'Asistente de Producción', 'Encargado de Troquelado y Rebobinado', 'Jefe de Calidad'] },
+        { label: 'EMPAQUETADO', route: '/reports/packaging', roles: ['Sistemas', 'Supervisor', 'Operario', 'Asistente de Producción', 'Encargado de Troquelado y Rebobinado', 'Jefe de Calidad'] }
       ]
     },
     {
       label: 'INVENTARIO', icon: 'inventory_2', route: '/inventory',
       children: [
-        { label: 'LAYOUT / MAPA', route: '/inventory/layout' },
-        { label: 'CLISÉS', route: '/inventory/clise' },
-        { label: 'TROQUELES', route: '/inventory/die' },
-        { label: 'PRODUCTO TERMINADO', route: '/inventory/stock' },
-        { label: 'TINTAS', route: '/inventory/ink' }
+        { label: 'LAYOUT / MAPA', route: '/inventory/layout', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente', 'Asistente de Producción', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles', 'Encargado de Tintas', 'Jefe de Calidad', 'Auditor'] },
+        { label: 'CLISÉS', route: '/inventory/clise', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente', 'Asistente de Producción', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles', 'Jefe de Calidad', 'Auditor'] },
+        { label: 'TROQUELES', route: '/inventory/die', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente', 'Asistente de Producción', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles', 'Jefe de Calidad', 'Auditor'] },
+        { label: 'PRODUCTO TERMINADO', route: '/inventory/stock', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente', 'Asistente de Producción', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Troquelado y Rebobinado', 'Jefe de Calidad', 'Auditor'] },
+        { label: 'TINTAS', route: '/inventory/ink', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Asistente', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Tintas', 'Jefe de Calidad'] }
       ]
     }
   ];
 
   private readonly managementItems: MenuItem[] = [
-    { label: 'INCIDENCIAS', icon: 'warning', route: '/incidents' },
-    { label: 'INDICADORES', icon: 'analytics', route: '/analytics', roles: ['Sistemas', 'Jefatura', 'Supervisor'] },
-    { label: 'AUDITORÍA', icon: 'verified_user', route: '/audit', roles: ['Sistemas', 'Jefatura', 'Supervisor'] }
+    { label: 'INCIDENCIAS', icon: 'warning', route: '/incidents', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Operario', 'Asistente', 'Asistente de Producción', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles', 'Encargado de Tintas', 'Encargado de Troquelado y Rebobinado', 'Jefe de Calidad', 'Auditor'] },
+    { label: 'INDICADORES', icon: 'analytics', route: '/analytics', roles: ['Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Troquelado y Rebobinado', 'Jefe de Calidad'] },
+    { label: 'AUDITORÍA', icon: 'verified_user', route: '/audit', roles: ['Sistemas', 'Jefatura', 'Auditor'] }
   ];
 
   get mainMenuItems() {
-    return this.baseMenuItems.filter(item => this.canAccess(item.roles));
+    return this.baseMenuItems.filter((item) => this.canAccess(item.roles) && this.hasVisibleChildren(item));
   }
 
   get managementMenuItems() {
@@ -486,7 +486,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
         };
       }
       return item;
-    }).filter(item => this.canAccess(item.roles));
+    }).filter((item) => this.canAccess(item.roles) && this.hasVisibleChildren(item));
   }
 
   canAccessConfiguration() {
@@ -496,5 +496,14 @@ export class SidebarComponent implements OnInit, OnDestroy {
   private canAccess(roles?: readonly UserRole[]) {
     if (!roles?.length) return true;
     return this.state.hasAnyRole(roles);
+  }
+
+  getVisibleChildren(item: MenuItem) {
+    return (item.children || []).filter((child) => this.canAccess(child.roles));
+  }
+
+  private hasVisibleChildren(item: MenuItem) {
+    if (!item.children?.length) return true;
+    return this.getVisibleChildren(item).length > 0;
   }
 }

@@ -7,6 +7,7 @@ import { InventoryService } from '../services/inventory.service';
 import { DieItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
 import { FileExportService } from '../../../services/file-export.service';
+import { StateService } from '../../../services/state.service';
 
 @Component({
   selector: 'app-inventory-die',
@@ -28,13 +29,15 @@ import { FileExportService } from '../../../services/file-export.service';
                   </div>
               </div>
               <div class="flex items-center gap-3 w-full md:w-auto">
-                  <input #fileInputDie type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
-                  <button (click)="fileInputDie.click()" [disabled]="isLoading || isImporting" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#94A3B8] bg-[#1A222C] hover:bg-[#202A36] hover:text-white border border-[#2D3748] rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
-                      <span *ngIf="!isLoading && !isImporting" class="material-icons text-[20px]">upload_file</span>
-                      <span *ngIf="isLoading || isImporting" class="w-4 h-4 rounded-full border-2 border-slate-500/40 border-t-white animate-spin"></span>
-                      {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar CSV') }}
-                  </button>
-                  <button (click)="openModal(null, 'edit')" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#3B82F6] hover:bg-blue-600 border border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)] rounded-lg transition-all duration-200">
+                  <ng-container *ngIf="canManageInventory">
+                      <input #fileInputDie type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
+                      <button (click)="fileInputDie.click()" [disabled]="isLoading || isImporting" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#94A3B8] bg-[#1A222C] hover:bg-[#202A36] hover:text-white border border-[#2D3748] rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                          <span *ngIf="!isLoading && !isImporting" class="material-icons text-[20px]">upload_file</span>
+                          <span *ngIf="isLoading || isImporting" class="w-4 h-4 rounded-full border-2 border-slate-500/40 border-t-white animate-spin"></span>
+                          {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar CSV') }}
+                      </button>
+                  </ng-container>
+                  <button *ngIf="canManageInventory" (click)="openModal(null, 'edit')" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#3B82F6] hover:bg-blue-600 border border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)] rounded-lg transition-all duration-200">
                       <span class="material-icons text-[20px]">add</span> Nuevo Troquel
                   </button>
               </div>
@@ -179,7 +182,7 @@ import { FileExportService } from '../../../services/file-export.service';
                               <td class="px-6 py-3 whitespace-nowrap text-right text-sm font-medium">
                                   <div class="flex items-center justify-end gap-1">
                                       <button (click)="openModal(item, 'view')" class="text-[#94A3B8] hover:text-white transition-colors p-1"><span class="material-icons">visibility</span></button>
-                                      <button (click)="openModal(item, 'edit')" class="text-[#94A3B8] hover:text-[#3B82F6] transition-colors p-1"><span class="material-icons">edit</span></button>
+                                      <button *ngIf="canManageInventory" (click)="openModal(item, 'edit')" class="text-[#94A3B8] hover:text-[#3B82F6] transition-colors p-1"><span class="material-icons">edit</span></button>
                                   </div>
                               </td>
                           </tr>
@@ -247,7 +250,7 @@ import { FileExportService } from '../../../services/file-export.service';
                   </div>
 
                   <div class="flex flex-wrap items-center gap-2">
-                      <button *ngIf="isReadOnly" (click)="isReadOnly = false" class="detail-action detail-action--muted">
+                      <button *ngIf="isReadOnly && canManageInventory" (click)="isReadOnly = false" class="detail-action detail-action--muted">
                           <span class="material-icons text-base">edit</span>
                           Editar
                       </button>
@@ -719,9 +722,11 @@ export class InventoryDieComponent implements OnDestroy {
   inventoryService = inject(InventoryService);
   excelService = inject(ExcelService);
   fileExport = inject(FileExportService);
+  state = inject(StateService);
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
   destroyRef = inject(DestroyRef);
+  private readonly writeRoles = ['Sistemas', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles'] as const;
   Math = Math;
   @ViewChild('dieDetailCard') dieDetailCard?: ElementRef<HTMLElement>;
 
@@ -758,6 +763,10 @@ export class InventoryDieComponent implements OnDestroy {
   previewData: DieItem[] = [];
   conflictsData: DieItem[] = [];
   private loadingProgressInterval?: number;
+
+  get canManageInventory() {
+      return this.state.hasAnyRole(this.writeRoles);
+  }
 
   constructor() {
     this.inventoryService.dieItems$
@@ -1022,7 +1031,9 @@ export class InventoryDieComponent implements OnDestroy {
 
   // --- CRUD ---
   openModal(item: any, mode: 'view' | 'edit') {
-      this.isReadOnly = mode === 'view';
+      if (!item && !this.canManageInventory) return;
+      const effectiveMode = this.canManageInventory ? mode : 'view';
+      this.isReadOnly = effectiveMode === 'view';
       this.showHistoryDetails = false;
 
       if (item) {
@@ -1067,6 +1078,7 @@ export class InventoryDieComponent implements OnDestroy {
   }
 
   saveDie() {
+      if (!this.canManageInventory) return;
       if (this.currentDie.id) {
           const item = this.currentDie as DieItem;
           const exists = this.dieItems.find(i => i.id === item.id);
@@ -1081,6 +1093,7 @@ export class InventoryDieComponent implements OnDestroy {
 
   // --- IMPORT ---
   async handleImport(event: any) {
+    if (!this.canManageInventory) return;
     const file = event.target.files[0];
     if (!file) return;
 
@@ -1127,6 +1140,7 @@ export class InventoryDieComponent implements OnDestroy {
   }
 
   async confirmImport() {
+      if (!this.canManageInventory) return;
       if (this.isImporting) return;
       const itemsToImport = [...this.conflictsData, ...this.previewData];
       if (itemsToImport.length === 0) return;

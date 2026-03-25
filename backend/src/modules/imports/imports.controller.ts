@@ -14,7 +14,7 @@ export class ImportsController {
   constructor(private readonly importsService: ImportsService) {}
 
   @Post()
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'SUPERVISOR', 'PLANNER', 'PRODUCTION_ASSISTANT', 'WAREHOUSE', 'CLICHE_DIE_MANAGER', 'INK_MANAGER')
   @ApiOperation({ summary: 'Create a new import job' })
   create(@Body() dto: CreateImportJobDto, @Request() req) {
     return this.importsService.createJob(dto, req.user.sub);
@@ -27,7 +27,7 @@ export class ImportsController {
   }
 
   @Post(':id/confirm')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN', 'SUPERVISOR', 'PLANNER', 'PRODUCTION_ASSISTANT', 'WAREHOUSE', 'CLICHE_DIE_MANAGER', 'INK_MANAGER')
   @ApiOperation({ summary: 'Confirm and apply the import' })
   confirm(@Param('id') id: string, @Request() req) {
     return this.importsService.confirmImport(id, req.user.sub);

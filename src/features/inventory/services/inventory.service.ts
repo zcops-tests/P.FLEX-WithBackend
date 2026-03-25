@@ -6,6 +6,8 @@ import { AuditService } from '../../../services/audit.service';
 import { StateService } from '../../../services/state.service';
 import { BackendApiService } from '../../../services/backend-api.service';
 
+const CLISE_IMPORT_BATCH_SIZE = 200;
+
 @Injectable({
   providedIn: 'root'
 })
@@ -148,37 +150,40 @@ export class InventoryService {
   async addClises(items: CliseItem[]) {
     const created: CliseItem[] = [];
     for (const item of items) {
-      try {
-        created.push(this.mapClise(await this.backend.createClise(this.mapCliseToPayload(item))));
-      } catch {
-        created.push(item);
-      }
+      created.push(await this.saveClise(item));
     }
-    this._cliseItems.next([...created, ...this.cliseItems]);
-    this.mapItemsToLayout();
-    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Alta Clises', `Se agregaron ${items.length} clises al inventario.`);
+    return created;
   }
 
   async importClises(
     items: CliseItem[],
     onProgress?: (progress: { currentBatch: number; totalBatches: number; processedItems: number; totalItems: number }) => void,
   ) {
-    const chunkSize = 200;
     const payloadItems = items.map((item) => this.mapCliseToPayload(item));
     const totalItems = payloadItems.length;
 
     if (totalItems === 0) {
-      return { imported: 0, conflicts: 0 };
+      return { imported: 0, conflicts: 0, created: 0, updated: 0 };
     }
 
-    const totalBatches = Math.max(1, Math.ceil(totalItems / chunkSize));
+    let created = 0;
+    let updated = 0;
+    const totalBatches = Math.max(1, Math.ceil(totalItems / CLISE_IMPORT_BATCH_SIZE));
 
     for (let index = 0; index < totalBatches; index += 1) {
-      const start = index * chunkSize;
-      const end = start + chunkSize;
+      const start = index * CLISE_IMPORT_BATCH_SIZE;
+      const end = start + CLISE_IMPORT_BATCH_SIZE;
       const batch = payloadItems.slice(start, end);
 
-      await this.backend.bulkUpsertClises({ items: batch });
+      let result: any;
+      try {
+        result = await this.backend.bulkUpsertClises({ items: batch });
+      } catch (error) {
+        throw error;
+      }
+
+      created += Number(result?.created || 0);
+      updated += Number(result?.updated || 0);
       onProgress?.({
         currentBatch: index + 1,
         totalBatches,
@@ -193,18 +198,37 @@ export class InventoryService {
     return {
       imported: totalItems,
       conflicts: items.filter((item) => item.hasConflict).length,
+      created,
+      updated,
     };
   }
 
   async updateClise(item: CliseItem) {
-    try {
-      await this.backend.updateClise(item.id, this.mapCliseToPayload(item));
-    } catch {
-      // Preserve local edit on failure.
+    return this.saveClise(item);
+  }
+
+  async saveClise(item: CliseItem) {
+    const existing = this.cliseItems.find((entry) => entry.id === item.id);
+    const desiredLinkedDieIds = this.normalizeLinkedDieIds(item.linkedDies);
+    const payload = this.mapCliseToPayload({ ...item, linkedDies: desiredLinkedDieIds });
+
+    const persisted = existing
+      ? await this.backend.updateClise(existing.id, payload)
+      : await this.backend.createClise(payload);
+
+    await this.syncCliseDieLinks(persisted.id, desiredLinkedDieIds);
+    const refreshed = this.mapClise(await this.backend.getClise(persisted.id));
+
+    if (existing) {
+      this._cliseItems.next(this.cliseItems.map((entry) => entry.id === existing.id ? refreshed : entry));
+      this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Editar Clise', `Se modifico el clise ${refreshed.item}.`);
+    } else {
+      this._cliseItems.next([refreshed, ...this.cliseItems]);
+      this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Alta Clise', `Se agrego el clise ${refreshed.item} al inventario.`);
     }
-    this._cliseItems.next(this.cliseItems.map(entry => entry.id === item.id ? item : entry));
+
     this.mapItemsToLayout();
-    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Editar Clise', `Se modifico el clise ${item.item}.`);
+    return refreshed;
   }
 
   async addDies(items: DieItem[]) {
@@ -321,45 +345,16 @@ export class InventoryService {
 
   normalizeCliseData(rawData: any[]): { valid: CliseItem[], conflicts: CliseItem[] } {
     const normalized = this.excelService.normalizeData(rawData, this.CLISE_MAPPING);
-    const mapped: CliseItem[] = normalized.map(row => {
-      const medidas = this.parseMeasures(row.medidas);
-      const ancho = this.excelService.parseNumber(row.ancho) ?? medidas.ancho;
-      const avance = this.excelService.parseNumber(row.avance) ?? medidas.avance;
-      const colores = this.excelService.toDisplayString(row.colores);
-
+    const mapped: CliseItem[] = normalized.map((row, index) => {
+      const item = this.buildImportedClise(row, index);
       return {
-        id: Math.random().toString(36).slice(2, 11),
-        item: this.excelService.toDisplayString(row.item),
-        ubicacion: this.excelService.toDisplayString(row.ubicacion),
-        descripcion: this.excelService.toDisplayString(row.descripcion),
-        cliente: this.excelService.toDisplayString(row.cliente),
-        z: this.excelService.toDisplayString(row.z),
-        estandar: this.excelService.toDisplayString(row.estandar),
-        medidas: this.excelService.toDisplayString(row.medidas) || this.formatMeasures(ancho, avance),
-        troquel: this.excelService.toDisplayString(row.troquel),
-        linkedDies: [],
-        ancho,
-        avance,
-        col: this.excelService.parseNumber(row.col),
-        rep: this.excelService.parseNumber(row.rep),
-        n_clises: this.excelService.parseNumber(row.n_clises),
-        espesor: this.excelService.toDisplayString(row.espesor),
-        ingreso: this.normalizeExcelDate(row.ingreso),
-        obs: this.excelService.toDisplayString(row.obs),
-        maq: this.excelService.toDisplayString(row.maq),
-        colores: this.excelService.toDisplayString(row.colores),
-        colorUsage: this.parseColors(colores),
-        n_ficha_fler: this.excelService.toDisplayString(row.n_ficha_fler),
-        mtl_acum: this.excelService.parseNumber(row.mtl_acum),
-        sourceRow: row.__sourceRow || undefined,
-        history: [],
-        hasConflict: false
+        ...item,
+        hasConflict: this.hasCliseConflict(item),
       };
     });
 
-    const valid = mapped.filter(item => !this.hasCliseConflict(item));
-    const conflicts = mapped.filter(item => this.hasCliseConflict(item));
-    conflicts.forEach(item => item.hasConflict = true);
+    const valid = mapped.filter((item) => !item.hasConflict);
+    const conflicts = mapped.filter((item) => item.hasConflict);
     return { valid, conflicts };
   }
 
@@ -428,6 +423,84 @@ export class InventoryService {
     return { valid, conflicts };
   }
 
+  private buildImportedClise(row: Record<string, unknown>, rowIndex: number): CliseItem {
+    const medidas = this.parseMeasures(row.medidas);
+    const ancho = this.excelService.parseNumber(row.ancho) ?? medidas.ancho;
+    const avance = this.excelService.parseNumber(row.avance) ?? medidas.avance;
+    const colores = this.excelService.toDisplayString(row.colores);
+    const itemCode = this.limitText(this.excelService.toDisplayString(row.item), 100);
+
+    return {
+      id: `clise-import-${rowIndex + 1}`,
+      item: itemCode,
+      backendItemCode: itemCode || undefined,
+      ubicacion: this.limitText(this.excelService.toDisplayString(row.ubicacion), 100),
+      descripcion: this.toOptionalText(this.excelService.toDisplayString(row.descripcion)) || '',
+      cliente: this.limitText(this.excelService.toDisplayString(row.cliente), 150),
+      z: this.limitText(this.excelService.toDisplayString(row.z), 50),
+      estandar: this.limitText(this.excelService.toDisplayString(row.estandar), 100),
+      medidas: this.limitText(this.excelService.toDisplayString(row.medidas) || this.formatMeasures(ancho, avance), 100),
+      troquel: this.limitText(this.excelService.toDisplayString(row.troquel), 100),
+      linkedDies: [],
+      ancho,
+      avance,
+      col: this.excelService.parseNumber(row.col),
+      rep: this.excelService.parseNumber(row.rep),
+      n_clises: this.excelService.parseNumber(row.n_clises),
+      espesor: this.limitText(this.excelService.toDisplayString(row.espesor), 32),
+      ingreso: this.normalizeExcelDate(row.ingreso),
+      obs: this.toOptionalText(this.excelService.toDisplayString(row.obs)) || '',
+      maq: this.limitText(this.excelService.toDisplayString(row.maq), 100),
+      colores: this.limitText(colores, 500),
+      colorUsage: this.parseColors(colores),
+      n_ficha_fler: this.limitText(this.excelService.toDisplayString(row.n_ficha_fler), 100),
+      mtl_acum: this.excelService.parseNumber(row.mtl_acum),
+      history: [],
+      hasConflict: false,
+    };
+  }
+
+  private async syncCliseDieLinks(cliseId: string, desiredDieIds: string[]) {
+    const normalizedDesired = this.normalizeLinkedDieIds(desiredDieIds);
+    const currentLinks = await this.backend.getCliseDies(cliseId);
+    const currentDieIds = (currentLinks || [])
+      .map((link: any) => String(link.die_id || link.die?.id || '').trim())
+      .filter(Boolean);
+
+    const currentSet = new Set(currentDieIds);
+    const desiredSet = new Set(normalizedDesired);
+
+    const toLink = normalizedDesired.filter((dieId) => !currentSet.has(dieId));
+    const toUnlink = currentDieIds.filter((dieId) => !desiredSet.has(dieId));
+
+    await Promise.all([
+      ...toLink.map((dieId) => this.backend.linkCliseDie({ clise_id: cliseId, die_id: dieId })),
+      ...toUnlink.map((dieId) => this.backend.unlinkCliseDie(cliseId, dieId)),
+    ]);
+  }
+
+  private normalizeLinkedDieIds(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return Array.from(new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean)));
+  }
+
+  private parseColorNames(value: string) {
+    return value
+      .split(/[;,/]+/)
+      .flatMap((entry) => entry.split(','))
+      .map((entry) => this.limitText(entry, 100))
+      .filter(Boolean);
+  }
+
+  private limitText(value: unknown, maxLength: number) {
+    return String(value ?? '').trim().slice(0, maxLength);
+  }
+
+  private toOptionalText(value: unknown) {
+    const text = String(value ?? '').trim();
+    return text || undefined;
+  }
+
   private placeInventoryItem(layout: RackConfig[], type: 'clise' | 'die', location: string, item: any) {
     if (!location) return;
     const locationNumber = parseInt(location.replace(/\D/g, ''), 10);
@@ -448,6 +521,14 @@ export class InventoryService {
 
   private mapClise(item: any): CliseItem {
     const visibleItemCode = String(item.item ?? item.raw_payload?.display_item_code ?? item.item_code ?? '').trim();
+    const linkedDieIds = Array.isArray(item.die_links)
+      ? item.die_links
+        .map((link: any) => String(link.die_id || link.die?.id || '').trim())
+        .filter(Boolean)
+      : Array.isArray(item.linkedDies)
+        ? item.linkedDies.map((entry: any) => String(entry || '').trim()).filter(Boolean)
+        : [];
+
     return {
       id: item.id,
       item: visibleItemCode,
@@ -459,7 +540,7 @@ export class InventoryService {
       estandar: item.estandar || '',
       medidas: item.medidas || this.formatMeasures(this.toNullableNumber(item.ancho ?? item.ancho_mm), this.toNullableNumber(item.avance ?? item.avance_mm)),
       troquel: item.troquel || '',
-      linkedDies: [],
+      linkedDies: linkedDieIds,
       ancho: this.toNullableNumber(item.ancho ?? item.ancho_mm),
       avance: this.toNullableNumber(item.avance ?? item.avance_mm),
       col: item.columnas ?? null,
@@ -473,8 +554,8 @@ export class InventoryService {
       colorUsage: (item.colorUsage || item.color_usage || []).map((entry: any) => ({ name: entry.name || entry.color_name, meters: Number(entry.meters || 0) })),
       n_ficha_fler: item.n_ficha_fler || item.ficha_fler || '',
       mtl_acum: this.toNullableNumber(item.mtl_acum ?? item.metros_acumulados) ?? 0,
-      history: [],
-      sourceRow: item.raw_payload?.source_row || undefined,
+      history: Array.isArray(item.history) ? item.history : [],
+      sourceRow: undefined,
       hasConflict: Boolean(item.hasConflict ?? item.has_conflict ?? item.raw_payload?.import_conflict),
     };
   }
@@ -550,15 +631,19 @@ export class InventoryService {
   }
 
   private mapCliseToPayload(item: CliseItem) {
-    const itemCode = String(item.item || '').trim();
-    const cliente = String(item.cliente || '').trim();
+    const itemCode = this.limitText(item.item, 100);
+    const cliente = this.limitText(item.cliente, 150);
+    const colorNames = item.colorUsage?.length
+      ? item.colorUsage.map((entry) => this.limitText(entry.name, 100)).filter(Boolean)
+      : this.parseColorNames(item.colores);
+
     return {
       item_code: itemCode || item.backendItemCode || undefined,
-      ubicacion: item.ubicacion || undefined,
-      descripcion: item.descripcion || undefined,
+      ubicacion: this.limitText(item.ubicacion, 100) || undefined,
+      descripcion: this.toOptionalText(item.descripcion),
       cliente: cliente || undefined,
-      z_value: item.z || undefined,
-      estandar: item.estandar || undefined,
+      z_value: this.limitText(item.z, 50) || undefined,
+      estandar: this.limitText(item.estandar, 100) || undefined,
       ancho_mm: item.ancho ?? undefined,
       avance_mm: item.avance ?? undefined,
       columnas: item.col ?? undefined,
@@ -566,20 +651,18 @@ export class InventoryService {
       espesor_mm: this.excelService.parseNumber(item.espesor) ?? undefined,
       numero_clises: item.n_clises ?? undefined,
       fecha_ingreso: item.ingreso || undefined,
-      observaciones: item.obs || undefined,
-      maquina_texto: item.maq || undefined,
-      ficha_fler: item.n_ficha_fler || undefined,
+      observaciones: this.toOptionalText(item.obs),
+      maquina_texto: this.limitText(item.maq, 100) || undefined,
+      ficha_fler: this.limitText(item.n_ficha_fler, 100) || undefined,
       metros_acumulados: item.mtl_acum ?? 0,
-      colores_json: item.colorUsage?.length ? item.colorUsage.map((entry) => entry.name) : (item.colores ? item.colores.split(',').map((entry) => entry.trim()).filter(Boolean) : undefined),
+      colores_json: colorNames.length ? colorNames : undefined,
       raw_payload: {
         display_item_code: itemCode,
         import_conflict: this.hasCliseConflict(item),
         conflict_reasons: this.buildCliseConflictReasons(item),
-        medidas: item.medidas || undefined,
-        troquel: item.troquel || undefined,
-        colores: item.colores || undefined,
-        source_row: item.sourceRow || undefined,
-        source_columns: item.sourceRow ? Object.keys(item.sourceRow) : undefined,
+        medidas: this.limitText(item.medidas, 100) || undefined,
+        troquel: this.limitText(item.troquel, 100) || undefined,
+        colores: this.limitText(item.colores, 500) || undefined,
       },
     };
   }
@@ -678,7 +761,7 @@ export class InventoryService {
 
   private normalizeExcelDate(value: unknown): string {
     const normalizedValue = this.excelService.toDisplayString(value);
-    if (!value) return new Date().toISOString().split('T')[0];
+    if (!value) return '';
     if (value instanceof Date && !Number.isNaN(value.getTime())) {
       return value.toISOString().slice(0, 10);
     }
@@ -687,13 +770,13 @@ export class InventoryService {
       const excelEpoch = Date.UTC(1899, 11, 30);
       const serialDate = new Date(excelEpoch + value * 86400000);
       return Number.isNaN(serialDate.getTime())
-        ? new Date().toISOString().split('T')[0]
+        ? ''
         : serialDate.toISOString().slice(0, 10);
     }
 
     const text = normalizedValue.trim();
     if (!text) {
-      return new Date().toISOString().split('T')[0];
+      return '';
     }
 
     if (/^\d+(?:[.,]\d+)?$/.test(text)) {
@@ -732,7 +815,7 @@ export class InventoryService {
       }
     }
 
-    return new Date().toISOString().split('T')[0];
+    return '';
   }
 
   private parseMeasures(value: unknown): { ancho: number | null; avance: number | null } {
@@ -757,11 +840,7 @@ export class InventoryService {
   }
 
   private parseColors(value: string) {
-    return value
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .map((name) => ({ name, meters: 0 }));
+    return this.parseColorNames(value).map((name) => ({ name, meters: 0 }));
   }
 
   private hasCliseConflict(item: CliseItem) {
@@ -791,4 +870,5 @@ export class InventoryService {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
   }
+
 }

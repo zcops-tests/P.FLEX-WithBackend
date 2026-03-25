@@ -14,7 +14,6 @@ export class SystemConfigController {
   constructor(private readonly configService: SystemConfigService) {}
 
   @Get()
-  @Roles('ADMIN', 'SUPERVISOR')
   @ApiOperation({ summary: 'Get current system configuration' })
   async get() {
     return this.configService.get();

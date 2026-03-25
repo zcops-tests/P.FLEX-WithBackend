@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
 import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto';
 import { PrintReportStatus } from './print-report.dto';
 
@@ -18,4 +18,14 @@ export class PrintReportQueryDto extends PaginationQueryDto {
   @IsEnum(PrintReportStatus)
   @IsOptional()
   status?: PrintReportStatus;
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  endDate?: string;
 }

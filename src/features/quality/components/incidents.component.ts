@@ -236,14 +236,21 @@ import { StateService } from '../../../services/state.service';
                        </div>
                     </div>
 
-                    <div *ngIf="selectedIncident.status !== 'Cerrada'" class="pt-4 border-t border-white/10">
+                    <div class="pt-4 border-t border-white/10">
                          <h3 class="text-xs font-bold text-slate-500 uppercase mb-2">Análisis de Causa Raíz</h3>
-                         <textarea 
-                           [ngModel]="selectedIncident.rootCause" 
-                           (ngModelChange)="selectedIncident.rootCause = $event"
-                           (blur)="service.updateIncident(selectedIncident)"
-                           placeholder="Describa la causa raíz..."
-                           class="glassmorphism-input w-full text-sm rounded-xl p-3 outline-none min-h-[80px] bg-black/20"></textarea>
+                         <ng-container *ngIf="canManageIncidents && selectedIncident.status !== 'Cerrada'; else rootCauseReadOnly">
+                           <textarea 
+                             [ngModel]="selectedIncident.rootCause" 
+                             (ngModelChange)="selectedIncident.rootCause = $event"
+                             (blur)="persistRootCause()"
+                             placeholder="Describa la causa raíz..."
+                             class="glassmorphism-input w-full text-sm rounded-xl p-3 outline-none min-h-[80px] bg-black/20"></textarea>
+                         </ng-container>
+                         <ng-template #rootCauseReadOnly>
+                           <div class="text-sm text-slate-300 leading-relaxed bg-black/20 p-3 rounded-xl border border-white/5 min-h-[80px]">
+                             {{ selectedIncident.rootCause || 'Sin análisis de causa raíz registrado.' }}
+                           </div>
+                         </ng-template>
                     </div>
                  </div>
 
@@ -253,7 +260,8 @@ import { StateService } from '../../../services/state.service';
                        <h3 class="font-bold text-slate-200 flex items-center gap-2">
                           <span class="material-icons text-primary">build_circle</span> Acciones (CAPA)
                        </h3>
-                       <button *ngIf="selectedIncident.status !== 'Cerrada'" (click)="toggleAddAction()" class="text-xs font-bold text-primary hover:text-white transition-colors flex items-center gap-1">
+                       <span *ngIf="!canManageIncidents" class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Solo lectura</span>
+                       <button *ngIf="selectedIncident.status !== 'Cerrada' && canManageIncidents" (click)="toggleAddAction()" class="text-xs font-bold text-primary hover:text-white transition-colors flex items-center gap-1">
                             <span class="material-icons text-sm">add</span> Agregar Acción
                        </button>
                     </div>
@@ -294,7 +302,7 @@ import { StateService } from '../../../services/state.service';
                           <div class="border rounded-xl p-3 flex gap-3 items-start group transition-colors" 
                              [ngClass]="action.completed ? 'bg-white/5 border-white/5 opacity-60' : 'bg-white/5 border-white/10 hover:bg-white/10'">
                              
-                             <button (click)="toggleAction(selectedIncident.id, action.id)" [disabled]="selectedIncident.status === 'Cerrada'"
+                             <button (click)="toggleAction(selectedIncident.id, action.id)" [disabled]="selectedIncident.status === 'Cerrada' || !canManageIncidents || action.completed"
                                 class="mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors"
                                 [ngClass]="action.completed ? 'bg-emerald-500 border-emerald-500 text-black' : 'bg-transparent border-slate-500 hover:border-emerald-400 text-transparent hover:text-emerald-400'">
                                 <span class="material-icons text-sm font-bold">check</span>
@@ -330,7 +338,7 @@ import { StateService } from '../../../services/state.service';
               <div class="bg-white/5 p-4 border-t border-white/10 flex justify-end gap-3 shrink-0">
                   <ng-container *ngIf="selectedIncident.status !== 'Cerrada'">
                      <button (click)="closeDetailModal()" class="px-4 py-2 text-slate-300 font-bold text-sm hover:text-white">Cerrar Ventana</button>
-                     <button (click)="resolveIncident(selectedIncident.id)" class="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl shadow hover:bg-emerald-500 text-sm flex items-center gap-2 transition-all">
+                     <button *ngIf="canManageIncidents" (click)="resolveIncident(selectedIncident.id)" class="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl shadow hover:bg-emerald-500 text-sm flex items-center gap-2 transition-all">
                         <span class="material-icons text-sm">check_circle</span> Marcar Resuelto
                      </button>
                   </ng-container>
@@ -351,11 +359,16 @@ import { StateService } from '../../../services/state.service';
 export class IncidentsComponent {
   service = inject(QualityService);
   state = inject(StateService);
+  private readonly managementRoles = ['Sistemas', 'Jefatura', 'Supervisor', 'Jefe de Calidad'] as const;
 
   activeFilter: 'active' | 'closed' = 'active';
   
   get filteredIncidents() {
     return this.activeFilter === 'active' ? this.service.activeIncidents : this.service.closedIncidents;
+  }
+
+  get canManageIncidents() {
+    return this.state.hasAnyRole(this.managementRoles);
   }
 
   // Modal States
@@ -387,12 +400,12 @@ export class IncidentsComponent {
      this.showCreateModal = true;
   }
 
-  createIncident() {
+  async createIncident() {
      if (!this.newIncidentData.title || !this.newIncidentData.description) {
         alert('Complete el título y la descripción.');
         return;
      }
-     this.service.addIncident(this.newIncidentData);
+     await this.service.addIncident(this.newIncidentData);
      this.showCreateModal = false;
   }
 
@@ -407,33 +420,31 @@ export class IncidentsComponent {
 
   // Action Logic
   toggleAddAction() {
+     if (!this.canManageIncidents) return;
      this.showAddAction = !this.showAddAction;
      this.newActionData = { type: 'Correctiva', responsible: '', deadline: new Date().toISOString().split('T')[0] };
   }
 
-  saveAction(incidentId: string) {
+  async saveAction(incidentId: string) {
      if (!this.newActionData.description) return;
-     this.service.addCapaAction(incidentId, this.newActionData);
-     
-     // Update local view
-     if(this.selectedIncident) {
-        const updated = this.service.incidents.find(i => i.id === incidentId);
-        if(updated) this.selectedIncident = JSON.parse(JSON.stringify(updated));
-     }
+     await this.service.addCapaAction(incidentId, this.newActionData);
+     this.refreshSelectedIncident(incidentId);
      this.showAddAction = false;
   }
 
-  toggleAction(incidentId: string, actionId: string) {
-     this.service.toggleActionCompletion(incidentId, actionId);
-      // Update local view
-     if(this.selectedIncident) {
-        const updated = this.service.incidents.find(i => i.id === incidentId);
-        if(updated) this.selectedIncident = JSON.parse(JSON.stringify(updated));
-     }
+  async toggleAction(incidentId: string, actionId: string) {
+     await this.service.toggleActionCompletion(incidentId, actionId);
+     this.refreshSelectedIncident(incidentId);
   }
 
-  resolveIncident(incidentId: string) {
-     const incident = this.service.incidents.find(i => i.id === incidentId);
+  async persistRootCause() {
+     if (!this.selectedIncident || !this.canManageIncidents) return;
+     const updated = await this.service.updateIncidentRootCause(this.selectedIncident.id, this.selectedIncident.rootCause || '');
+     this.selectedIncident = JSON.parse(JSON.stringify(updated));
+  }
+
+  async resolveIncident(incidentId: string) {
+     const incident = this.selectedIncident || this.service.incidents.find(i => i.id === incidentId) || null;
      const pendingActions = incident?.actions.some(a => !a.completed);
 
      if (pendingActions) {
@@ -445,8 +456,16 @@ export class IncidentsComponent {
         return;
      }
 
-     this.service.closeIncident(incidentId);
+     await this.service.closeIncident(incidentId, incident.rootCause);
      this.closeDetailModal();
+  }
+
+  private refreshSelectedIncident(incidentId: string) {
+     if (!this.selectedIncident) return;
+     const updated = this.service.incidents.find(i => i.id === incidentId);
+     if (updated) {
+        this.selectedIncident = JSON.parse(JSON.stringify(updated));
+     }
   }
 
   // Helpers

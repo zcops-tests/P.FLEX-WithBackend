@@ -6,6 +6,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { InventoryService } from '../services/inventory.service';
 import { StockItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
+import { StateService } from '../../../services/state.service';
 
 @Component({
   selector: 'app-inventory-stock',
@@ -36,15 +37,17 @@ import { ExcelService } from '../../../services/excel.service';
                    placeholder="Buscar OT, Cliente..." type="text"/>
           </div>
           
-          <input #fileInputStock type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
-          <button (click)="fileInputStock.click()" [disabled]="isLoading || isImporting" 
-                  class="inline-flex justify-center items-center px-4 py-2 border border-slate-700 shadow-sm text-sm font-medium rounded-lg text-slate-300 bg-[#1e293b] hover:bg-slate-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0f172a] focus:ring-indigo-500 transition-all disabled:opacity-50">
-            <span *ngIf="!isLoading && !isImporting" class="material-icons text-lg mr-2">upload_file</span>
-            <span *ngIf="isLoading || isImporting" class="w-4 h-4 mr-2 rounded-full border-2 border-slate-400/40 border-t-white animate-spin"></span>
-            {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar') }}
-          </button>
+          <ng-container *ngIf="canManageInventory">
+            <input #fileInputStock type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
+            <button (click)="fileInputStock.click()" [disabled]="isLoading || isImporting" 
+                    class="inline-flex justify-center items-center px-4 py-2 border border-slate-700 shadow-sm text-sm font-medium rounded-lg text-slate-300 bg-[#1e293b] hover:bg-slate-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0f172a] focus:ring-indigo-500 transition-all disabled:opacity-50">
+              <span *ngIf="!isLoading && !isImporting" class="material-icons text-lg mr-2">upload_file</span>
+              <span *ngIf="isLoading || isImporting" class="w-4 h-4 mr-2 rounded-full border-2 border-slate-400/40 border-t-white animate-spin"></span>
+              {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar') }}
+            </button>
+          </ng-container>
 
-          <button (click)="openModal(null)" 
+          <button *ngIf="canManageInventory" (click)="openModal(null)" 
                   class="inline-flex justify-center items-center px-4 py-2 border border-transparent shadow-lg shadow-indigo-500/20 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0f172a] focus:ring-indigo-500 transition-all">
             <span class="material-icons text-lg mr-2">add_task</span> Ingreso PT
           </button>
@@ -145,8 +148,8 @@ import { ExcelService } from '../../../services/excel.service';
                    </span>
                 </td>
                 <td class="px-6 py-4 text-right">
-                   <button (click)="openModal(item)" class="text-slate-400 hover:text-indigo-400 transition-colors p-2 hover:bg-slate-700/50 rounded-lg">
-                      <span class="material-icons">edit_note</span>
+                   <button (click)="openModal(item)" class="text-slate-400 hover:text-indigo-400 transition-colors p-2 hover:bg-slate-700/50 rounded-lg" [attr.title]="canManageInventory ? 'Editar' : 'Ver detalle'">
+                      <span class="material-icons">{{ canManageInventory ? 'edit_note' : 'visibility' }}</span>
                    </button>
                 </td>
               </tr>
@@ -164,7 +167,7 @@ import { ExcelService } from '../../../services/excel.service';
              <div class="px-6 py-4 border-b border-slate-700 bg-[#0f172a] flex justify-between items-center">
                 <h3 class="text-lg font-bold text-white flex items-center gap-2">
                    <span class="material-icons text-indigo-500">local_shipping</span>
-                   {{ editingItem ? 'Gestionar Producto Terminado' : 'Ingreso a Almacén PT' }}
+                   {{ isReadOnly ? 'Detalle de Producto Terminado' : (editingItem ? 'Gestionar Producto Terminado' : 'Ingreso a Almacén PT') }}
                 </h3>
                 <button (click)="showModal = false" class="text-slate-400 hover:text-white transition-colors"><span class="material-icons">close</span></button>
              </div>
@@ -173,22 +176,22 @@ import { ExcelService } from '../../../services/excel.service';
                 <div class="grid grid-cols-2 gap-4">
                    <div>
                       <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Orden de Trabajo (OT)</label>
-                      <input [(ngModel)]="tempItem.ot" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors" placeholder="Ej: 45001">
+                      <input [(ngModel)]="tempItem.ot" [readonly]="isReadOnly" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors" placeholder="Ej: 45001">
                    </div>
                    <div>
                       <label class="block text-xs font-bold text-slate-400 uppercase mb-2">ID Pallet / Lote</label>
-                      <input [(ngModel)]="tempItem.palletId" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors" placeholder="Generado Auto">
+                      <input [(ngModel)]="tempItem.palletId" [readonly]="isReadOnly" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors" placeholder="Generado Auto">
                    </div>
                 </div>
 
                 <div>
                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Cliente</label>
-                   <input [(ngModel)]="tempItem.client" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors">
+                   <input [(ngModel)]="tempItem.client" [readonly]="isReadOnly" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors">
                 </div>
 
                 <div>
                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Producto</label>
-                   <input [(ngModel)]="tempItem.product" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors">
+                   <input [(ngModel)]="tempItem.product" [readonly]="isReadOnly" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors">
                 </div>
 
                 <!-- DUAL INPUT FOR QUANTITY -->
@@ -196,14 +199,14 @@ import { ExcelService } from '../../../services/excel.service';
                    <div>
                       <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Cantidad de Rollos</label>
                       <div class="relative">
-                          <input type="number" [(ngModel)]="tempItem.rolls" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg pl-3 pr-12 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors font-mono">
+                          <input type="number" [(ngModel)]="tempItem.rolls" [readonly]="isReadOnly" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg pl-3 pr-12 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors font-mono">
                           <span class="absolute right-3 top-2.5 text-xs text-slate-500 font-bold">UND</span>
                       </div>
                    </div>
                    <div>
                       <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Cantidad de Millares</label>
                       <div class="relative">
-                          <input type="number" [(ngModel)]="tempItem.millares" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg pl-3 pr-12 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors font-mono">
+                          <input type="number" [(ngModel)]="tempItem.millares" [readonly]="isReadOnly" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg pl-3 pr-12 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors font-mono">
                           <span class="absolute right-3 top-2.5 text-xs text-slate-500 font-bold">MLL</span>
                       </div>
                    </div>
@@ -211,25 +214,25 @@ import { ExcelService } from '../../../services/excel.service';
 
                 <div>
                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Ubicación</label>
-                   <input [(ngModel)]="tempItem.location" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors" placeholder="Ej: DES-A-01">
+                   <input [(ngModel)]="tempItem.location" [readonly]="isReadOnly" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none transition-colors" placeholder="Ej: DES-A-01">
                 </div>
 
                 <div>
                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Estado Calidad</label>
                    <div class="grid grid-cols-4 gap-2">
-                      <button (click)="tempItem.status = 'Liberado'" class="py-2 rounded border text-xs font-bold transition-all" 
+                      <button (click)="tempItem.status = 'Liberado'" [disabled]="isReadOnly" class="py-2 rounded border text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed" 
                          [ngClass]="tempItem.status === 'Liberado' ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-transparent text-slate-400 border-slate-600 hover:border-slate-500'">
                          LIBERADO
                       </button>
-                      <button (click)="tempItem.status = 'Cuarentena'" class="py-2 rounded border text-xs font-bold transition-all"
+                      <button (click)="tempItem.status = 'Cuarentena'" [disabled]="isReadOnly" class="py-2 rounded border text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                          [ngClass]="tempItem.status === 'Cuarentena' ? 'bg-yellow-600 text-white border-yellow-500' : 'bg-transparent text-slate-400 border-slate-600 hover:border-slate-500'">
                          CUARENTENA
                       </button>
-                      <button (click)="tempItem.status = 'Retenido'" class="py-2 rounded border text-xs font-bold transition-all"
+                      <button (click)="tempItem.status = 'Retenido'" [disabled]="isReadOnly" class="py-2 rounded border text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                          [ngClass]="tempItem.status === 'Retenido' ? 'bg-red-600 text-white border-red-500' : 'bg-transparent text-slate-400 border-slate-600 hover:border-slate-500'">
                          RETENIDO
                       </button>
-                      <button (click)="tempItem.status = 'Despachado'" class="py-2 rounded border text-xs font-bold transition-all"
+                      <button (click)="tempItem.status = 'Despachado'" [disabled]="isReadOnly" class="py-2 rounded border text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                          [ngClass]="tempItem.status === 'Despachado' ? 'bg-blue-600 text-white border-blue-500' : 'bg-transparent text-slate-400 border-slate-600 hover:border-slate-500'">
                          DESPACHADO
                       </button>
@@ -238,13 +241,13 @@ import { ExcelService } from '../../../services/excel.service';
 
                 <div>
                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Notas / Observaciones</label>
-                   <textarea [(ngModel)]="tempItem.notes" rows="2" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none resize-none"></textarea>
+                   <textarea [(ngModel)]="tempItem.notes" [readonly]="isReadOnly" rows="2" class="w-full bg-[#0f172a] border border-slate-600 rounded-lg px-3 py-2.5 text-white focus:border-indigo-500 outline-none resize-none"></textarea>
                 </div>
              </div>
 
              <div class="px-6 py-4 bg-[#0f172a] border-t border-slate-700 flex justify-end gap-3">
-                <button (click)="showModal = false" class="px-4 py-2 rounded-lg text-slate-300 font-bold hover:bg-slate-800 transition-colors">Cancelar</button>
-                <button (click)="saveItem()" class="px-6 py-2 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-500 shadow-lg flex items-center gap-2 transition-all">
+                <button (click)="showModal = false" class="px-4 py-2 rounded-lg text-slate-300 font-bold hover:bg-slate-800 transition-colors">{{ isReadOnly ? 'Cerrar' : 'Cancelar' }}</button>
+                <button *ngIf="!isReadOnly" (click)="saveItem()" class="px-6 py-2 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-500 shadow-lg flex items-center gap-2 transition-all">
                    <span class="material-icons text-sm">save</span> Guardar
                 </button>
              </div>
@@ -372,9 +375,11 @@ import { ExcelService } from '../../../services/excel.service';
 export class InventoryStockComponent {
   inventoryService = inject(InventoryService);
   excelService = inject(ExcelService);
+  state = inject(StateService);
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
   destroyRef = inject(DestroyRef);
+  private readonly writeRoles = ['Sistemas', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Troquelado y Rebobinado'] as const;
   
   stockItems: StockItem[] = [];
   searchTerm = '';
@@ -382,6 +387,7 @@ export class InventoryStockComponent {
   // Modal
   showModal = false;
   editingItem: boolean = false;
+  isReadOnly = false;
   tempItem: Partial<StockItem> = {};
 
   // Import State
@@ -395,6 +401,10 @@ export class InventoryStockComponent {
     this.inventoryService.stockItems$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(items => this.stockItems = items);
+  }
+
+  get canManageInventory() {
+    return this.state.hasAnyRole(this.writeRoles);
   }
 
   get filteredItems() {
@@ -427,7 +437,9 @@ export class InventoryStockComponent {
   }
 
   openModal(item: StockItem | null) {
+     if (!item && !this.canManageInventory) return;
      this.editingItem = !!item;
+     this.isReadOnly = !!item && !this.canManageInventory;
      this.tempItem = item ? { ...item } : { 
         id: Math.random().toString(36).substr(2, 9),
         ot: '',
@@ -442,6 +454,7 @@ export class InventoryStockComponent {
   }
 
   saveItem() {
+     if (this.isReadOnly || !this.canManageInventory) return;
      if(!this.tempItem.ot || !this.tempItem.client) {
         alert('Complete la OT y el Cliente.');
         return;
@@ -463,6 +476,7 @@ export class InventoryStockComponent {
 
   // --- IMPORT ---
   async handleImport(event: any) {
+    if (!this.canManageInventory) return;
     const file = event.target.files[0];
     if (!file) return;
 
@@ -494,6 +508,7 @@ export class InventoryStockComponent {
   }
 
   async confirmImport() {
+      if (!this.canManageInventory) return;
       if (this.isImporting) return;
 
       this.isImporting = true;

@@ -60,6 +60,11 @@ export class QualityService {
         include: {
           reportedBy: { select: { name: true } },
           assignedTo: { select: { name: true } },
+          capaActions: {
+            include: { responsible: true },
+          },
+          work_order: true,
+          machine: true,
         },
       }),
     ]);
@@ -105,6 +110,28 @@ export class QualityService {
       data: { 
         status,
         root_cause: rootCause || incident.root_cause,
+      },
+      include: {
+        reportedBy: { select: { name: true } },
+        assignedTo: { select: { name: true } },
+        capaActions: {
+          include: { responsible: true },
+        },
+        work_order: true,
+        machine: true,
+      },
+    });
+
+    return toFrontendIncident(updated);
+  }
+
+  async updateIncidentRootCause(id: string, rootCause?: string) {
+    await this.findOneIncident(id);
+
+    const updated = await this.prisma.incident.update({
+      where: { id },
+      data: {
+        root_cause: rootCause || null,
       },
       include: {
         reportedBy: { select: { name: true } },

@@ -47,3 +47,23 @@ export const roleGuard: CanActivateFn = (route) => {
   void router.navigate(['/dashboard']);
   return false;
 };
+
+export const inventoryRoleGuard: CanActivateFn = (route) => {
+  const state = inject(StateService);
+  const router = inject(Router);
+  const type = String(route.paramMap.get('type') || '').toLowerCase();
+  const rolesByType = (route.data?.['rolesByType'] as Record<string, UserRole[] | undefined> | undefined) || {};
+  const allowedRoles = rolesByType[type] || [];
+
+  if (!isAuthenticated(state)) {
+    void router.navigate(['/login']);
+    return false;
+  }
+
+  if (!allowedRoles.length || state.hasAnyRole(allowedRoles)) {
+    return true;
+  }
+
+  void router.navigate(['/dashboard']);
+  return false;
+};

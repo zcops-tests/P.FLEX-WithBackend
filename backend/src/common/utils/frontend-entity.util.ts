@@ -316,6 +316,7 @@ export function toFrontendWorkOrder(workOrder: any) {
 }
 
 export function toFrontendClise(clise: any) {
+  const activeDieLinks = (clise.die_links || []).filter((link: any) => !link.deleted_at);
   const fallbackColors = Array.isArray(clise.colores_json)
     ? clise.colores_json
     : typeof clise.raw_payload?.colores === 'string'
@@ -337,8 +338,8 @@ export function toFrontendClise(clise: any) {
     hasConflict,
     z: clise.z_value || '',
     medidas: clise.raw_payload?.medidas || [clise.ancho_mm, clise.avance_mm].filter((value) => value !== null && value !== undefined).join(' x '),
-    troquel: clise.die_links?.[0]?.die?.raw_payload?.display_serie || clise.die_links?.[0]?.die?.serie || clise.raw_payload?.troquel || '',
-    linkedDies: (clise.die_links || []).map((link: any) => link.die?.raw_payload?.display_serie || link.die?.serie).filter(Boolean),
+    troquel: activeDieLinks[0]?.die?.raw_payload?.display_serie || activeDieLinks[0]?.die?.serie || clise.raw_payload?.troquel || '',
+    linkedDies: activeDieLinks.map((link: any) => link.die?.id || link.die_id).filter(Boolean),
     ancho: toNumber(clise.ancho_mm),
     avance: toNumber(clise.avance_mm),
     col: clise.columnas ?? null,

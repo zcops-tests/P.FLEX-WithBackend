@@ -11,13 +11,22 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SyncService } from './sync.service';
 import { SyncPullRequestDto, SyncPushRequestDto } from './dto/sync.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('Synchronization')
 @Controller('sync')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN')
 @ApiBearerAuth()
 export class SyncController {
   constructor(private readonly syncService: SyncService) {}
+
+  @Get('status')
+  @ApiOperation({ summary: 'Get synchronization status summary' })
+  async status() {
+    return this.syncService.getStatus();
+  }
 
   @Get('pull')
   @ApiOperation({ summary: 'Incremental pull of changes' })

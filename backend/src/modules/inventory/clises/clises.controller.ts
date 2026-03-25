@@ -25,21 +25,20 @@ export class ClisesController {
   constructor(private readonly clisesService: ClisesService) {}
 
   @Post()
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles')
   @ApiOperation({ summary: 'Create a new cliché' })
   async create(@Body() dto: CreateCliseDto) {
     return this.clisesService.create(dto);
   }
 
   @Post('bulk-upsert')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles')
   @ApiOperation({ summary: 'Bulk import/update clichÃ©s' })
   async bulkUpsert(@Body() dto: BulkUpsertClisesDto) {
     return this.clisesService.bulkUpsert(dto.items);
   }
 
   @Get()
-  @Roles('ADMIN', 'SUPERVISOR', 'OPERATOR', 'WAREHOUSE')
   @ApiOperation({ summary: 'Get all clichés with filters' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
@@ -49,21 +48,20 @@ export class ClisesController {
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'SUPERVISOR', 'OPERATOR', 'WAREHOUSE')
   @ApiOperation({ summary: 'Get a specific cliché by ID' })
   async findOne(@Param('id') id: string) {
     return this.clisesService.findOne(id);
   }
 
   @Put(':id')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles')
   @ApiOperation({ summary: 'Update an existing cliché' })
   async update(@Param('id') id: string, @Body() dto: UpdateCliseDto) {
     return this.clisesService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles('ADMIN')
+  @Roles('Sistemas', 'Jefatura')
   @ApiOperation({ summary: 'Soft-delete a cliché' })
   async remove(@Param('id') id: string) {
     return this.clisesService.remove(id);

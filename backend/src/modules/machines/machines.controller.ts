@@ -31,14 +31,12 @@ export class MachinesController {
   }
 
   @Get()
-  @Roles('ADMIN', 'SUPERVISOR')
   @ApiOperation({ summary: 'Get all active machines' })
   async findAll() {
     return this.machinesService.findAll();
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'SUPERVISOR')
   @ApiOperation({ summary: 'Get a specific machine by ID' })
   async findOne(@Param('id') id: string) {
     return this.machinesService.findOne(id);

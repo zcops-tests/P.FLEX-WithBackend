@@ -22,14 +22,14 @@ export class RelationsController {
   constructor(private readonly relationsService: RelationsService) {}
 
   @Post('clise-die')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles')
   @ApiOperation({ summary: 'Link a cliché with a die' })
   async link(@Body() dto: CreateCliseDieLinkDto) {
     return this.relationsService.linkCliseDie(dto);
   }
 
   @Delete('clise-die/:cliseId/:dieId')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles')
   @ApiOperation({ summary: 'Unlink a cliché from a die' })
   async unlink(
     @Param('cliseId') cliseId: string,
@@ -39,14 +39,12 @@ export class RelationsController {
   }
 
   @Get('clise/:id/dies')
-  @Roles('ADMIN', 'SUPERVISOR', 'OPERATOR', 'WAREHOUSE')
   @ApiOperation({ summary: 'Get all dies linked to a cliché' })
   async getCliseDies(@Param('id') id: string) {
     return this.relationsService.getCliseDies(id);
   }
 
   @Get('die/:id/clises')
-  @Roles('ADMIN', 'SUPERVISOR', 'OPERATOR', 'WAREHOUSE')
   @ApiOperation({ summary: 'Get all clichés linked to a die' })
   async getDieClises(@Param('id') id: string) {
     return this.relationsService.getDieClises(id);

@@ -1,12 +1,38 @@
 
-import { Component, inject, ElementRef, viewChild, AfterViewInit } from '@angular/core';
+import { Component, inject, ElementRef, viewChild, AfterViewInit, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { OrdersService } from '../orders/services/orders.service';
 import { OT } from '../orders/models/orders.models';
 import { FileExportService } from '../../services/file-export.service';
 import { NotificationService } from '../../services/notification.service';
+import { BackendApiService } from '../../services/backend-api.service';
 
 type D3Module = typeof import('d3');
+
+interface TrendPoint {
+  day: string;
+  date: string;
+  value: number;
+}
+
+interface WasteTableItem {
+  ot: string;
+  client: string;
+  desc: string;
+  total: number;
+  waste: number;
+  percentage: number;
+}
+
+interface AnalyticsStats {
+  pending: number;
+  inProgress: number;
+  paused: number;
+  completed: number;
+  totalOrders: number;
+  totalMeters: number;
+  wastePercentage: number;
+}
 
 @Component({
   selector: 'app-report-list',
@@ -44,6 +70,10 @@ type D3Module = typeof import('d3');
       </div>
 
       <div #reportContent class="space-y-6 overflow-y-auto custom-scrollbar pr-2 pb-10">
+        <div *ngIf="isLoading" class="rounded-2xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm text-blue-100">
+          Cargando indicadores reales de producción...
+        </div>
+
         <!-- Top Stats Row -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
            <!-- Efficiency -->
@@ -51,13 +81,13 @@ type D3Module = typeof import('d3');
               <div class="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl -mr-6 -mt-6"></div>
               <div class="flex justify-between items-start mb-3 relative z-10">
                  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Eficiencia (OEE)</span>
-                 <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] px-2 py-0.5 rounded font-bold">+2.4%</span>
+                 <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] px-2 py-0.5 rounded font-bold">Calidad {{ quality | number:'1.1-1' }}%</span>
               </div>
-              <div class="text-4xl font-black text-white tracking-tight relative z-10">84.2%</div>
+              <div class="text-4xl font-black text-white tracking-tight relative z-10">{{ oee | number:'1.1-1' }}%</div>
               <div class="w-full bg-slate-700/50 h-1.5 rounded-full mt-4 overflow-hidden">
-                 <div class="bg-emerald-500 h-full rounded-full" style="width: 84.2%"></div>
+                 <div class="bg-emerald-500 h-full rounded-full" [style.width.%]="oee"></div>
               </div>
-              <p class="text-[10px] text-slate-500 mt-2 font-mono">Meta: 85%</p>
+              <p class="text-[10px] text-slate-500 mt-2 font-mono">Meta: {{ oeeTarget }}% | Disponibilidad: {{ availability | number:'1.1-1' }}%</p>
            </div>
 
            <!-- Production -->
@@ -65,12 +95,12 @@ type D3Module = typeof import('d3');
               <div class="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl -mr-6 -mt-6"></div>
               <div class="flex justify-between items-start mb-3 relative z-10">
                  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Producción Total</span>
-                 <span class="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] px-2 py-0.5 rounded font-bold">Hoy</span>
+                 <span class="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] px-2 py-0.5 rounded font-bold">7 días</span>
               </div>
               <div class="text-4xl font-black text-white tracking-tight relative z-10">{{ stats.totalMeters | number }} <span class="text-lg font-bold text-slate-500">m</span></div>
               <div class="flex items-center gap-2 mt-4">
                  <span class="material-icons text-blue-500 text-sm">check_circle</span>
-                 <p class="text-xs text-blue-200 font-medium">12 Órdenes Finalizadas</p>
+                 <p class="text-xs text-blue-200 font-medium">{{ productionReportCount }} reportes registrados</p>
               </div>
            </div>
 
@@ -79,27 +109,25 @@ type D3Module = typeof import('d3');
               <div class="absolute top-0 right-0 w-24 h-24 bg-red-500/5 rounded-full blur-2xl -mr-6 -mt-6"></div>
               <div class="flex justify-between items-start mb-3 relative z-10">
                  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tasa de Mermas</span>
-                 <span class="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] px-2 py-0.5 rounded font-bold">Crítico</span>
+                 <span class="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] px-2 py-0.5 rounded font-bold">30 días</span>
               </div>
-              <div class="text-4xl font-black text-red-500 tracking-tight relative z-10">{{ stats.wastePercentage }}%</div>
+              <div class="text-4xl font-black text-red-500 tracking-tight relative z-10">{{ stats.wastePercentage | number:'1.1-1' }}%</div>
               <div class="w-full bg-slate-700/50 h-1.5 rounded-full mt-4 overflow-hidden">
                  <div class="bg-red-500 h-full rounded-full" [style.width.%]="stats.wastePercentage"></div>
               </div>
               <p class="text-[10px] text-slate-500 mt-2 font-mono">Objetivo: < 3%</p>
            </div>
 
-           <!-- OTD -->
+           <!-- Downtime -->
            <div class="bg-[#1e293b] p-6 rounded-2xl shadow-lg border border-slate-700/50 relative overflow-hidden group">
               <div class="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl -mr-6 -mt-6"></div>
               <div class="flex justify-between items-start mb-3 relative z-10">
-                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Entregas a Tiempo</span>
+                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tiempo Muerto</span>
               </div>
-              <div class="text-4xl font-black text-white tracking-tight relative z-10">95.8%</div>
-              <div class="mt-4 flex -space-x-2">
-                 <div class="w-6 h-6 rounded-full bg-slate-600 border border-[#1e293b]"></div>
-                 <div class="w-6 h-6 rounded-full bg-slate-500 border border-[#1e293b]"></div>
-                 <div class="w-6 h-6 rounded-full bg-slate-400 border border-[#1e293b]"></div>
-                 <div class="w-6 h-6 rounded-full bg-purple-500 border border-[#1e293b] flex items-center justify-center text-[8px] font-bold">+</div>
+              <div class="text-4xl font-black text-white tracking-tight relative z-10">{{ downtimeMinutes | number }} <span class="text-lg font-bold text-slate-500">min</span></div>
+              <div class="mt-4 flex items-center gap-2">
+                 <span class="material-icons text-purple-400 text-sm">timer</span>
+                 <p class="text-xs text-purple-200 font-medium">{{ downtimeEvents }} eventos {{ topDowntimeProcess ? '· ' + topDowntimeProcess : '' }}</p>
               </div>
               <p class="text-[10px] text-slate-500 mt-2 font-mono text-right">Últimos 30 días</p>
            </div>
@@ -183,6 +211,11 @@ type D3Module = typeof import('d3');
                           <span class="px-2 py-1 rounded bg-red-500/10 text-red-400 text-[10px] font-bold border border-red-500/20 uppercase">ALTO</span>
                        </td>
                     </tr>
+                    <tr *ngIf="!isLoading && topWasteItems.length === 0">
+                       <td colspan="6" class="px-6 py-8 text-center text-sm text-slate-500">
+                          No hay mermas registradas en el periodo consultado.
+                       </td>
+                    </tr>
                  </tbody>
               </table>
            </div>
@@ -200,90 +233,48 @@ type D3Module = typeof import('d3');
     .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
   `]
 })
-export class ReportListComponent implements AfterViewInit {
+export class ReportListComponent implements OnInit, AfterViewInit {
   ordersService = inject(OrdersService);
+  backend = inject(BackendApiService);
   fileExport = inject(FileExportService);
   notifications = inject(NotificationService);
   private d3ModulePromise?: Promise<D3Module>;
+  private viewReady = false;
+  readonly oeeTarget = 85;
 
   readonly trendChartContainer = viewChild<ElementRef>('trendChartContainer');
   readonly donutChartContainer = viewChild<ElementRef>('donutChartContainer');
   readonly reportContent = viewChild<ElementRef>('reportContent');
 
   showExportMenu = false;
+  isLoading = true;
+  stats: AnalyticsStats = {
+    pending: 0,
+    inProgress: 0,
+    paused: 0,
+    completed: 0,
+    totalOrders: 0,
+    totalMeters: 0,
+    wastePercentage: 0,
+  };
+  oee = 0;
+  availability = 0;
+  performance = 0;
+  quality = 0;
+  downtimeMinutes = 0;
+  downtimeEvents = 0;
+  topDowntimeProcess = '';
+  productionReportCount = 0;
+  trendData: TrendPoint[] = this.buildEmptyTrendData();
+  topWasteItems: WasteTableItem[] = [];
 
-  trendData = [
-      { day: 'Lun', value: 18500 },
-      { day: 'Mar', value: 22400 },
-      { day: 'Mié', value: 35000 },
-      { day: 'Jue', value: 28900 },
-      { day: 'Vie', value: 31200 },
-      { day: 'Sáb', value: 15600 },
-      { day: 'Dom', value: 8000 }
-  ];
-
-  get stats() {
-    const ots = this.ordersService.ots;
-    
-    const pending = ots.filter(o => o.Estado_pedido === 'PENDIENTE').length;
-    const inProgress = ots.filter(o => o.Estado_pedido === 'EN PROCESO').length;
-    const paused = ots.filter(o => o.Estado_pedido === 'PAUSADA').length;
-    const completed = ots.filter(o => o.Estado_pedido === 'FINALIZADO').length;
-
-    let totalMeters = 0;
-    let totalWaste = 0;
-
-    ots.forEach(ot => {
-        const mtl = parseFloat(String(ot.total_mtl || '0').replace(/,/g, ''));
-        const waste = parseFloat(String(ot.merma || '0').replace(/,/g, ''));
-        
-        const qty = parseFloat(String(ot['CANT PED'] || '0'));
-        const simulatedMeters = mtl > 0 ? mtl : (qty > 0 ? qty * 0.1 : 0);
-        const simulatedWaste = waste > 0 ? waste : simulatedMeters * (0.02 + Math.random() * 0.03);
-
-        if (ot.Estado_pedido !== 'PENDIENTE') {
-            totalMeters += simulatedMeters;
-            totalWaste += simulatedWaste;
-        }
-    });
-
-    const wastePercentage = totalMeters > 0 ? ((totalWaste / totalMeters) * 100).toFixed(1) : '0.0';
-
-    return {
-        pending,
-        inProgress,
-        paused,
-        completed,
-        totalMeters: Math.round(totalMeters),
-        wastePercentage
-    };
-  }
-
-  get topWasteItems() {
-     return this.ordersService.ots
-        .filter(ot => ot.Estado_pedido === 'FINALIZADO' || ot.Estado_pedido === 'EN PROCESO')
-        .map(ot => {
-            const mtl = parseFloat(String(ot.total_mtl || '0')) || parseFloat(String(ot['CANT PED'] || '0')) * 0.1 || 5000;
-            const waste = parseFloat(String(ot.merma || '0')) || (mtl * (Math.random() * 0.1)); 
-            const percentage = ((waste / mtl) * 100).toFixed(1);
-            
-            return {
-                ot: ot.OT,
-                client: ot['Razon Social'],
-                desc: ot.descripcion,
-                total: Math.round(mtl),
-                waste: Math.round(waste),
-                percentage: parseFloat(percentage)
-            };
-        })
-        .sort((a, b) => b.percentage - a.percentage)
-        .slice(0, 5);
+  async ngOnInit() {
+    await this.loadDashboard();
   }
 
   ngAfterViewInit() {
-    setTimeout(() => {
-      void this.renderCharts();
-    }, 100);
+    this.viewReady = true;
+    this.scheduleChartRender();
   }
 
   async exportExcel() {
@@ -299,10 +290,11 @@ export class ReportListComponent implements AfterViewInit {
         ['REPORTE DE INDICADORES DE PLANTA', dateStr],
         [''],
         ['METRICAS GENERALES'],
-        ['Eficiencia Global (OEE)', '84.2%'],
+        ['Eficiencia Global (OEE)', `${this.oee.toFixed(1)}%`],
         ['Producción Total (m)', s.totalMeters],
-        ['Tasa de Mermas (%)', s.wastePercentage + '%'],
-        ['Pedidos a Tiempo (OTD)', '95.8%'],
+        ['Tasa de Mermas (%)', `${s.wastePercentage.toFixed(1)}%`],
+        ['Tiempo Muerto (min)', this.downtimeMinutes],
+        ['Eventos de Parada', this.downtimeEvents],
         [''],
         ['ESTADO DE ORDENES'],
         ['Pendientes', s.pending],
@@ -313,7 +305,11 @@ export class ReportListComponent implements AfterViewInit {
     const wsKPI = xlsx.utils.aoa_to_sheet(kpiData);
     xlsx.utils.book_append_sheet(wb, wsKPI, "KPIs Resumen");
 
-    const wsTrend = xlsx.utils.json_to_sheet(this.trendData);
+    const wsTrend = xlsx.utils.json_to_sheet(this.trendData.map((point) => ({
+      Fecha: point.date,
+      Dia: point.day,
+      'Produccion (m)': point.value,
+    })));
     XLSX.utils.book_append_sheet(wb, wsTrend, "Tendencia Producción");
 
     const wasteData = this.topWasteItems.map(i => ({
@@ -386,9 +382,12 @@ export class ReportListComponent implements AfterViewInit {
         .padding(0.4)
         .domain(data.map((d: any) => d.day));
 
+    const maxValue = Math.max(...data.map((d: TrendPoint) => d.value), 0);
+    const yMax = maxValue > 0 ? Math.ceil((maxValue * 1.15) / 1000) * 1000 : 1000;
+
     const y = d3Any.scaleLinear()
         .range([height - margin.bottom, margin.top])
-        .domain([0, 50000]);
+        .domain([0, yMax]);
 
     svg.selectAll('.bar')
         .data(data)
@@ -401,15 +400,20 @@ export class ReportListComponent implements AfterViewInit {
         .attr('fill', '#3b82f6') // Blue-500
         .attr('rx', 4);
 
-    const targetY = y(35000);
-    svg.append('line')
-       .attr('x1', margin.left)
-       .attr('x2', width - margin.right)
-       .attr('y1', targetY)
-       .attr('y2', targetY)
-       .attr('stroke', 'rgba(255,255,255,0.1)') // Light grid line
-       .attr('stroke-width', 2)
-       .attr('stroke-dasharray', '5,5');
+    const average = data.length > 0
+        ? data.reduce((acc: number, item: TrendPoint) => acc + item.value, 0) / data.length
+        : 0;
+    if (average > 0) {
+      const targetY = y(average);
+      svg.append('line')
+         .attr('x1', margin.left)
+         .attr('x2', width - margin.right)
+         .attr('y1', targetY)
+         .attr('y2', targetY)
+         .attr('stroke', 'rgba(255,255,255,0.1)')
+         .attr('stroke-width', 2)
+         .attr('stroke-dasharray', '5,5');
+    }
 
     // X Axis
     svg.append('g')
@@ -420,7 +424,7 @@ export class ReportListComponent implements AfterViewInit {
     // Y Axis
     svg.append('g')
         .attr('transform', `translate(${margin.left},0)`)
-        .call(d3Any.axisLeft(y).ticks(5).tickFormat((d: any) => `${d.valueOf() / 1000}k`))
+        .call(d3Any.axisLeft(y).ticks(5).tickFormat((d: any) => this.formatChartAxis(d.valueOf())))
         .select('.domain').remove();
     
     // Style text for Dark Mode
@@ -452,17 +456,19 @@ export class ReportListComponent implements AfterViewInit {
         .append('g')
         .attr('transform', `translate(${width / 2},${height / 2})`);
 
-    const data = {
+    const baseData = {
         Finalizado: stats.completed,
         EnProceso: stats.inProgress,
         Pendiente: stats.pending,
         Pausada: stats.paused
     };
+    const hasData = Object.values(baseData).some((value) => value > 0);
+    const data = hasData ? baseData : { SinDatos: 1 };
 
     // Dark Mode Palette
     const color = d3Any.scaleOrdinal()
-        .domain(['Finalizado', 'EnProceso', 'Pendiente', 'Pausada'])
-        .range(['#10b981', '#3b82f6', '#64748b', '#f59e0b']); // Emerald, Blue, Slate, Amber
+        .domain(['Finalizado', 'EnProceso', 'Pendiente', 'Pausada', 'SinDatos'])
+        .range(['#10b981', '#3b82f6', '#64748b', '#f59e0b', '#334155']);
 
     const pie = d3Any.pie()
         .value((d: any) => d[1])
@@ -493,7 +499,7 @@ export class ReportListComponent implements AfterViewInit {
        .attr("font-size", "24px")
        .attr("font-weight", "bold")
        .attr("fill", "#ffffff")
-       .text(stats.totalMeters > 0 ? "Total" : "0");
+       .text(String(stats.totalOrders || 0));
        
     svg.append("text")
        .attr("text-anchor", "middle")
@@ -501,5 +507,188 @@ export class ReportListComponent implements AfterViewInit {
        .attr("font-size", "12px")
        .attr("fill", "#94a3b8")
        .text("Órdenes");
+  }
+
+  private async loadDashboard() {
+    const trendRange = this.buildDateRange(7);
+    const kpiRange = this.buildDateRange(30);
+
+    this.isLoading = true;
+
+    try {
+      await this.ordersService.reload();
+      const orders = [...this.ordersService.internalDatabase];
+
+      const [oeeResponse, wasteResponse, downtimeResponse, printResponse] = await Promise.all([
+        this.backend.getAnalyticsOee({
+          start_date: kpiRange.start,
+          end_date: kpiRange.end,
+        }),
+        this.backend.getAnalyticsWaste({
+          start_date: kpiRange.start,
+          end_date: kpiRange.end,
+        }),
+        this.backend.getAnalyticsDowntime({
+          start_date: kpiRange.start,
+          end_date: kpiRange.end,
+        }),
+        this.backend.getPrintReports({
+          page: 1,
+          pageSize: 500,
+          startDate: trendRange.start,
+          endDate: trendRange.end,
+        }),
+      ]);
+
+      const printReports = Array.isArray(printResponse?.items) ? printResponse.items : [];
+      const wasteItems = (Array.isArray(wasteResponse?.items) ? wasteResponse.items : [])
+        .map((item: any) => ({
+          ot: String(item.ot || ''),
+          client: item.client || '',
+          desc: item.description || '',
+          total: Math.round(this.toNumber(item.total)),
+          waste: Math.round(this.toNumber(item.waste)),
+          percentage: Number(this.toNumber(item.percentage).toFixed(1)),
+        }))
+        .filter((item) => item.total > 0);
+      const downtimeItems = Array.isArray(downtimeResponse?.items) ? downtimeResponse.items : [];
+
+      this.trendData = this.buildTrendData(printReports);
+      this.productionReportCount = printReports.length;
+      this.oee = this.toPercent(oeeResponse?.oee);
+      this.availability = this.toPercent(oeeResponse?.availability);
+      this.performance = this.toPercent(oeeResponse?.performance);
+      this.quality = this.toPercent(oeeResponse?.quality);
+      this.topWasteItems = wasteItems.slice(0, 5);
+      this.downtimeMinutes = Math.round(downtimeItems.reduce((acc: number, item: any) => acc + this.toNumber(item.totalMinutes), 0));
+      this.downtimeEvents = downtimeItems.reduce((acc: number, item: any) => acc + Number(item.events || 0), 0);
+      this.topDowntimeProcess = downtimeItems[0]?.process || '';
+
+      const totalMeters = this.trendData.reduce((acc, point) => acc + point.value, 0);
+      const wastePercentage = this.resolveWastePercentage(wasteResponse?.summary, wasteItems);
+      this.stats = this.buildStats(orders, totalMeters, wastePercentage);
+    } catch {
+      this.notifications.showError('No se pudieron cargar los indicadores reales de producción.');
+      this.trendData = this.buildEmptyTrendData();
+      this.topWasteItems = [];
+      this.stats = this.buildStats(this.ordersService.internalDatabase, 0, 0);
+      this.oee = 0;
+      this.availability = 0;
+      this.performance = 0;
+      this.quality = 0;
+      this.downtimeMinutes = 0;
+      this.downtimeEvents = 0;
+      this.topDowntimeProcess = '';
+      this.productionReportCount = 0;
+    } finally {
+      this.isLoading = false;
+      this.scheduleChartRender();
+    }
+  }
+
+  private scheduleChartRender() {
+    if (!this.viewReady) return;
+    setTimeout(() => {
+      void this.renderCharts();
+    }, 50);
+  }
+
+  private buildStats(orders: Partial<OT>[], totalMeters: number, wastePercentage: number): AnalyticsStats {
+    const pending = orders.filter((order) => this.normalizeStatus(order.Estado_pedido) === 'PENDIENTE').length;
+    const inProgress = orders.filter((order) => this.normalizeStatus(order.Estado_pedido) === 'EN PROCESO').length;
+    const paused = orders.filter((order) => this.normalizeStatus(order.Estado_pedido) === 'PAUSADA').length;
+    const completed = orders.filter((order) => this.normalizeStatus(order.Estado_pedido) === 'FINALIZADO').length;
+
+    return {
+      pending,
+      inProgress,
+      paused,
+      completed,
+      totalOrders: orders.length,
+      totalMeters: Math.round(totalMeters),
+      wastePercentage: Number(wastePercentage.toFixed(1)),
+    };
+  }
+
+  private buildTrendData(reports: any[]): TrendPoint[] {
+    const days = this.buildEmptyTrendData();
+    const totals = new Map(days.map((day) => [day.date, 0]));
+
+    reports.forEach((report: any) => {
+      const parsed = new Date(report.reported_at || report.date || report.created_at || '');
+      if (Number.isNaN(parsed.getTime())) return;
+      const key = parsed.toISOString().slice(0, 10);
+      if (!totals.has(key)) return;
+      totals.set(key, totals.get(key)! + this.toNumber(report.totalMeters ?? report.total_meters));
+    });
+
+    return days.map((day) => ({
+      ...day,
+      value: Math.round(totals.get(day.date) || 0),
+    }));
+  }
+
+  private buildEmptyTrendData(): TrendPoint[] {
+    const formatter = new Intl.DateTimeFormat('es-PE', { weekday: 'short', timeZone: 'UTC' });
+    const today = new Date();
+    const points: TrendPoint[] = [];
+
+    for (let offset = 6; offset >= 0; offset -= 1) {
+      const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      date.setUTCDate(date.getUTCDate() - offset);
+      const label = formatter.format(date).replace('.', '');
+      points.push({
+        day: label.charAt(0).toUpperCase() + label.slice(1),
+        date: date.toISOString().slice(0, 10),
+        value: 0,
+      });
+    }
+
+    return points;
+  }
+
+  private resolveWastePercentage(summary: string | undefined, items: WasteTableItem[]) {
+    const match = String(summary || '').match(/\(([\d.]+)%\)/);
+    if (match) {
+      return Number(match[1]);
+    }
+
+    const total = items.reduce((acc, item) => acc + item.total, 0);
+    const waste = items.reduce((acc, item) => acc + item.waste, 0);
+    return total > 0 ? (waste / total) * 100 : 0;
+  }
+
+  private buildDateRange(days: number) {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - (days - 1));
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    return {
+      start: start.toISOString(),
+      end: end.toISOString(),
+    };
+  }
+
+  private normalizeStatus(value: unknown) {
+    return String(value || '').trim().toUpperCase();
+  }
+
+  private toNumber(value: unknown) {
+    const parsed = Number(String(value ?? '').replace(/,/g, ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private toPercent(value: unknown) {
+    return Number((this.toNumber(value) * 100).toFixed(1));
+  }
+
+  private formatChartAxis(value: number) {
+    if (value >= 1000) {
+      return `${Math.round(value / 1000)}k`;
+    }
+
+    return String(Math.round(value));
   }
 }

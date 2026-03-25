@@ -1,5 +1,5 @@
 
-import { Component, inject } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AuditService } from '../../services/audit.service';
 
@@ -20,6 +20,9 @@ import { AuditService } from '../../services/audit.service';
         </header>
 
         <div class="glassmorphism-card rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+          <div *ngIf="audit.isLoading()" class="px-6 py-4 border-b border-white/10 text-xs text-slate-400">
+            Cargando logs reales del sistema...
+          </div>
           <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
               <thead class="bg-white/5 text-slate-300 font-bold border-b border-white/10 uppercase text-xs tracking-wider">
@@ -53,6 +56,11 @@ import { AuditService } from '../../services/audit.service';
                     {{ log.ip }}
                   </td>
                 </tr>
+                <tr *ngIf="!audit.isLoading() && audit.logs().length === 0">
+                  <td colspan="5" class="px-6 py-8 text-center text-sm text-slate-500">
+                    No hay registros de auditoría disponibles.
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -61,6 +69,10 @@ import { AuditService } from '../../services/audit.service';
     </div>
   `
 })
-export class AuditComponent {
+export class AuditComponent implements OnInit {
   audit = inject(AuditService);
+
+  ngOnInit() {
+    void this.audit.reload({ page: 1, pageSize: 150 });
+  }
 }

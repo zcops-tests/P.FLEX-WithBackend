@@ -1,13 +1,21 @@
 import { Injectable } from '@angular/core';
 import { FileExportService } from './file-export.service';
 
+interface ReadExcelOptions {
+  raw?: boolean;
+}
+
+interface NormalizeDataOptions {
+  includeSourceRow?: boolean;
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class ExcelService {
   constructor(private fileExport: FileExportService) { }
 
-  async readExcel(file: File): Promise<any[]> {
+  async readExcel(file: File, options?: ReadExcelOptions): Promise<any[]> {
     const buffer = await file.arrayBuffer();
     const workbook = await this.fileExport.readWorkbook(buffer);
 
@@ -17,24 +25,29 @@ export class ExcelService {
 
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
-    return this.fileExport.sheetToJson(worksheet, { defval: '' });
+    return this.fileExport.sheetToJson(worksheet, {
+      defval: '',
+      raw: options?.raw ?? true,
+    });
   }
 
-  normalizeData(rawData: any[], mapping: { [key: string]: string[] }): any[] {
+  normalizeData(rawData: any[], mapping: { [key: string]: string[] }, options?: NormalizeDataOptions): any[] {
+    const includeSourceRow = options?.includeSourceRow ?? false;
+    const resolvedMapping = this.resolveMappingKeys(rawData, mapping);
+
     return rawData.map(row => {
       const newRow: any = {};
-      const rowKeys = Object.keys(row);
 
-      Object.keys(mapping).forEach(targetKey => {
-        const possibleVariations = mapping[targetKey];
-        const matchingKey = this.findMatchingKey(rowKeys, possibleVariations);
-
+      Object.entries(resolvedMapping).forEach(([targetKey, matchingKey]) => {
         if (matchingKey) {
           newRow[targetKey] = this.unwrapCellValue(row[matchingKey]);
         }
       });
 
-      newRow.__sourceRow = row;
+      if (includeSourceRow) {
+        newRow.__sourceRow = row;
+      }
+
       return newRow;
     });
   }
@@ -71,6 +84,22 @@ export class ExcelService {
     }
 
     return undefined;
+  }
+
+  private resolveMappingKeys(rawData: any[], mapping: { [key: string]: string[] }) {
+    const sampleRows = rawData.slice(0, 25);
+    const sampleRowKeys = Array.from(
+      new Set(
+        sampleRows.flatMap((row) => Object.keys(row || {})),
+      ),
+    );
+
+    const resolvedEntries = Object.entries(mapping).map(([targetKey, possibleVariations]) => [
+      targetKey,
+      this.findMatchingKey(sampleRowKeys, possibleVariations),
+    ]);
+
+    return Object.fromEntries(resolvedEntries) as Record<string, string | undefined>;
   }
 
   normalizeString(str: string): string {

@@ -32,14 +32,14 @@ export class UsersController {
   }
 
   @Get()
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN')
   @ApiOperation({ summary: 'Get all active users' })
   async findAll() {
     return this.usersService.findAll();
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'SUPERVISOR')
+  @Roles('ADMIN')
   @ApiOperation({ summary: 'Get a specific user by ID' })
   async findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);

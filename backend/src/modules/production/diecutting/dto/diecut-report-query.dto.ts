@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
 import { PaginationQueryDto } from '../../../../common/dto/pagination-query.dto';
 import { DiecutReportStatus } from './diecut-report.dto';
 
@@ -18,4 +18,14 @@ export class DiecutReportQueryDto extends PaginationQueryDto {
   @IsEnum(DiecutReportStatus)
   @IsOptional()
   status?: DiecutReportStatus;
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  endDate?: string;
 }

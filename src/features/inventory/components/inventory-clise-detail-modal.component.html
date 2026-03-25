@@ -19,7 +19,7 @@
         </button>
 
         <button
-          *ngIf="isReadOnly"
+          *ngIf="isReadOnly && canEdit"
           (click)="setEditMode(false)"
           class="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] text-[#00285d] font-bold shadow-md hover:brightness-110 active:scale-95 transition-all text-xs">
           <span class="material-icons text-base">edit</span>

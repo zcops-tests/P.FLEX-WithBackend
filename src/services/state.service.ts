@@ -5,10 +5,54 @@ import { BackendApiService } from './backend-api.service';
 import { ApiClientService } from './api-client.service';
 import { BrowserStorageService } from './browser-storage.service';
 
-export type UserRole = 'Jefatura' | 'Supervisor' | 'Asistente' | 'Operario' | 'Encargado' | 'Sistemas';
+export type UserRole =
+  | 'Sistemas'
+  | 'Jefatura'
+  | 'Supervisor'
+  | 'Operario'
+  | 'Asistente'
+  | 'Asistente de Producción'
+  | 'Encargado de Clisés, Troqueles y Tintas'
+  | 'Encargado de Clisés y Troqueles'
+  | 'Encargado de Tintas'
+  | 'Encargado de Troquelado y Rebobinado'
+  | 'Jefe de Calidad'
+  | 'Auditor';
 export type Shift = string | null;
 export type SyncStatus = 'online' | 'offline' | 'syncing' | 'conflict';
-export const USER_ROLES: readonly UserRole[] = ['Jefatura', 'Supervisor', 'Asistente', 'Operario', 'Encargado', 'Sistemas'] as const;
+export const USER_ROLES: readonly UserRole[] = [
+  'Sistemas',
+  'Jefatura',
+  'Supervisor',
+  'Operario',
+  'Asistente',
+  'Asistente de Producción',
+  'Encargado de Clisés, Troqueles y Tintas',
+  'Encargado de Clisés y Troqueles',
+  'Encargado de Tintas',
+  'Encargado de Troquelado y Rebobinado',
+  'Jefe de Calidad',
+  'Auditor',
+] as const;
+
+const ROLE_CAPABILITIES: Record<UserRole, readonly UserRole[]> = {
+  Sistemas: USER_ROLES,
+  Jefatura: ['Jefatura'],
+  Supervisor: ['Supervisor', 'Operario'],
+  Operario: ['Operario'],
+  Asistente: ['Asistente'],
+  'Asistente de Producción': ['Asistente de Producción', 'Asistente', 'Operario'],
+  'Encargado de Clisés, Troqueles y Tintas': [
+    'Encargado de Clisés, Troqueles y Tintas',
+    'Encargado de Clisés y Troqueles',
+    'Encargado de Tintas',
+  ],
+  'Encargado de Clisés y Troqueles': ['Encargado de Clisés y Troqueles'],
+  'Encargado de Tintas': ['Encargado de Tintas'],
+  'Encargado de Troquelado y Rebobinado': ['Encargado de Troquelado y Rebobinado', 'Operario'],
+  'Jefe de Calidad': ['Jefe de Calidad'],
+  Auditor: ['Auditor'],
+};
 
 export interface User {
   id: string;
@@ -214,7 +258,10 @@ export class StateService {
   hasAnyRole(roles: readonly UserRole[]): boolean {
     const currentRole = this.currentUser()?.role;
     if (!currentRole || !roles.length) return false;
-    return roles.includes(currentRole);
+    const capabilities = new Set(ROLE_CAPABILITIES[currentRole] || [currentRole]);
+    return roles
+      .map((role) => this.normalizeUserRole(role))
+      .some((role) => capabilities.has(role));
   }
 
   normalizeUserRole(value: string): UserRole {
@@ -224,10 +271,17 @@ export class StateService {
       .toUpperCase()
       .trim();
 
+    if (normalized.includes('AUDIT')) return 'Auditor';
+    if (normalized.includes('QUALITY') || (normalized.includes('CALIDAD') && normalized.includes('JEFE'))) return 'Jefe de Calidad';
+    if (normalized.includes('PRODUCTION_ASSISTANT') || normalized.includes('ASISTENTE DE PRODUCCION')) return 'Asistente de Producción';
+    if ((normalized.includes('CLISE') || normalized.includes('CLICHE')) && normalized.includes('TINTA')) return 'Encargado de Clisés, Troqueles y Tintas';
+    if (normalized.includes('CLISE') || normalized.includes('CLICHE')) return 'Encargado de Clisés y Troqueles';
+    if (normalized.includes('TROQUELADO') || normalized.includes('REBOBINADO') || normalized.includes('FINISHING')) return 'Encargado de Troquelado y Rebobinado';
+    if (normalized.includes('TINTA') || normalized.includes('INK')) return 'Encargado de Tintas';
     if (normalized.includes('ADMIN') || normalized.includes('SISTEM')) return 'Sistemas';
     if (normalized.includes('SUPERVISOR')) return 'Supervisor';
     if (normalized.includes('OPERATOR') || normalized.includes('OPERARIO')) return 'Operario';
-    if (normalized.includes('WAREHOUSE') || normalized.includes('ENCARG')) return 'Encargado';
+    if (normalized.includes('WAREHOUSE') || normalized.includes('ENCARG')) return 'Encargado de Clisés, Troqueles y Tintas';
     if (normalized.includes('PLANNER') || normalized.includes('ASIST')) return 'Asistente';
     if (normalized.includes('JEFAT') || normalized.includes('MANAGER') || normalized.includes('GEREN')) return 'Jefatura';
     return 'Jefatura';

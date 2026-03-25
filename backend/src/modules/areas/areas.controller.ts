@@ -31,14 +31,12 @@ export class AreasController {
   }
 
   @Get()
-  @Roles('ADMIN', 'SUPERVISOR')
   @ApiOperation({ summary: 'Get all active production areas' })
   async findAll() {
     return this.areasService.findAll();
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'SUPERVISOR')
   @ApiOperation({ summary: 'Get a specific area by ID' })
   async findOne(@Param('id') id: string) {
     return this.areasService.findOne(id);

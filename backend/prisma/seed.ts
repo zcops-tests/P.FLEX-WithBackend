@@ -14,59 +14,45 @@ async function main() {
   console.log('Seeding database...');
 
   // 1. Roles
-  const adminRole = await prisma.role.upsert({
-    where: { code: 'ADMIN' },
-    update: { name: 'Sistemas' },
-    create: {
-      code: 'ADMIN',
-      name: 'Sistemas',
-    },
-  });
+  const roleDefinitions = [
+    { code: 'ADMIN', name: 'Sistemas', description: 'Gestión global del sistema, seguridad, sincronización y administración completa.' },
+    { code: 'MANAGER', name: 'Jefatura', description: 'Seguimiento ejecutivo, validación consolidada y revisión histórica.' },
+    { code: 'SUPERVISOR', name: 'Supervisor', description: 'Supervisión operativa, validación de registros y control por turno.' },
+    { code: 'PLANNER', name: 'Asistente', description: 'Carga asistida, corrección controlada y consolidación operativa.' },
+    { code: 'PRODUCTION_ASSISTANT', name: 'Asistente de Producción', description: 'Apoyo directo al registro productivo y seguimiento de pendientes.' },
+    { code: 'OPERATOR', name: 'Operario', description: 'Captura contextual de producción e incidencias operativas.' },
+    { code: 'WAREHOUSE', name: 'Encargado de Clisés, Troqueles y Tintas', description: 'Gestión integral del inventario técnico y su vinculación con producción.' },
+    { code: 'CLICHE_DIE_MANAGER', name: 'Encargado de Clisés y Troqueles', description: 'Control técnico y operativo de clisés y troqueles.' },
+    { code: 'INK_MANAGER', name: 'Encargado de Tintas', description: 'Gestión técnica de tintas, fórmulas, consumo y comportamiento.' },
+    { code: 'FINISHING_MANAGER', name: 'Encargado de Troquelado y Rebobinado', description: 'Control productivo de procesos finales, mermas y cierre por OT.' },
+    { code: 'QUALITY_MANAGER', name: 'Jefe de Calidad', description: 'Validación transversal de calidad, incidencias y tendencias.' },
+    { code: 'AUDITOR', name: 'Auditor', description: 'Consulta global, trazabilidad y revisión de integridad.' },
+  ] as const;
 
-  await prisma.role.upsert({
-    where: { code: 'SUPERVISOR' },
-    update: { name: 'Supervisor' },
-    create: {
-      code: 'SUPERVISOR',
-      name: 'Supervisor',
-    },
-  });
+  let adminRole = null as null | { id: string; name: string };
+  for (const role of roleDefinitions) {
+    const savedRole = await prisma.role.upsert({
+      where: { code: role.code },
+      update: {
+        name: role.name,
+        description: role.description,
+        active: true,
+      },
+      create: {
+        code: role.code,
+        name: role.name,
+        description: role.description,
+      },
+    });
 
-  await prisma.role.upsert({
-    where: { code: 'PLANNER' },
-    update: { name: 'Asistente' },
-    create: {
-      code: 'PLANNER',
-      name: 'Asistente',
-    },
-  });
+    if (role.code === 'ADMIN') {
+      adminRole = { id: savedRole.id, name: savedRole.name };
+    }
+  }
 
-  await prisma.role.upsert({
-    where: { code: 'OPERATOR' },
-    update: { name: 'Operario' },
-    create: {
-      code: 'OPERATOR',
-      name: 'Operario',
-    },
-  });
-
-  await prisma.role.upsert({
-    where: { code: 'WAREHOUSE' },
-    update: { name: 'Encargado' },
-    create: {
-      code: 'WAREHOUSE',
-      name: 'Encargado',
-    },
-  });
-
-  await prisma.role.upsert({
-    where: { code: 'MANAGER' },
-    update: { name: 'Jefatura' },
-    create: {
-      code: 'MANAGER',
-      name: 'Jefatura',
-    },
-  });
+  if (!adminRole) {
+    throw new Error('No se pudo inicializar el rol ADMIN durante el seed.');
+  }
 
   // 2. Dev Admin User
   const nodeEnv = getEnvString('NODE_ENV', 'development');

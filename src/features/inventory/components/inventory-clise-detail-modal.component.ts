@@ -19,6 +19,7 @@ import { CliseItem, CliseHistory, DieItem } from '../models/inventory.models';
 export class InventoryCliseDetailModalComponent {
   @Input() currentClise: Partial<CliseItem> = {};
   @Input() isReadOnly = true;
+  @Input() canEdit = true;
   @Input() activeDetailTab: 'general' | 'metrics' = 'general';
   @Input() compatibleDies: DieItem[] = [];
   @Input() dieSearchTerm = '';
@@ -48,6 +49,9 @@ export class InventoryCliseDetailModalComponent {
   }
 
   setEditMode(readOnly: boolean) {
+    if (!this.canEdit && !readOnly) {
+      return;
+    }
     this.isReadOnlyChange.emit(readOnly);
   }
 

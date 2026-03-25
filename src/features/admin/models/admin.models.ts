@@ -1,5 +1,17 @@
 
-export type UserRole = 'Jefatura' | 'Supervisor' | 'Asistente' | 'Operario' | 'Encargado' | 'Sistemas';
+export type UserRole =
+  | 'Sistemas'
+  | 'Jefatura'
+  | 'Supervisor'
+  | 'Operario'
+  | 'Asistente'
+  | 'Asistente de Producción'
+  | 'Encargado de Clisés, Troqueles y Tintas'
+  | 'Encargado de Clisés y Troqueles'
+  | 'Encargado de Tintas'
+  | 'Encargado de Troquelado y Rebobinado'
+  | 'Jefe de Calidad'
+  | 'Auditor';
 
 export interface AppUser {
   id: string;

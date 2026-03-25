@@ -127,13 +127,18 @@ export class DiecuttingService {
   }
 
   async findAllReports(params: DiecutReportQueryDto) {
-    const { machineId, operatorId, status } = params;
+    const { machineId, operatorId, status, startDate, endDate } = params;
     const pagination = resolvePagination(params);
 
     const where: Prisma.DiecutReportWhereInput = { deleted_at: null };
     if (machineId) where.machine_id = machineId;
     if (operatorId) where.operator_id = operatorId;
     if (status) where.status = status;
+    if (startDate || endDate) {
+      where.reported_at = {};
+      if (startDate) where.reported_at.gte = new Date(startDate);
+      if (endDate) where.reported_at.lte = new Date(endDate);
+    }
 
     const [total, items] = await Promise.all([
       this.prisma.diecutReport.count({ where }),

@@ -1,4 +1,5 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { BackendApiService } from './backend-api.service';
 
 export interface AuditLog {
   id: string;
@@ -13,18 +14,11 @@ export interface AuditLog {
 
 @Injectable({ providedIn: 'root' })
 export class AuditService {
-  readonly logs = signal<AuditLog[]>([
-    {
-      id: 'log-init',
-      timestamp: new Date(Date.now() - 3600000),
-      user: 'Sistema',
-      role: 'System',
-      module: 'SISTEMA',
-      action: 'Inicio de Servicios',
-      details: 'El sistema se ha iniciado correctamente.',
-      ip: 'client',
-    },
-  ]);
+  private backend = inject(BackendApiService);
+  private readonly sessionLogs = signal<AuditLog[]>([]);
+
+  readonly logs = signal<AuditLog[]>([]);
+  readonly isLoading = signal(false);
 
   log(user: string, role: string, module: string, action: string, details: string = '') {
     const newEntry: AuditLog = {
@@ -38,10 +32,39 @@ export class AuditService {
       ip: 'client',
     };
 
-    this.logs.update((currentLogs) => [newEntry, ...currentLogs]);
+    this.sessionLogs.update((currentLogs) => [newEntry, ...currentLogs]);
+  }
+
+  async reload(query?: { page?: number; pageSize?: number; q?: string }) {
+    this.isLoading.set(true);
+
+    try {
+      const response = await this.backend.getAuditLogs({
+        page: query?.page || 1,
+        pageSize: query?.pageSize || 100,
+        q: query?.q,
+      });
+      const items = Array.isArray(response?.items) ? response.items : [];
+      this.logs.set(items.map((item: any) => this.mapLog(item)));
+    } finally {
+      this.isLoading.set(false);
+    }
   }
 
   private sanitize(value: string): string {
     return String(value || '').replace(/[\r\n\t]+/g, ' ').trim();
+  }
+
+  private mapLog(item: any): AuditLog {
+    return {
+      id: String(item.id || ''),
+      timestamp: item.timestamp ? new Date(item.timestamp) : new Date(),
+      user: item.user || 'Sistema',
+      role: item.role || 'N/A',
+      module: String(item.module || '').toUpperCase(),
+      action: item.action || '',
+      details: this.sanitize(item.details || ''),
+      ip: item.ip || 'N/A',
+    };
   }
 }

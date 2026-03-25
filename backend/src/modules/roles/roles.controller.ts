@@ -13,14 +13,14 @@ export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Get()
-  @RolesDecorator('ADMIN', 'SUPERVISOR')
+  @RolesDecorator('ADMIN')
   @ApiOperation({ summary: 'Get all roles with their permissions' })
   async findAll() {
     return this.rolesService.findAll();
   }
 
   @Get(':id')
-  @RolesDecorator('ADMIN', 'SUPERVISOR')
+  @RolesDecorator('ADMIN')
   @ApiOperation({ summary: 'Get a specific role by ID' })
   async findOne(@Param('id') id: string) {
     return this.rolesService.findOne(id);
