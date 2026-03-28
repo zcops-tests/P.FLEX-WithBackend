@@ -73,7 +73,7 @@ import { NotificationService } from '../../services/notification.service';
             </div>
 
             <div class="mb-8">
-              <h2 class="text-3xl font-bold text-white mb-2">Acceso Encargado</h2>
+              <h2 class="text-3xl font-bold text-white mb-2">Acceso Anfitrión</h2>
               <p class="text-slate-400 text-sm font-medium tracking-wide uppercase">Estación de Trabajo Autorizada</p>
             </div>
 
@@ -81,13 +81,14 @@ import { NotificationService } from '../../services/notification.service';
               
               <!-- Username -->
               <div class="space-y-2">
-                <label class="text-xs font-bold text-slate-300 uppercase tracking-wider ml-1">Identificación de Usuario</label>
+                <label class="text-xs font-bold text-slate-300 uppercase tracking-wider ml-1">DNI del Usuario</label>
                 <div class="input-glass rounded-lg flex items-center px-4 py-3 group">
                   <span class="material-icons text-slate-500 mr-3 group-focus-within:text-primary transition-colors">badge</span>
-                  <input type="text" [(ngModel)]="username" name="username" 
+                  <input type="text" [(ngModel)]="username" (ngModelChange)="username = sanitizeDni($event)" name="username" inputmode="numeric" autocomplete="username"
                          class="bg-transparent border-none text-white placeholder-slate-500 w-full focus:ring-0 text-sm font-mono h-full p-0 outline-none" 
-                         placeholder="ID de Empleado (ej. SUP-001)" autocomplete="off">
+                         placeholder="Ingrese DNI numerico (min. 8 digitos)">
                 </div>
+                <p class="text-[10px] text-slate-500 ml-1">Solo supervisores o encargados autorizados pueden iniciar sesión en la terminal.</p>
               </div>
 
               <!-- Password -->
@@ -138,7 +139,7 @@ import { NotificationService } from '../../services/notification.service';
 
               <!-- Submit -->
               <button type="submit" 
-                      [disabled]="!username || !selectedShift"
+                      [disabled]="username.length < 8 || !selectedShift || !password"
                       class="w-full bg-button-gradient hover:brightness-110 text-white font-bold py-3.5 px-4 rounded-xl shadow-glow transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 group mt-4 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
                 <span>AUTENTICAR SISTEMA</span>
                 <span class="material-icons group-hover:translate-x-1 transition-transform">login</span>
@@ -262,13 +263,17 @@ export class LoginComponent {
   }
 
   async onLogin() {
-    if (this.username && this.selectedShift && this.password) {
+    if (this.username.length >= 8 && this.selectedShift && this.password) {
       try {
         await this.state.login(this.username, this.selectedShift, this.password);
-        this.router.navigate(['/operator']);
+        this.router.navigate([this.state.homeRoute()]);
       } catch (error: any) {
         this.notifications.showError(error?.message || 'No fue posible iniciar sesion.');
       }
     }
+  }
+
+  sanitizeDni(value: string) {
+    return String(value || '').replace(/\D/g, '');
   }
 }

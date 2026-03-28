@@ -149,11 +149,11 @@ import { OT } from '../../orders/models/orders.models';
             </div>
             <div class="flex items-center gap-4">
                 <div class="hidden md:flex flex-col items-end mr-2">
-                    <span class="text-sm font-bold text-gray-200">{{ state.userName() }}</span>
+                    <span class="text-sm font-bold text-gray-200">{{ isOperatorMode ? state.activeOperatorName() : state.userName() }}</span>
                     <span class="text-xs text-gray-500 uppercase tracking-wider">{{ state.currentShift() || 'Turno A' }}</span>
                 </div>
                 <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold shadow-lg border border-blue-500/30">
-                    {{ getInitials(state.userName()) }}
+                    {{ getInitials(isOperatorMode ? state.activeOperatorName() : state.userName()) }}
                 </div>
                 <div class="flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-900/30 border border-emerald-500/30 text-emerald-400">
                     <span class="relative flex h-2 w-2">
@@ -416,6 +416,10 @@ export class ReportsPackagingComponent implements OnInit {
     // Check if accessed directly via operator route
     this.isOperatorMode = this.router.url.includes('/operator/packaging');
     if (this.isOperatorMode) {
+        if (!this.state.hasActiveOperator() || !this.state.isProcessAllowedForActiveOperator('packaging')) {
+            this.router.navigate(['/operator']);
+            return;
+        }
         this.createNewReport();
         this.showForm = true;
     }
@@ -429,7 +433,7 @@ export class ReportsPackagingComponent implements OnInit {
      this.currentReport = {
         id: null,
         date: new Date().toISOString().split('T')[0], // yyyy-MM-dd string for input[type=date]
-        operator: this.state.userName(), // Fix: Call signal
+        operator: this.isOperatorMode ? this.state.activeOperatorName() : this.state.userName(),
         shift: this.state.currentShift() || 'Día - A', // Fix: Call signal
         ot: ot ? ot.OT : '',
         client: ot ? ot['Razon Social'] : '',
@@ -448,7 +452,7 @@ export class ReportsPackagingComponent implements OnInit {
      this.currentReport = { 
          ...report,
          date: new Date(report.date).toISOString().split('T')[0], // Convert Date obj to string
-         operator: report.operator || this.state.userName(), // Fix: Call signal
+         operator: report.operator || (this.isOperatorMode ? this.state.activeOperatorName() : this.state.userName()),
          shift: report.shift || this.state.currentShift() || 'Día - A' // Fix: Call signal
      };
      this.showForm = true;

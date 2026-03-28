@@ -3,37 +3,39 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ImportsService } from './imports.service';
 import { CreateImportJobDto } from './dto/import.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 
 @ApiTags('Imports')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('imports')
 export class ImportsController {
   constructor(private readonly importsService: ImportsService) {}
 
   @Post()
-  @Roles('ADMIN', 'SUPERVISOR', 'PLANNER', 'PRODUCTION_ASSISTANT', 'WAREHOUSE', 'CLICHE_DIE_MANAGER', 'INK_MANAGER')
+  @Permissions('imports.manage')
   @ApiOperation({ summary: 'Create a new import job' })
   create(@Body() dto: CreateImportJobDto, @Request() req) {
     return this.importsService.createJob(dto, req.user.sub);
   }
 
   @Get(':id')
+  @Permissions('imports.manage')
   @ApiOperation({ summary: 'Get import job status' })
   findOne(@Param('id') id: string) {
     return this.importsService.getJob(id);
   }
 
   @Post(':id/confirm')
-  @Roles('ADMIN', 'SUPERVISOR', 'PLANNER', 'PRODUCTION_ASSISTANT', 'WAREHOUSE', 'CLICHE_DIE_MANAGER', 'INK_MANAGER')
+  @Permissions('imports.manage')
   @ApiOperation({ summary: 'Confirm and apply the import' })
   confirm(@Param('id') id: string, @Request() req) {
     return this.importsService.confirmImport(id, req.user.sub);
   }
 
   @Get(':id/results')
+  @Permissions('imports.manage')
   @ApiOperation({ summary: 'Obtener resultados detallados de la importación (Resumen de filas)' })
   async getResults(@Param('id') id: string) {
     const job = await this.importsService.getJob(id);
@@ -51,6 +53,7 @@ export class ImportsController {
   }
 
   @Get(':id/errors/csv')
+  @Permissions('imports.manage')
   @ApiOperation({ summary: 'Descargar reporte de errores en formato CSV' })
   async downloadErrors(@Param('id') id: string) {
     const rows = await this.importsService.getStagingRows(id);
@@ -68,6 +71,7 @@ export class ImportsController {
   }
 
   @Get(':id/rows')
+  @Permissions('imports.manage')
   @ApiOperation({ summary: 'Get staging rows for preview' })
   findRows(@Param('id') id: string) {
     return this.importsService.getStagingRows(id);

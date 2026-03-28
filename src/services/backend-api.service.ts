@@ -11,6 +11,7 @@ export class BackendApiService {
 
   login(body: any) { return this.api.post<any>('/auth/login', body, { auth: false }); }
   refreshToken(body: { refreshToken: string }) { return this.api.post<any>('/auth/refresh-token', body, { auth: false }); }
+  me() { return this.api.get<any>('/auth/me'); }
   logout() { return this.api.post('/auth/logout', {}); }
   logoutAll() { return this.api.post('/auth/logout-all', {}); }
   getSessions() { return this.api.get<any[]>('/auth/sessions'); }
@@ -18,6 +19,7 @@ export class BackendApiService {
 
   getUsers() { return this.api.get<any[]>('/users'); }
   getUser(id: string) { return this.api.get<any>(`/users/${id}`); }
+  identifyOperatorByDni(body: { dni: string }) { return this.api.post<any>('/users/operator-identification', body); }
   createUser(body: any) { return this.api.post<any>('/users', body); }
   updateUser(id: string, body: any) { return this.api.put<any>(`/users/${id}`, body); }
   deleteUser(id: string) { return this.api.delete(`/users/${id}`); }
@@ -26,6 +28,9 @@ export class BackendApiService {
 
   getRoles() { return this.api.get<any[]>('/roles'); }
   getRole(id: string) { return this.api.get<any>(`/roles/${id}`); }
+  createRole(body: any) { return this.api.post<any>('/roles', body); }
+  updateRole(id: string, body: any) { return this.api.put<any>(`/roles/${id}`, body); }
+  deleteRole(id: string) { return this.api.delete(`/roles/${id}`); }
   getPermissions() { return this.api.get<any[]>('/permissions'); }
   getPermission(id: string) { return this.api.get<any>(`/permissions/${id}`); }
 

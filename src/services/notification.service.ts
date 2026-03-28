@@ -6,6 +6,10 @@ export class NotificationService {
     window.alert(message);
   }
 
+  showWarning(message: string) {
+    window.alert(message);
+  }
+
   showSuccess(message: string) {
     window.alert(message);
   }

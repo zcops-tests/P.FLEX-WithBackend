@@ -54,22 +54,22 @@ type AdminTab = 'users' | 'roles' | 'machines' | 'config';
 
         <!-- Tabs Navigation -->
         <nav class="flex gap-2 p-1 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-md inline-flex shadow-lg overflow-x-auto">
-          <button (click)="activeTab = 'users'" 
+          <button *ngIf="canAccess('users')" (click)="selectTab('users')" 
              class="whitespace-nowrap py-2.5 px-5 rounded-xl text-sm flex items-center gap-2 transition-all"
              [ngClass]="activeTab === 'users' ? 'bg-primary/20 text-white font-semibold border border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'text-slate-400 hover:text-white hover:bg-white/5 font-medium'">
              <span class="material-symbols-outlined text-[20px]">people</span> Usuarios
           </button>
-          <button (click)="activeTab = 'roles'" 
+          <button *ngIf="canAccess('roles')" (click)="selectTab('roles')" 
              class="whitespace-nowrap py-2.5 px-5 rounded-xl text-sm flex items-center gap-2 transition-all"
              [ngClass]="activeTab === 'roles' ? 'bg-primary/20 text-white font-semibold border border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'text-slate-400 hover:text-white hover:bg-white/5 font-medium'">
              <span class="material-symbols-outlined text-[20px]">verified_user</span> Roles
           </button>
-          <button (click)="activeTab = 'machines'" 
+          <button *ngIf="canAccess('machines')" (click)="selectTab('machines')" 
              class="whitespace-nowrap py-2.5 px-5 rounded-xl text-sm flex items-center gap-2 transition-all"
              [ngClass]="activeTab === 'machines' ? 'bg-primary/20 text-white font-semibold border border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'text-slate-400 hover:text-white hover:bg-white/5 font-medium'">
              <span class="material-symbols-outlined text-[20px]">precision_manufacturing</span> Máquinas
           </button>
-          <button (click)="activeTab = 'config'" 
+          <button *ngIf="canAccess('config')" (click)="selectTab('config')" 
              class="whitespace-nowrap py-2.5 px-5 rounded-xl text-sm flex items-center gap-2 transition-all"
              [ngClass]="activeTab === 'config' ? 'bg-primary/20 text-white font-semibold border border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'text-slate-400 hover:text-white hover:bg-white/5 font-medium'">
              <span class="material-symbols-outlined text-[20px]">settings</span> Configuración
@@ -98,5 +98,28 @@ type AdminTab = 'users' | 'roles' | 'machines' | 'config';
   `]
 })
 export class AdminComponent {
-    activeTab: AdminTab = 'users';
+    state = inject(StateService);
+
+    private readonly tabPermissions: Record<AdminTab, string> = {
+      users: 'admin.users.manage',
+      roles: 'admin.roles.manage',
+      machines: 'admin.machines.manage',
+      config: 'admin.config.manage',
+    };
+
+    activeTab: AdminTab = this.getDefaultTab();
+
+    canAccess(tab: AdminTab) {
+      return this.state.hasPermission(this.tabPermissions[tab]);
+    }
+
+    selectTab(tab: AdminTab) {
+      if (!this.canAccess(tab)) return;
+      this.activeTab = tab;
+    }
+
+    private getDefaultTab(): AdminTab {
+      const orderedTabs: AdminTab[] = ['users', 'roles', 'machines', 'config'];
+      return orderedTabs.find((tab) => this.canAccess(tab)) || 'users';
+    }
 }

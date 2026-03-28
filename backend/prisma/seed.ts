@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createPrismaClientOptions } from '../src/database/prisma-client-options';
+import { DEFAULT_ROLE_PERMISSION_CODES, PERMISSION_DEFINITIONS } from '../src/modules/auth/authorization/permission-catalog';
 
 const prisma = new PrismaClient(createPrismaClientOptions());
 
@@ -37,6 +38,7 @@ async function main() {
         name: role.name,
         description: role.description,
         active: true,
+        deleted_at: null,
       },
       create: {
         code: role.code,
@@ -50,6 +52,67 @@ async function main() {
     }
   }
 
+  // 1.1 Permissions and default role grants
+  const permissionIdsByCode = new Map<string, string>();
+  for (const permission of PERMISSION_DEFINITIONS) {
+    const savedPermission = await prisma.permission.upsert({
+      where: { code: permission.code },
+      update: {
+        name: permission.name,
+        description: permission.description,
+        deleted_at: null,
+      },
+      create: {
+        code: permission.code,
+        name: permission.name,
+        description: permission.description,
+      },
+    });
+    permissionIdsByCode.set(savedPermission.code, savedPermission.id);
+  }
+
+  const savedRoles = await prisma.role.findMany({
+    where: { deleted_at: null },
+    select: { id: true, code: true },
+  });
+
+  for (const role of savedRoles) {
+    const desiredPermissionCodes = DEFAULT_ROLE_PERMISSION_CODES[role.code] || [];
+    if (!(role.code in DEFAULT_ROLE_PERMISSION_CODES)) continue;
+    const desiredPermissionIds = desiredPermissionCodes
+      .map((permissionCode) => permissionIdsByCode.get(permissionCode))
+      .filter((permissionId): permissionId is string => Boolean(permissionId));
+
+    await prisma.rolePermission.updateMany({
+      where: {
+        role_id: role.id,
+        ...(desiredPermissionIds.length ? { permission_id: { notIn: desiredPermissionIds } } : {}),
+      },
+      data: {
+        deleted_at: new Date(),
+      },
+    });
+
+    for (const permissionId of desiredPermissionIds) {
+
+      await prisma.rolePermission.upsert({
+        where: {
+          role_id_permission_id: {
+            role_id: role.id,
+            permission_id: permissionId,
+          },
+        },
+        update: {
+          deleted_at: null,
+        },
+        create: {
+          role_id: role.id,
+          permission_id: permissionId,
+        },
+      });
+    }
+  }
+
   if (!adminRole) {
     throw new Error('No se pudo inicializar el rol ADMIN durante el seed.');
   }
@@ -57,7 +120,7 @@ async function main() {
   // 2. Dev Admin User
   const nodeEnv = getEnvString('NODE_ENV', 'development');
   const shouldSeedDevAdmin = process.env.SEED_DEV_ADMIN === 'true' || nodeEnv !== 'production';
-  const devAdminUsername = getEnvString('DEV_ADMIN_USERNAME', 'admin');
+  const devAdminUsername = getEnvString('DEV_ADMIN_USERNAME', '99999999');
   const devAdminPassword = getEnvString('DEV_ADMIN_PASSWORD', 'admin123');
   const devAdminName = getEnvString('DEV_ADMIN_NAME', 'System Admin');
 

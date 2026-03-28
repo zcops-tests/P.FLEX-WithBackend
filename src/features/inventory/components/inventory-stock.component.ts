@@ -379,7 +379,6 @@ export class InventoryStockComponent {
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
   destroyRef = inject(DestroyRef);
-  private readonly writeRoles = ['Sistemas', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Troquelado y Rebobinado'] as const;
   
   stockItems: StockItem[] = [];
   searchTerm = '';
@@ -404,7 +403,7 @@ export class InventoryStockComponent {
   }
 
   get canManageInventory() {
-    return this.state.hasAnyRole(this.writeRoles);
+    return this.state.hasPermission('inventory.stock.manage');
   }
 
   get filteredItems() {

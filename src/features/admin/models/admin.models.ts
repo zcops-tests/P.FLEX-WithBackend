@@ -1,32 +1,38 @@
+export type UserRole = string;
 
-export type UserRole =
-  | 'Sistemas'
-  | 'Jefatura'
-  | 'Supervisor'
-  | 'Operario'
-  | 'Asistente'
-  | 'Asistente de Producción'
-  | 'Encargado de Clisés, Troqueles y Tintas'
-  | 'Encargado de Clisés y Troqueles'
-  | 'Encargado de Tintas'
-  | 'Encargado de Troquelado y Rebobinado'
-  | 'Jefe de Calidad'
-  | 'Auditor';
+export interface PermissionDefinition {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+}
 
 export interface AppUser {
   id: string;
   name: string;
   username: string;
   role: UserRole;
+  roleId?: string | null;
+  roleCode?: string | null;
+  roleName?: string;
+  permissionCodes?: string[];
   active: boolean;
+  lastLoginAt?: string | null;
   assignedAreas?: string[];
+  password?: string;
 }
 
 export interface RoleDefinition {
   id: string;
+  code: string;
   name: string;
+  legacyName?: string;
   description: string;
-  permissions: string[];
+  permissions: PermissionDefinition[];
+  permissionCodes: string[];
+  active: boolean;
+  assignedUserCount?: number;
+  isSystem?: boolean;
 }
 
 export interface SystemConfig {

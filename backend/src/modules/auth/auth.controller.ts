@@ -31,6 +31,15 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @Get('me')
+  @ApiOperation({ summary: 'Get the current authenticated user with effective permissions' })
+  @ApiResponse({ status: 200, description: 'Current user session access data' })
+  me(@Req() req: any) {
+    return this.authService.me(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @Post('logout-all')
   @ApiOperation({ summary: 'Logout from all sessions' })
   @ApiResponse({ status: 200, description: 'Logged out from all sessions' })

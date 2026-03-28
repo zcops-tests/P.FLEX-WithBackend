@@ -6,14 +6,17 @@ export class PermissionsService {
   constructor(private prisma: PrismaService) {}
 
   async findAll() {
-    return this.prisma.permission.findMany();
+    return this.prisma.permission.findMany({
+      where: { deleted_at: null },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async findOne(id: string) {
     const permission = await this.prisma.permission.findUnique({
       where: { id },
     });
-    if (!permission) {
+    if (!permission || permission.deleted_at) {
       throw new NotFoundException(`Permission with ID ${id} not found`);
     }
     return permission;

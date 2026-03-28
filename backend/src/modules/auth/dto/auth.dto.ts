@@ -1,8 +1,12 @@
-import { IsNotEmpty, IsString, IsOptional, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { DNI_REGEX, normalizeDni } from '../../../common/utils/dni.util';
 
 export class LoginDto {
   @IsNotEmpty()
   @IsString()
+  @Transform(({ value }) => normalizeDni(value))
+  @Matches(DNI_REGEX, { message: 'El DNI debe contener al menos 8 digitos numericos.' })
   username: string;
 
   @IsNotEmpty()

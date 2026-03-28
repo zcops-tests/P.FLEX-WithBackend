@@ -2,18 +2,20 @@
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { StateService } from '../../services/state.service';
+import { NotificationService } from '../../services/notification.service';
 
 @Component({
   selector: 'app-operator-selector',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <!-- Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 
     <!-- Main Container: Unified Background, FIXED HEIGHT (h-screen) NO SCROLL -->
-    <div class="bg-gradient-mesh font-sans h-screen w-full flex flex-col relative overflow-hidden selection:bg-blue-500 selection:text-white text-gray-100">
+    <div class="bg-gradient-mesh font-sans min-h-screen w-full flex flex-col relative overflow-x-hidden selection:bg-blue-500 selection:text-white text-gray-100">
         
         <!-- Background Effects Layer (Overlays on top of mesh) -->
         <div class="fixed inset-0 z-0 pointer-events-none">
@@ -47,7 +49,7 @@ import { StateService } from '../../services/state.service';
                                 {{ state.currentShift() || 'TURNO GENERAL' }}
                             </span>
                             <span class="text-gray-600">|</span>
-                            <span class="text-blue-400 font-bold">ID: {{ state.userName() }}</span>
+                            <span class="text-blue-400 font-bold">HOST: {{ state.userName() }}</span>
                         </div>
                     </div>
                 </div>
@@ -90,11 +92,51 @@ import { StateService } from '../../services/state.service';
                     <p class="mt-2 text-blue-300/50 font-mono text-sm tracking-[0.2em] uppercase">Seleccione Estación de Trabajo</p>
                 </div>
 
+                <div class="w-full max-w-5xl glass-panel rounded-2xl p-5 mb-6 border border-white/10">
+                    <div class="flex flex-col lg:flex-row gap-5 lg:items-end">
+                        <div class="flex-1 space-y-2">
+                            <label class="block text-[11px] font-bold tracking-[0.15em] uppercase text-blue-300/70">Identificación del Operario</label>
+                            <div class="flex gap-3">
+                                <div class="flex-1 relative">
+                                    <span class="material-symbols-outlined absolute left-3 top-3 text-gray-500">badge</span>
+                                    <input [(ngModel)]="operatorDni" (ngModelChange)="operatorDni = sanitizeDni($event)" inputmode="numeric" maxlength="12" class="w-full pl-11 pr-4 py-3 rounded-xl bg-[#0a0f18] border border-white/10 text-white font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Ingrese DNI del operario"/>
+                                </div>
+                                <button type="button" (click)="identifyOperator()" [disabled]="operatorDni.length < 8 || identifyingOperator" class="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold tracking-wide transition-all">
+                                    {{ identifyingOperator ? 'Validando...' : 'Identificar' }}
+                                </button>
+                            </div>
+                            <p class="text-[11px] text-slate-400">El operario no inicia sesión. Debe ser identificado por DNI desde esta estación anfitriona.</p>
+                        </div>
+
+                        <div class="lg:min-w-[320px] rounded-2xl border border-white/10 bg-[#0a0f18]/80 p-4">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <p class="text-[10px] uppercase tracking-[0.15em] text-slate-500 font-bold">Operario Activo</p>
+                                    <p class="text-lg font-bold text-white">{{ state.activeOperatorName() }}</p>
+                                    <p class="text-xs text-slate-400 font-mono" *ngIf="state.hasActiveOperator()">DNI: {{ state.activeOperatorDni() }}</p>
+                                </div>
+                                <button *ngIf="state.hasActiveOperator()" type="button" (click)="clearOperatorContext()" class="px-3 py-2 rounded-lg border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition-all text-xs uppercase tracking-wider">
+                                    Cambiar
+                                </button>
+                            </div>
+                            <div class="mt-3 flex flex-wrap gap-2" *ngIf="state.hasActiveOperator(); else noAreas">
+                                <span *ngFor="let area of state.activeOperatorAreas()" class="px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-200 text-[10px] uppercase tracking-wider font-bold">
+                                    {{ area }}
+                                </span>
+                            </div>
+                            <ng-template #noAreas>
+                                <p class="mt-3 text-xs text-slate-500">Identifica un operario para habilitar solo sus áreas permitidas.</p>
+                            </ng-template>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Cards Grid - Responsive Height using vh -->
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full px-4 lg:px-12 perspective-1000 items-center justify-center flex-1 max-h-[60vh]">
                     
                     <!-- CARD 1: IMPRESIÓN (Blue) -->
-                    <div (click)="navigateTo('print')" class="group relative h-full max-h-[450px] min-h-[300px] glass-card rounded-3xl overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_25px_50px_-12px_rgba(59,130,246,0.25)]">
+                    <div *ngIf="!state.hasActiveOperator() || isProcessAllowed('print')" (click)="navigateTo('print')" class="group relative h-full max-h-[450px] min-h-[300px] glass-card rounded-3xl overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_25px_50px_-12px_rgba(59,130,246,0.25)]"
+                        [class.cursor-pointer]="canAccessProcess('print')" [class.cursor-not-allowed]="!canAccessProcess('print')" [class.opacity-40]="!canAccessProcess('print')">
                         <!-- Image & Overlay -->
                         <div class="absolute inset-0 bg-blue-900/20 z-10 mix-blend-overlay"></div>
                         <div class="absolute inset-0 bg-gradient-to-b from-transparent via-[#020408]/60 to-[#020408] z-20"></div>
@@ -118,7 +160,8 @@ import { StateService } from '../../services/state.service';
                     </div>
 
                     <!-- CARD 2: TROQUELADO (Purple) -->
-                    <div (click)="navigateTo('diecut')" class="group relative h-full max-h-[450px] min-h-[300px] glass-card rounded-3xl overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_25px_50px_-12px_rgba(139,92,246,0.25)]">
+                    <div *ngIf="!state.hasActiveOperator() || isProcessAllowed('diecut')" (click)="navigateTo('diecut')" class="group relative h-full max-h-[450px] min-h-[300px] glass-card rounded-3xl overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_25px_50px_-12px_rgba(139,92,246,0.25)]"
+                        [class.cursor-pointer]="canAccessProcess('diecut')" [class.cursor-not-allowed]="!canAccessProcess('diecut')" [class.opacity-40]="!canAccessProcess('diecut')">
                         <div class="absolute inset-0 bg-purple-900/20 z-10 mix-blend-overlay"></div>
                         <div class="absolute inset-0 bg-gradient-to-b from-transparent via-[#020408]/60 to-[#020408] z-20"></div>
                         <img class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-60 group-hover:opacity-80 grayscale-[30%] group-hover:grayscale-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDaiyjIfwnha9Zx2Svh3X-_9lnJKSyZOo59hxglKvDhtH2mMoAPrsSllG9_3UBNmbt-Ug1-SsuFIiSHSqajOWCVFiW49ptmh3jSjyuK2BhtVvbZg5kzjLr-piPjflQ563xQI_6sWUibmrF6NASzaOvxev0dOtmdgM6fx-IVbskuE_5bvwQqb5PuSCC4pdZ4jV64psrLT_0UvGl5DEWYpsY4sXgwJZ1H97YNt80sPh-wh4bZwkg_l2WMD9nnlxJbtQ22CJhwQELiCtI" alt="Troquelado" />
@@ -140,7 +183,8 @@ import { StateService } from '../../services/state.service';
                     </div>
 
                     <!-- CARD 3: REBOBINADO (Orange) -->
-                    <div (click)="navigateTo('rewind')" class="group relative h-full max-h-[450px] min-h-[300px] glass-card rounded-3xl overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_25px_50px_-12px_rgba(249,115,22,0.25)]">
+                    <div *ngIf="!state.hasActiveOperator() || isProcessAllowed('rewind')" (click)="navigateTo('rewind')" class="group relative h-full max-h-[450px] min-h-[300px] glass-card rounded-3xl overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_25px_50px_-12px_rgba(249,115,22,0.25)]"
+                        [class.cursor-pointer]="canAccessProcess('rewind')" [class.cursor-not-allowed]="!canAccessProcess('rewind')" [class.opacity-40]="!canAccessProcess('rewind')">
                         <div class="absolute inset-0 bg-orange-900/20 z-10 mix-blend-overlay"></div>
                         <div class="absolute inset-0 bg-gradient-to-b from-transparent via-[#020408]/60 to-[#020408] z-20"></div>
                         <img class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-60 group-hover:opacity-80 grayscale-[30%] group-hover:grayscale-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpmNhrMIoRLh9dHdybX9TDRp8SZJOCzk2YrFkBA7VfHlzz0zPWmbs6Tzzx0TpEIIebk0tvxJv6SYYvyGdgKXSNEZgrWwGJAyA-a2AvGXyQ-ZgeVJs5mow36t4zD28SctOLij4eWlSb3c73cXOnIkzCS1-Cah_M78juIrXXkzwotJ2dCIxB0joLa2DtAdkkp7qwdoVaoQHdHqwuSQ1k1tHpoMkeZlEj-op8HiRR4OzYvJ5XvORndCTyEhJvP7wx6U566G3y0qe6s1E" alt="Rebobinado" />
@@ -162,7 +206,8 @@ import { StateService } from '../../services/state.service';
                     </div>
 
                     <!-- CARD 4: EMPAQUETADO (Green) -->
-                    <div (click)="navigateTo('packaging')" class="group relative h-full max-h-[450px] min-h-[300px] glass-card rounded-3xl overflow-hidden cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_25px_50px_-12px_rgba(16,185,129,0.25)]">
+                    <div *ngIf="!state.hasActiveOperator() || isProcessAllowed('packaging')" (click)="navigateTo('packaging')" class="group relative h-full max-h-[450px] min-h-[300px] glass-card rounded-3xl overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_25px_50px_-12px_rgba(16,185,129,0.25)]"
+                        [class.cursor-pointer]="canAccessProcess('packaging')" [class.cursor-not-allowed]="!canAccessProcess('packaging')" [class.opacity-40]="!canAccessProcess('packaging')">
                         <div class="absolute inset-0 bg-emerald-900/20 z-10 mix-blend-overlay"></div>
                         <div class="absolute inset-0 bg-gradient-to-b from-transparent via-[#020408]/60 to-[#020408] z-20"></div>
                         <img class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-60 group-hover:opacity-80 grayscale-[30%] group-hover:grayscale-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA7HlTG0KYb7VkuSqPJ6wr5CMkrAjHAI76So-ttwplu2jGY08YiKsxmjkQzMqTmqpIpxaGH8oL9QRVWeMWniAW_QHX41Hv0rdDyyRw3XiUM0AEpvSVhwLEPabFYBsvVIJHFB9E6gkqexCm1At3z_BK45UCKmLO5BxsRXKTEvoO5lhBCD8ijhRwnzcJwJEGlOKm9MBUtlXADPCqjvIFqYB0uWe7pOtJZ3H_33dGagO0rnWkV5FuizeuRMmYZ1KE9TH35SHOo9YCgbT0" alt="Empaquetado" />
@@ -300,6 +345,9 @@ import { StateService } from '../../services/state.service';
 export class OperatorSelectorComponent {
   state = inject(StateService);
   router: Router = inject(Router);
+  notifications = inject(NotificationService);
+  operatorDni = '';
+  identifyingOperator = false;
 
   logout() {
     this.state.logout();
@@ -307,6 +355,16 @@ export class OperatorSelectorComponent {
   }
 
   navigateTo(type: string) {
+    if (!this.state.hasActiveOperator()) {
+        this.notifications.showWarning('Identifica primero al operario con su DNI.');
+        return;
+    }
+
+    if (!this.isProcessAllowed(type)) {
+        this.notifications.showError('El operario no tiene permisos para acceder a esta área.');
+        return;
+    }
+
     if (type === 'packaging') {
         this.router.navigate(['/operator/packaging']);
     } else {
@@ -316,5 +374,39 @@ export class OperatorSelectorComponent {
 
   goToManager() {
     this.router.navigate(['/dashboard']);
+  }
+
+  canAccessProcess(type: string) {
+    return this.state.hasActiveOperator() && this.isProcessAllowed(type);
+  }
+
+  isProcessAllowed(type: string) {
+    return this.state.isProcessAllowedForActiveOperator(type);
+  }
+
+  sanitizeDni(value: string) {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  async identifyOperator() {
+    if (this.operatorDni.length < 8) {
+      this.notifications.showWarning('Ingresa un DNI válido de al menos 8 dígitos.');
+      return;
+    }
+
+    try {
+      this.identifyingOperator = true;
+      await this.state.identifyOperatorByDni(this.operatorDni);
+      this.notifications.showSuccess(`Operario ${this.state.activeOperatorName()} identificado correctamente.`);
+    } catch (error: any) {
+      this.notifications.showError(error?.message || 'No fue posible identificar al operario.');
+    } finally {
+      this.identifyingOperator = false;
+    }
+  }
+
+  clearOperatorContext() {
+    this.state.clearActiveOperatorContext();
+    this.operatorDni = '';
   }
 }

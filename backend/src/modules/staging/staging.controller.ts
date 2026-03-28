@@ -14,32 +14,32 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nes
 import { StagingService } from './staging.service';
 import { CreateImportJobDto } from './dto/import-job.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 
 @ApiTags('Staging & Imports')
 @Controller('staging')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class StagingController {
   constructor(private readonly stagingService: StagingService) {}
 
   @Post('jobs')
-  @Roles('ADMIN')
+  @Permissions('staging.manage')
   @ApiOperation({ summary: 'Create a new import job' })
   async createJob(@Body() dto: CreateImportJobDto, @Request() req) {
     return this.stagingService.createJob(dto, req.user.sub || req.user.id);
   }
 
   @Get('jobs/:id')
-  @Roles('ADMIN')
+  @Permissions('staging.manage')
   @ApiOperation({ summary: 'Get import job status and rows' })
   async getJob(@Param('id') id: string) {
     return this.stagingService.getJob(id);
   }
 
   @Post('jobs/:id/upload')
-  @Roles('ADMIN')
+  @Permissions('staging.manage')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Upload Excel file for an import job' })
   @ApiConsumes('multipart/form-data')

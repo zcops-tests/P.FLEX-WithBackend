@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '../../database/prisma.service';
-import { NotFoundException, ConflictException } from '@nestjs/common';
+import { NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
 jest.mock('bcrypt', () => ({
@@ -16,10 +16,14 @@ describe('UsersService', () => {
     user: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
     },
     area: {
+      findUnique: jest.fn(),
+    },
+    role: {
       findUnique: jest.fn(),
     },
     userAssignedArea: {
@@ -47,16 +51,34 @@ describe('UsersService', () => {
   describe('create', () => {
     it('should throw ConflictException if username exists', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: '1' });
-      await expect(service.create({ username: 'admin' } as any)).rejects.toThrow(ConflictException);
+      await expect(service.create({ username: '12345678' } as any)).rejects.toThrow(ConflictException);
     });
 
     it('should create a user with hashed password', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
-      mockPrisma.user.create.mockResolvedValue({ id: '1', username: 'new' });
+      mockPrisma.role.findUnique.mockResolvedValue({ id: 'role-1', code: 'SUPERVISOR', active: true, deleted_at: null });
+      mockPrisma.user.create.mockResolvedValue({ id: '1', username: '12345678', role: { permissions: [] }, assignedAreas: [] });
 
-      const result = await service.create({ username: 'new', password: '123', name: 'New' } as any);
-      expect(result.username).toBe('new');
+      const result = await service.create({ username: '12345678', password: '123', name: 'New', role_id: 'role-1' } as any);
+      expect(result.username).toBe('12345678');
       expect(bcrypt.hash).toHaveBeenCalled();
+    });
+
+    it('should create an operator without explicit password', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockPrisma.role.findUnique.mockResolvedValue({ id: 'role-operator', code: 'OPERATOR', active: true, deleted_at: null });
+      mockPrisma.user.create.mockResolvedValue({ id: '2', username: '87654321', role: { permissions: [] }, assignedAreas: [] });
+
+      const result = await service.create({ username: '87654321', name: 'Operario', role_id: 'role-operator' } as any);
+      expect(result.username).toBe('87654321');
+      expect(bcrypt.hash).toHaveBeenCalled();
+    });
+
+    it('should require password for non-operator users', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockPrisma.role.findUnique.mockResolvedValue({ id: 'role-1', code: 'SUPERVISOR', active: true, deleted_at: null });
+
+      await expect(service.create({ username: '12345678', name: 'Sin Password', role_id: 'role-1' } as any)).rejects.toThrow(BadRequestException);
     });
   });
 

@@ -190,19 +190,50 @@ function normalizeHistoryType(value: string | null | undefined): 'Producción' |
 }
 
 export function toFrontendRole(role: any) {
+  const permissionEntries = (role.permissions || [])
+    .filter((entry: any) => !entry?.deleted_at)
+    .map((entry: any) => entry.permission)
+    .filter(Boolean);
+
   return {
-    ...role,
-    name: normalizeRoleName(role.name || role.code),
-    permissions: (role.permissions || []).map((entry: any) => entry.permission?.name || entry.permission?.code).filter(Boolean),
+    id: role.id,
+    code: role.code,
+    name: role.name || normalizeRoleName(role.code),
+    legacyName: normalizeRoleName(role.name || role.code),
+    description: role.description || role.name || '',
+    active: role.active !== false,
+    permissions: permissionEntries.map((permission: any) => ({
+      id: permission.id,
+      code: permission.code,
+      name: permission.name,
+      description: permission.description,
+    })),
+    permissionCodes: permissionEntries.map((permission: any) => permission.code).filter(Boolean),
+    assignedUserCount: Array.isArray(role.users) ? role.users.filter((user: any) => !user?.deleted_at).length : undefined,
   };
 }
 
 export function toFrontendUser(user: any) {
   return {
-    ...user,
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    active: user.active !== false,
+    last_login_at: user.last_login_at || null,
     role: {
-      ...(user.role || {}),
-      name: normalizeRoleName(user.role?.name || user.role?.code || user.role_code),
+      id: user.role?.id || user.role_id || null,
+      code: user.role?.code || user.role_code || null,
+      name: user.role?.name || normalizeRoleName(user.role?.name || user.role?.code || user.role_code),
+      permissions: (user.role?.permissions || [])
+        .filter((entry: any) => !entry?.deleted_at)
+        .map((entry: any) => entry.permission)
+        .filter(Boolean)
+        .map((permission: any) => ({
+          id: permission.id,
+          code: permission.code,
+          name: permission.name,
+          description: permission.description,
+        })),
     },
     assignedAreas: user.assignedAreas || [],
   };

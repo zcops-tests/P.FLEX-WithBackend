@@ -907,7 +907,6 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
   Math = Math;
-  private readonly writeRoles = ['Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles'] as const;
 
   cliseItems: CliseItem[] = [];
   searchInput = '';
@@ -948,7 +947,7 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
   private loadingProgressInterval?: number;
 
   get canManageInventory() {
-    return this.state.hasAnyRole(this.writeRoles);
+    return this.state.hasPermission('inventory.clises.manage');
   }
 
   async ngOnInit() {

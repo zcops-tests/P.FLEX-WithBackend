@@ -2,9 +2,9 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { StateService } from '../../../services/state.service';
 import { AdminService } from '../services/admin.service';
 import { AppUser } from '../models/admin.models';
+import { NotificationService } from '../../../services/notification.service';
 
 @Component({
   selector: 'app-admin-users',
@@ -19,7 +19,7 @@ import { AppUser } from '../models/admin.models';
           <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <span class="material-symbols-outlined text-slate-400 group-focus-within:text-primary transition-colors">search</span>
           </div>
-          <input [(ngModel)]="userSearch" class="block w-full pl-10 pr-3 py-2.5 rounded-xl text-sm transition-all focus:ring-1 focus:ring-primary focus:border-primary/50 text-white placeholder-slate-500 bg-[#111827] border border-white/10" placeholder="Buscar usuario, email o rol..." type="text"/>
+          <input [(ngModel)]="userSearch" class="block w-full pl-10 pr-3 py-2.5 rounded-xl text-sm transition-all focus:ring-1 focus:ring-primary focus:border-primary/50 text-white placeholder-slate-500 bg-[#111827] border border-white/10" placeholder="Buscar usuario, DNI o rol..." type="text"/>
         </div>
         <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
           <button class="p-2.5 rounded-xl text-slate-300 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all flex items-center gap-2">
@@ -66,7 +66,7 @@ import { AppUser } from '../models/admin.models';
                     </div>
                     <div class="ml-4">
                       <div class="font-medium text-white group-hover:text-primary transition-colors">{{ user.name }}</div>
-                      <div class="text-xs text-slate-400">{{ user.username }}&#64;planta-a.com</div>
+                      <div class="text-xs text-slate-400">DNI: {{ user.username }}</div>
                     </div>
                   </div>
                 </td>
@@ -93,8 +93,8 @@ import { AppUser } from '../models/admin.models';
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-slate-400">
                   <div class="flex flex-col">
-                    <span class="text-white">Hace 2 horas</span>
-                    <span class="text-[10px]">192.168.1.45</span>
+                    <span class="text-white">{{ formatLastAccess(user.lastLoginAt) }}</span>
+                    <span class="text-[10px]">{{ user.lastLoginAt ? (user.lastLoginAt | date:'dd/MM/yyyy HH:mm') : 'Sin sesión registrada' }}</span>
                   </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -173,13 +173,14 @@ import { AppUser } from '../models/admin.models';
                   </div>
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Usuario (Login)</label>
+                  <label class="block text-sm font-medium text-slate-300 mb-1.5">DNI / Usuario Principal</label>
                   <div class="relative">
                     <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                       <span class="material-symbols-outlined text-[18px]">account_circle</span>
                     </span>
-                    <input [(ngModel)]="tempUser.username" class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#111827] border border-white/10 text-white placeholder-slate-500 focus:ring-1 focus:ring-primary focus:border-primary outline-none" placeholder="Ej: jperez" type="text"/>
+                    <input [(ngModel)]="tempUser.username" (ngModelChange)="tempUser.username = sanitizeDni($event)" inputmode="numeric" maxlength="12" class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#111827] border border-white/10 text-white placeholder-slate-500 focus:ring-1 focus:ring-primary focus:border-primary outline-none" placeholder="Ej: 12345678" type="text"/>
                   </div>
+                  <p class="text-[10px] text-slate-500 mt-1">Debe ser numérico y tener al menos 8 dígitos.</p>
                 </div>
               </div>
             </div>
@@ -203,42 +204,23 @@ import { AppUser } from '../models/admin.models';
                     </button>
                   </div>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-1.5">Rol Asignado</label>
-                    <div class="relative">
-                      <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                        <span class="material-symbols-outlined text-[18px]">admin_panel_settings</span>
-                      </span>
-                      <select [(ngModel)]="tempUser.role" class="w-full pl-10 pr-8 py-2.5 rounded-xl appearance-none cursor-pointer bg-[#111827] border border-white/10 text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none">
-                        <option *ngFor="let role of adminService.roles()" [value]="role.name" class="bg-slate-900">{{ role.name }}</option>
-                      </select>
-                      <span class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-500">
-                        <span class="material-symbols-outlined text-sm">expand_more</span>
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-1.5">Departamento</label>
-                    <div class="relative">
-                      <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                        <span class="material-symbols-outlined text-[18px]">apartment</span>
-                      </span>
-                      <select class="w-full pl-10 pr-8 py-2.5 rounded-xl appearance-none cursor-pointer bg-[#111827] border border-white/10 text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none">
-                        <option value="">Área</option>
-                        <option class="bg-slate-900 text-white">Producción</option>
-                        <option class="bg-slate-900 text-white">Logística</option>
-                        <option class="bg-slate-900 text-white">Calidad</option>
-                      </select>
-                      <span class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-500">
-                        <span class="material-symbols-outlined text-sm">expand_more</span>
-                      </span>
-                    </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Rol Asignado</label>
+                  <div class="relative">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                      <span class="material-symbols-outlined text-[18px]">admin_panel_settings</span>
+                    </span>
+                    <select [(ngModel)]="tempUser.role" (ngModelChange)="onRoleChange($event)" class="w-full pl-10 pr-8 py-2.5 rounded-xl appearance-none cursor-pointer bg-[#111827] border border-white/10 text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none">
+                      <option *ngFor="let role of adminService.roles()" [value]="role.name" class="bg-slate-900">{{ role.name }}</option>
+                    </select>
+                    <span class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-500">
+                      <span class="material-symbols-outlined text-sm">expand_more</span>
+                    </span>
                   </div>
                 </div>
 
                 <!-- SELECTOR DE ÁREAS (SOLO PARA OPERARIO) -->
-                <div *ngIf="tempUser.role === 'Operario'" class="bg-[#111827] p-4 rounded-xl border border-white/10 animate-fadeIn">
+                <div *ngIf="isOperatorRoleSelected()" class="bg-[#111827] p-4 rounded-xl border border-white/10 animate-fadeIn">
                     <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
                         <span class="material-symbols-outlined text-sm text-blue-400">factory</span>
                         Áreas de Producción Asignadas
@@ -264,23 +246,39 @@ import { AppUser } from '../models/admin.models';
                     </div>
                     <p class="text-[10px] text-slate-500 mt-2 italic">* Seleccione al menos una área para habilitar el acceso.</p>
                 </div>
-                
-                <div>
+
+                <div *ngIf="requiresPasswordInput(); else operatorPasswordNotice">
                   <label class="block text-sm font-medium text-slate-300 mb-1.5">Contraseña Temporal</label>
                   <div class="relative group">
                     <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                       <span class="material-symbols-outlined text-[18px]">lock</span>
                     </span>
-                    <input class="w-full pl-10 pr-10 py-2.5 font-mono text-sm tracking-wider rounded-xl bg-[#111827] border border-white/10 text-white outline-none" readonly type="password" value="tempPassword123!"/>
-                    <button class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white">
-                      <span class="material-symbols-outlined text-[18px]">refresh</span>
+                    <input [(ngModel)]="tempUser.password" class="w-full pl-10 pr-24 py-2.5 font-mono text-sm tracking-wider rounded-xl bg-[#111827] border border-white/10 text-white outline-none" [type]="showPassword ? 'text' : 'password'" placeholder="Generar contraseña temporal"/>
+                    <div class="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
+                      <button type="button" (click)="showPassword = !showPassword" class="flex items-center text-slate-400 hover:text-white px-1.5">
+                        <span class="material-symbols-outlined text-[18px]">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
+                      </button>
+                      <button type="button" (click)="regeneratePassword()" class="flex items-center text-slate-400 hover:text-white px-1.5">
+                        <span class="material-symbols-outlined text-[18px]">refresh</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between mt-1 gap-3">
+                    <p class="text-[10px] text-slate-500 flex items-center gap-1">
+                      <span class="material-symbols-outlined text-[12px]">info</span>
+                      {{ editingUser ? 'Déjela vacía para conservar la actual o genere una nueva.' : 'El administrador puede verla y compartirla con el usuario.' }}
+                    </p>
+                    <button type="button" (click)="regeneratePassword()" class="text-[10px] uppercase tracking-wider text-primary hover:text-white transition-colors">
+                      Generar aleatoria
                     </button>
                   </div>
-                  <p class="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
-                    <span class="material-symbols-outlined text-[12px]">info</span>
-                    El usuario deberá cambiarla en el primer inicio de sesión.
-                  </p>
                 </div>
+                <ng-template #operatorPasswordNotice>
+                  <div class="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
+                    El operario no requiere contraseña. Se identificará únicamente con su DNI desde una sesión anfitriona.
+                  </div>
+                </ng-template>
+                <p *ngIf="formError" class="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{{ formError }}</p>
               </div>
             </div>
           </div>
@@ -302,15 +300,17 @@ import { AppUser } from '../models/admin.models';
   `
 })
 export class AdminUsersComponent {
-  state = inject(StateService);
   adminService = inject(AdminService);
+  notifications = inject(NotificationService);
   userSearch = '';
   showUserModal = false;
   editingUser: AppUser | null = null;
+  showPassword = false;
+  formError = '';
   
   tempUser: any = {};
 
-  productionAreas = ['Impresión', 'Troquelado', 'Acabado', 'Empaquetado'];
+  productionAreas = ['Impresión', 'Troquelado', 'Rebobinado', 'Empaquetado'];
 
   get filteredUsers() {
     const term = this.userSearch.toLowerCase();
@@ -322,19 +322,27 @@ export class AdminUsersComponent {
 
   openUserModal(user: AppUser | null = null) {
     this.editingUser = user;
+    this.formError = '';
+    this.showPassword = false;
     if (user) {
         this.tempUser = JSON.parse(JSON.stringify(user));
-        if (this.tempUser.role === 'Operario' && !this.tempUser.assignedAreas) {
-            this.tempUser.assignedAreas = []; 
+        this.tempUser.password = '';
+        if (this.tempUser.role === 'Operario') {
+            this.tempUser.assignedAreas = this.normalizeOperatorAreas(this.tempUser.assignedAreas);
         }
     } else {
         this.tempUser = { 
             role: 'Operario', 
             active: true,
-            assignedAreas: [] 
+            assignedAreas: [],
+            password: '',
         };
     }
     this.showUserModal = true;
+  }
+
+  isOperatorRoleSelected() {
+    return this.tempUser.role === 'Operario';
   }
 
   isAreaSelected(area: string): boolean {
@@ -353,24 +361,165 @@ export class AdminUsersComponent {
       }
   }
 
-  saveUser() {
-    if (!this.tempUser.name || !this.tempUser.username) return;
+  onRoleChange(role: string) {
+    this.tempUser.role = role;
+    if (this.isOperatorRoleSelected()) {
+      this.tempUser.assignedAreas = this.normalizeOperatorAreas(this.tempUser.assignedAreas);
+      this.tempUser.password = '';
+      this.showPassword = false;
+      return;
+    }
+
+    this.tempUser.assignedAreas = [];
+    if (!this.editingUser && !String(this.tempUser.password || '').trim()) {
+      this.tempUser.password = this.generateRandomPassword();
+    }
+  }
+
+  async saveUser() {
+    this.formError = '';
+
+    if (!this.tempUser.name || !this.tempUser.username) {
+      this.formError = 'Complete el nombre y el DNI del usuario.';
+      return;
+    }
+
+    if (!/^\d{8,}$/.test(this.tempUser.username)) {
+      this.formError = 'El DNI debe contener al menos 8 dígitos numéricos.';
+      return;
+    }
+    
+    if (this.isOperatorRoleSelected() && !(this.tempUser.assignedAreas || []).length) {
+      this.formError = 'El operario debe tener al menos un área asignada.';
+      return;
+    }
+
+    if (!this.editingUser && this.requiresPasswordInput() && !this.tempUser.password) {
+      this.formError = 'Genere una contraseña temporal antes de guardar.';
+      return;
+    }
+
+    if (this.editingUser && this.editingUser.role === 'Operario' && this.requiresPasswordInput() && !String(this.tempUser.password || '').trim()) {
+      this.formError = 'Debe generar una contraseña para habilitar el inicio de sesión de este usuario.';
+      return;
+    }
     
     if (this.tempUser.role !== 'Operario') {
         delete this.tempUser.assignedAreas;
     }
 
-    if (this.editingUser) {
-         this.adminService.updateAdminUser(this.tempUser as AppUser);
-    } else {
-         this.adminService.addAdminUser(this.tempUser);
+    try {
+      if (this.editingUser) {
+           await this.adminService.updateAdminUser(this.tempUser as AppUser);
+      } else {
+           await this.adminService.addAdminUser(this.tempUser);
+      }
+      this.showUserModal = false;
+      this.notifications.showSuccess('Usuario guardado correctamente.');
+    } catch (error: any) {
+      this.formError = error?.message || 'No fue posible guardar el usuario.';
     }
-    this.showUserModal = false;
   }
 
   deleteUser(user: AppUser) {
     if(confirm(`¿Eliminar usuario ${user.name}?`)) {
         this.adminService.deleteAdminUser(user.id);
     }
+  }
+
+  formatLastAccess(value?: string | null) {
+    if (!value) return 'Nunca';
+
+    const diffMs = Date.now() - new Date(value).getTime();
+    const diffHours = Math.max(0, Math.floor(diffMs / 3_600_000));
+    if (diffHours < 1) return 'Hace menos de 1 hora';
+    if (diffHours < 24) return `Hace ${diffHours} hora${diffHours === 1 ? '' : 's'}`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    return `Hace ${diffDays} día${diffDays === 1 ? '' : 's'}`;
+  }
+
+  sanitizeDni(value: string) {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  regeneratePassword() {
+    this.tempUser.password = this.generateRandomPassword();
+    this.showPassword = true;
+  }
+
+  requiresPasswordInput() {
+    return !this.isOperatorRoleSelected();
+  }
+
+  private generateRandomPassword() {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnopqrstuvwxyz';
+    const digits = '23456789';
+    const symbols = '!@#$%*+-_';
+    const all = `${upper}${lower}${digits}${symbols}`;
+    let password = '';
+
+    password += upper[Math.floor(Math.random() * upper.length)];
+    password += lower[Math.floor(Math.random() * lower.length)];
+    password += digits[Math.floor(Math.random() * digits.length)];
+    password += symbols[Math.floor(Math.random() * symbols.length)];
+
+    while (password.length < 12) {
+      password += all[Math.floor(Math.random() * all.length)];
+    }
+
+    return password
+      .split('')
+      .sort(() => Math.random() - 0.5)
+      .join('');
+  }
+
+  private normalizeOperatorAreas(areas: unknown): string[] {
+    if (!Array.isArray(areas)) {
+      return [];
+    }
+
+    const normalizedAreas = new Set<string>();
+
+    for (const area of areas) {
+      const token = this.toAreaToken(area);
+      if (!token) continue;
+
+      if (token.includes('IMPRES')) {
+        normalizedAreas.add('Impresión');
+        continue;
+      }
+
+      if (token.includes('TROQ')) {
+        normalizedAreas.add('Troquelado');
+        continue;
+      }
+
+      if (token.includes('REBOB')) {
+        normalizedAreas.add('Rebobinado');
+        continue;
+      }
+
+      if (token.includes('EMPAQ')) {
+        normalizedAreas.add('Empaquetado');
+        continue;
+      }
+
+      if (token.includes('ACABADO') || token.includes('FINISH')) {
+        normalizedAreas.add('Rebobinado');
+        normalizedAreas.add('Empaquetado');
+      }
+    }
+
+    return this.productionAreas.filter((area) => normalizedAreas.has(area));
+  }
+
+  private toAreaToken(value: unknown) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
   }
 }

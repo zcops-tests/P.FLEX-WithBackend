@@ -27,7 +27,7 @@ export class ContextualGuard implements CanActivate {
     }
 
     // Skip contextual checks for ADMIN role if desired, but let's be strict for now
-    if (user.role === 'ADMIN') {
+    if (user.roleCode === 'ADMIN' || user.role === 'Sistemas' || user.role === 'ADMIN') {
       return true;
     }
 

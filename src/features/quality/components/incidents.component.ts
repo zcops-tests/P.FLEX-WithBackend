@@ -27,7 +27,7 @@ import { StateService } from '../../../services/state.service';
             </h1>
             <p class="text-sm text-slate-400 mt-1 ml-14">Gestión de no conformidades y acciones correctivas</p>
           </div>
-          <button (click)="openCreateModal()" class="glassmorphism-input bg-red-600/20 hover:bg-red-600/40 text-red-100 border-red-500/50 px-5 py-2.5 rounded-xl shadow-lg shadow-red-900/20 text-sm font-bold flex items-center gap-2 transition-all active:scale-95">
+          <button *ngIf="canCreateIncidents" (click)="openCreateModal()" class="glassmorphism-input bg-red-600/20 hover:bg-red-600/40 text-red-100 border-red-500/50 px-5 py-2.5 rounded-xl shadow-lg shadow-red-900/20 text-sm font-bold flex items-center gap-2 transition-all active:scale-95">
              <span class="material-icons text-sm">add_alert</span> Reportar Falla
           </button>
         </div>
@@ -359,7 +359,6 @@ import { StateService } from '../../../services/state.service';
 export class IncidentsComponent {
   service = inject(QualityService);
   state = inject(StateService);
-  private readonly managementRoles = ['Sistemas', 'Jefatura', 'Supervisor', 'Jefe de Calidad'] as const;
 
   activeFilter: 'active' | 'closed' = 'active';
   
@@ -368,7 +367,11 @@ export class IncidentsComponent {
   }
 
   get canManageIncidents() {
-    return this.state.hasAnyRole(this.managementRoles);
+    return this.state.hasPermission('quality.incidents.manage');
+  }
+
+  get canCreateIncidents() {
+    return this.state.hasPermission('quality.incidents.create');
   }
 
   // Modal States
@@ -391,6 +394,7 @@ export class IncidentsComponent {
   };
 
   openCreateModal() {
+     if (!this.canCreateIncidents) return;
      this.newIncidentData = { 
         priority: 'Media', 
         type: 'Maquinaria', 
@@ -401,6 +405,7 @@ export class IncidentsComponent {
   }
 
   async createIncident() {
+     if (!this.canCreateIncidents) return;
      if (!this.newIncidentData.title || !this.newIncidentData.description) {
         alert('Complete el título y la descripción.');
         return;

@@ -11,25 +11,25 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RelationsService } from './relations.service';
 import { CreateCliseDieLinkDto } from './dto/rack.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../../auth/guards/roles.guard';
-import { Roles } from '../../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard';
+import { Permissions } from '../../auth/decorators/permissions.decorator';
 
 @ApiTags('Inventory: Relations')
 @Controller('inventory/relations')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class RelationsController {
   constructor(private readonly relationsService: RelationsService) {}
 
   @Post('clise-die')
-  @Roles('Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles')
+  @Permissions('inventory.relations.manage')
   @ApiOperation({ summary: 'Link a cliché with a die' })
   async link(@Body() dto: CreateCliseDieLinkDto) {
     return this.relationsService.linkCliseDie(dto);
   }
 
   @Delete('clise-die/:cliseId/:dieId')
-  @Roles('Sistemas', 'Jefatura', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles')
+  @Permissions('inventory.relations.manage')
   @ApiOperation({ summary: 'Unlink a cliché from a die' })
   async unlink(
     @Param('cliseId') cliseId: string,
@@ -39,12 +39,14 @@ export class RelationsController {
   }
 
   @Get('clise/:id/dies')
+  @Permissions('inventory.relations.manage')
   @ApiOperation({ summary: 'Get all dies linked to a cliché' })
   async getCliseDies(@Param('id') id: string) {
     return this.relationsService.getCliseDies(id);
   }
 
   @Get('die/:id/clises')
+  @Permissions('inventory.relations.manage')
   @ApiOperation({ summary: 'Get all clichés linked to a die' })
   async getDieClises(@Param('id') id: string) {
     return this.relationsService.getDieClises(id);

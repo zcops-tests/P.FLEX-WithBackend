@@ -3,12 +3,12 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SystemConfigService } from './system-config.service';
 import { UpdateSystemConfigDto } from './dto/system-config.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 
 @ApiTags('System Configuration')
 @Controller('system-config')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class SystemConfigController {
   constructor(private readonly configService: SystemConfigService) {}
@@ -20,7 +20,8 @@ export class SystemConfigController {
   }
 
   @Put()
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('admin.config.manage')
   @ApiOperation({ summary: 'Update system configuration' })
   async update(@Body() dto: UpdateSystemConfigDto) {
     return this.configService.update(dto);

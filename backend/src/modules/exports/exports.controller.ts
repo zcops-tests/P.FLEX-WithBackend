@@ -11,25 +11,25 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ExportsService } from './exports.service';
 import { ExportRequestDto } from './dto/export.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 
 @ApiTags('Data Exports')
 @Controller('exports')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class ExportsController {
   constructor(private readonly exportsService: ExportsService) {}
 
   @Post('request')
-  @Roles('ADMIN', 'MANAGER', 'SUPERVISOR', 'QUALITY_MANAGER', 'AUDITOR', 'FINISHING_MANAGER')
+  @Permissions('exports.manage')
   @ApiOperation({ summary: 'Request an asynchronous data export' })
   async requestExport(@Body() dto: ExportRequestDto, @Request() req) {
     return this.exportsService.requestExport(dto, req.user.sub || req.user.id);
   }
 
   @Get('status/:jobId')
-  @Roles('ADMIN', 'MANAGER', 'SUPERVISOR', 'QUALITY_MANAGER', 'AUDITOR', 'FINISHING_MANAGER')
+  @Permissions('exports.manage')
   @ApiOperation({ summary: 'Get export job status' })
   async getStatus(@Param('jobId') jobId: string) {
     return this.exportsService.getJobStatus(jobId);

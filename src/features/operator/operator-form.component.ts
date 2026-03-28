@@ -61,14 +61,12 @@ import { AuditService } from '../../services/audit.service';
                    </div>
                </div>
 
-               <!-- OPERATOR SELECTION (New) -->
+               <!-- IDENTIFIED OPERATOR -->
                <div class="w-full md:w-auto min-w-[250px]">
-                  <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Operador Responsable</label>
-                  <div class="relative">
-                      <select [(ngModel)]="formData.selectedOperator" class="glass-input w-full pl-4 pr-10 py-2 rounded-xl font-bold text-white outline-none bg-[#0a0f18] border border-white/10 appearance-none cursor-pointer focus:border-blue-500 transition-colors">
-                          <option *ngFor="let op of operatorList" [value]="op" class="bg-[#0a0f18]">{{ op }}</option>
-                      </select>
-                      <span class="absolute right-3 top-2.5 pointer-events-none text-gray-500 material-symbols-outlined text-lg">expand_more</span>
+                  <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Operador Identificado</label>
+                  <div class="rounded-xl bg-[#0a0f18] border border-white/10 px-4 py-2.5">
+                      <div class="text-sm font-bold text-white">{{ state.activeOperatorName() }}</div>
+                      <div class="text-[10px] font-mono text-blue-300/70">DNI {{ state.activeOperatorDni() }}</div>
                   </div>
                </div>
             </div>
@@ -537,12 +535,6 @@ export class OperatorFormComponent {
   showSuggestions = false;
   selectedOt: Partial<OT> | null = null;
 
-  // Static list for demo purposes, could be fetched from service
-  operatorList = [
-      'Juan Martinez', 'Carlos Ruiz', 'Ana Lopez', 'Miguel Torres', 
-      'Luis Diaz', 'Pedro Gomez', 'Sofia Herrera', 'Usuario Temporal'
-  ];
-
   // Print specific constants
   printActivities = [
     'Impresión', 'Troquelado', 'Setup', 'Refrigerio', 
@@ -580,7 +572,6 @@ export class OperatorFormComponent {
   };
 
   formData: any = {
-     selectedOperator: '',
      cliseItem: '',
      dieSeries: '',
      frequency: '',
@@ -621,6 +612,10 @@ export class OperatorFormComponent {
     this.route.params.subscribe(params => {
       this.type = params['type'];
       this.machineName = params['machine'];
+      if (!this.state.hasActiveOperator()) {
+        this.router.navigate(['/operator']);
+        return;
+      }
       this.resetForm();
     });
 
@@ -650,7 +645,6 @@ export class OperatorFormComponent {
       };
 
       this.formData = {
-         selectedOperator: this.state.userName(), // Default to logged in user
          cliseItem: '',
          dieSeries: '',
          frequency: '',
@@ -746,7 +740,7 @@ export class OperatorFormComponent {
 
   submitReport() {
      let details = '';
-     const operator = this.formData.selectedOperator || this.state.userName();
+     const operator = this.state.activeOperatorName();
      
      if (this.type === 'print') {
          const activitySummary = this.reportActivities.map(a => `${a.type} (${a.meters || 0}m)`).join(', ');
@@ -759,7 +753,7 @@ export class OperatorFormComponent {
          details = `Cant: ${this.formData.goodQty}`;
      }
 
-     this.audit.log(this.state.userName(), 'Operario', 'PRODUCCIÓN', 'Reporte Turno', `OT: ${this.selectedOt?.OT}, Máquina: ${this.machineName}, ${details}`);
+     this.audit.log(this.state.userName(), this.state.userRole(), 'PRODUCCIÓN', 'Reporte Turno', `Host: ${this.state.userName()}, Operario: ${operator}, OT: ${this.selectedOt?.OT}, Máquina: ${this.machineName}, ${details}`);
      
      alert(`Reporte guardado exitosamente.\n\nOT: ${this.selectedOt?.OT}\nProceso: ${this.typeName}\nMáquina: ${this.machineName}\n${details}`);
      

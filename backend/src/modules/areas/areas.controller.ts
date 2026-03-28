@@ -12,18 +12,19 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagg
 import { AreasService } from './areas.service';
 import { CreateAreaDto, UpdateAreaDto } from './dto/area.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 
 @ApiTags('Areas')
 @Controller('areas')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AreasController {
   constructor(private readonly areasService: AreasService) {}
 
   @Post()
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('admin.areas.manage')
   @ApiOperation({ summary: 'Create a new production area' })
   @ApiResponse({ status: 201, description: 'Area created' })
   async create(@Body() createAreaDto: CreateAreaDto) {
@@ -43,14 +44,16 @@ export class AreasController {
   }
 
   @Put(':id')
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('admin.areas.manage')
   @ApiOperation({ summary: 'Update an existing area' })
   async update(@Param('id') id: string, @Body() updateAreaDto: UpdateAreaDto) {
     return this.areasService.update(id, updateAreaDto);
   }
 
   @Delete(':id')
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('admin.areas.manage')
   @ApiOperation({ summary: 'Soft-delete an area' })
   async remove(@Param('id') id: string) {
     return this.areasService.remove(id);

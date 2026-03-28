@@ -10,21 +10,21 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+import { CreateUserDto, IdentifyOperatorDto, UpdateUserDto } from './dto/user.dto';
 import { AssignAreaDto } from './dto/assign-area.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 
 @ApiTags('Users')
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @Roles('ADMIN')
+  @Permissions('admin.users.manage')
   @ApiOperation({ summary: 'Create a new user' })
   @ApiResponse({ status: 201, description: 'User created' })
   async create(@Body() createUserDto: CreateUserDto) {
@@ -32,42 +32,49 @@ export class UsersController {
   }
 
   @Get()
-  @Roles('ADMIN')
+  @Permissions('admin.users.manage')
   @ApiOperation({ summary: 'Get all active users' })
   async findAll() {
     return this.usersService.findAll();
   }
 
+  @Post('operator-identification')
+  @Permissions('operator.host')
+  @ApiOperation({ summary: 'Identify an operator by DNI for a hosted terminal session' })
+  async identifyOperator(@Body() dto: IdentifyOperatorDto) {
+    return this.usersService.identifyOperatorByDni(dto.dni);
+  }
+
   @Get(':id')
-  @Roles('ADMIN')
+  @Permissions('admin.users.manage')
   @ApiOperation({ summary: 'Get a specific user by ID' })
   async findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
 
   @Put(':id')
-  @Roles('ADMIN')
+  @Permissions('admin.users.manage')
   @ApiOperation({ summary: 'Update an existing user' })
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
   }
 
   @Delete(':id')
-  @Roles('ADMIN')
+  @Permissions('admin.users.manage')
   @ApiOperation({ summary: 'Soft-delete a user' })
   async remove(@Param('id') id: string) {
     return this.usersService.remove(id);
   }
 
   @Post(':id/areas')
-  @Roles('ADMIN')
+  @Permissions('admin.users.manage')
   @ApiOperation({ summary: 'Assign an area to a user' })
   async assignArea(@Param('id') id: string, @Body() dto: AssignAreaDto) {
     return this.usersService.assignArea(id, dto.area_id);
   }
 
   @Delete(':id/areas/:areaId')
-  @Roles('ADMIN')
+  @Permissions('admin.users.manage')
   @ApiOperation({ summary: 'Unassign an area from a user' })
   async unassignArea(@Param('id') id: string, @Param('areaId') areaId: string) {
     return this.usersService.unassignArea(id, areaId);

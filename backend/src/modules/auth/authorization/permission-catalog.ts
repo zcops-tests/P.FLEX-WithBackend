@@ -1,10 +1,10 @@
-require('dotenv/config');
+export interface PermissionDefinition {
+  code: string;
+  name: string;
+  description: string;
+}
 
-const bcrypt = require('bcrypt');
-const { PrismaClient } = require('@prisma/client');
-const { PrismaMariaDb } = require('@prisma/adapter-mariadb');
-
-const PERMISSION_DEFINITIONS = [
+export const PERMISSION_DEFINITIONS: readonly PermissionDefinition[] = [
   { code: 'dashboard.view', name: 'Ver Dashboard', description: 'Acceso al tablero principal y KPIs operativos.' },
   { code: 'planning.view', name: 'Ver Programacion', description: 'Consulta la programacion de produccion.' },
   { code: 'operator.host', name: 'Hospedar Terminal de Operador', description: 'Permite abrir el panel del operador e identificar operarios por DNI desde una sesion anfitriona.' },
@@ -64,9 +64,9 @@ const PERMISSION_DEFINITIONS = [
   { code: 'admin.areas.manage', name: 'Gestionar Areas', description: 'Crear, editar y eliminar areas.' },
   { code: 'admin.shifts.manage', name: 'Gestionar Turnos', description: 'Crear, editar y eliminar turnos.' },
   { code: 'admin.config.manage', name: 'Gestionar Configuracion Global', description: 'Actualizar configuracion global del sistema.' },
-];
+] as const;
 
-const DEFAULT_ROLE_PERMISSION_CODES = {
+export const DEFAULT_ROLE_PERMISSION_CODES: Readonly<Record<string, readonly string[]>> = {
   ADMIN: PERMISSION_DEFINITIONS.map((permission) => permission.code),
   MANAGER: [
     'dashboard.view',
@@ -153,8 +153,7 @@ const DEFAULT_ROLE_PERMISSION_CODES = {
     'quality.incidents.view',
     'quality.incidents.create',
   ],
-  OPERATOR: [
-  ],
+  OPERATOR: [],
   WAREHOUSE: [
     'dashboard.view',
     'planning.view',
@@ -270,187 +269,6 @@ const DEFAULT_ROLE_PERMISSION_CODES = {
   ],
 };
 
-function getEnvString(key, fallback) {
-  const value = process.env[key];
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : fallback;
+export function getDefaultRolePermissionCodes(roleCode: string | null | undefined): readonly string[] {
+  return DEFAULT_ROLE_PERMISSION_CODES[String(roleCode || '').toUpperCase()] || [];
 }
-
-function createPrisma() {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new Error('DATABASE_URL is required to seed the database.');
-  }
-
-  return new PrismaClient({
-    adapter: new PrismaMariaDb(databaseUrl),
-    log: ['error', 'warn'],
-  });
-}
-
-async function main() {
-  const prisma = createPrisma();
-
-  try {
-    console.log('Seeding database...');
-
-    const roleDefinitions = [
-      { code: 'ADMIN', name: 'Sistemas', description: 'Gestión global del sistema, seguridad, sincronización y administración completa.' },
-      { code: 'MANAGER', name: 'Jefatura', description: 'Seguimiento ejecutivo, validación consolidada y revisión histórica.' },
-      { code: 'SUPERVISOR', name: 'Supervisor', description: 'Supervisión operativa, validación de registros y control por turno.' },
-      { code: 'PLANNER', name: 'Asistente', description: 'Carga asistida, corrección controlada y consolidación operativa.' },
-      { code: 'PRODUCTION_ASSISTANT', name: 'Asistente de Producción', description: 'Apoyo directo al registro productivo y seguimiento de pendientes.' },
-      { code: 'OPERATOR', name: 'Operario', description: 'Captura contextual de producción e incidencias operativas.' },
-      { code: 'WAREHOUSE', name: 'Encargado de Clisés, Troqueles y Tintas', description: 'Gestión integral del inventario técnico y su vinculación con producción.' },
-      { code: 'CLICHE_DIE_MANAGER', name: 'Encargado de Clisés y Troqueles', description: 'Control técnico y operativo de clisés y troqueles.' },
-      { code: 'INK_MANAGER', name: 'Encargado de Tintas', description: 'Gestión técnica de tintas, fórmulas, consumo y comportamiento.' },
-      { code: 'FINISHING_MANAGER', name: 'Encargado de Troquelado y Rebobinado', description: 'Control productivo de procesos finales, mermas y cierre por OT.' },
-      { code: 'QUALITY_MANAGER', name: 'Jefe de Calidad', description: 'Validación transversal de calidad, incidencias y tendencias.' },
-      { code: 'AUDITOR', name: 'Auditor', description: 'Consulta global, trazabilidad y revisión de integridad.' },
-    ];
-
-    let adminRole = null;
-    for (const role of roleDefinitions) {
-      const savedRole = await prisma.role.upsert({
-        where: { code: role.code },
-        update: {
-          name: role.name,
-          description: role.description,
-          active: true,
-          deleted_at: null,
-        },
-        create: {
-          code: role.code,
-          name: role.name,
-          description: role.description,
-        },
-      });
-
-      if (role.code === 'ADMIN') {
-        adminRole = { id: savedRole.id, name: savedRole.name };
-      }
-    }
-
-    const permissionIdsByCode = new Map();
-    for (const permission of PERMISSION_DEFINITIONS) {
-      const savedPermission = await prisma.permission.upsert({
-        where: { code: permission.code },
-        update: {
-          name: permission.name,
-          description: permission.description,
-          deleted_at: null,
-        },
-        create: {
-          code: permission.code,
-          name: permission.name,
-          description: permission.description,
-        },
-      });
-      permissionIdsByCode.set(savedPermission.code, savedPermission.id);
-    }
-
-    const savedRoles = await prisma.role.findMany({
-      where: { deleted_at: null },
-      select: { id: true, code: true },
-    });
-
-    for (const role of savedRoles) {
-      if (!(role.code in DEFAULT_ROLE_PERMISSION_CODES)) continue;
-
-      const desiredPermissionIds = (DEFAULT_ROLE_PERMISSION_CODES[role.code] || [])
-        .map((permissionCode) => permissionIdsByCode.get(permissionCode))
-        .filter(Boolean);
-
-      await prisma.rolePermission.updateMany({
-        where: {
-          role_id: role.id,
-          ...(desiredPermissionIds.length ? { permission_id: { notIn: desiredPermissionIds } } : {}),
-        },
-        data: {
-          deleted_at: new Date(),
-        },
-      });
-
-      for (const permissionId of desiredPermissionIds) {
-        await prisma.rolePermission.upsert({
-          where: {
-            role_id_permission_id: {
-              role_id: role.id,
-              permission_id: permissionId,
-            },
-          },
-          update: {
-            deleted_at: null,
-          },
-          create: {
-            role_id: role.id,
-            permission_id: permissionId,
-          },
-        });
-      }
-    }
-
-    if (!adminRole) {
-      throw new Error('No se pudo inicializar el rol ADMIN durante el seed.');
-    }
-
-    const nodeEnv = getEnvString('NODE_ENV', 'development');
-    const shouldSeedDevAdmin = process.env.SEED_DEV_ADMIN === 'true' || nodeEnv !== 'production';
-    const devAdminUsername = getEnvString('DEV_ADMIN_USERNAME', '99999999');
-    const devAdminPassword = getEnvString('DEV_ADMIN_PASSWORD', 'admin123');
-    const devAdminName = getEnvString('DEV_ADMIN_NAME', 'System Admin');
-
-    if (shouldSeedDevAdmin) {
-      const hashedPassword = await bcrypt.hash(devAdminPassword, 10);
-      await prisma.user.upsert({
-        where: { username: devAdminUsername },
-        update: {
-          name: devAdminName,
-          password_hash: hashedPassword,
-          role_id: adminRole.id,
-          active: true,
-        },
-        create: {
-          username: devAdminUsername,
-          name: devAdminName,
-          password_hash: hashedPassword,
-          role_id: adminRole.id,
-        },
-      });
-
-      console.log(`Dev admin seeded: ${devAdminUsername} (rol: ${adminRole.name})`);
-      if (nodeEnv !== 'production') {
-        console.log(`Dev admin password: ${devAdminPassword}`);
-      }
-    }
-
-    await prisma.area.upsert({
-      where: { code: 'IMP' },
-      update: {},
-      create: {
-        code: 'IMP',
-        name: 'Imprenta',
-      },
-    });
-
-    await prisma.shift.upsert({
-      where: { code: 'T1' },
-      update: {},
-      create: {
-        code: 'T1',
-        name: 'Turno 1',
-        start_time: '06:00:00',
-        end_time: '14:00:00',
-      },
-    });
-
-    console.log('Seed completed successfully.');
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

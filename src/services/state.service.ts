@@ -1,66 +1,33 @@
-import { Injectable, computed, effect, signal, untracked, inject } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { AuditService } from './audit.service';
-import { AppUser, RoleDefinition, SystemConfig } from '../features/admin/models/admin.models';
+import { AppUser, PermissionDefinition, RoleDefinition, SystemConfig } from '../features/admin/models/admin.models';
 import { BackendApiService } from './backend-api.service';
 import { ApiClientService } from './api-client.service';
 import { BrowserStorageService } from './browser-storage.service';
 
-export type UserRole =
-  | 'Sistemas'
-  | 'Jefatura'
-  | 'Supervisor'
-  | 'Operario'
-  | 'Asistente'
-  | 'Asistente de Producción'
-  | 'Encargado de Clisés, Troqueles y Tintas'
-  | 'Encargado de Clisés y Troqueles'
-  | 'Encargado de Tintas'
-  | 'Encargado de Troquelado y Rebobinado'
-  | 'Jefe de Calidad'
-  | 'Auditor';
+export type UserRole = string;
 export type Shift = string | null;
 export type SyncStatus = 'online' | 'offline' | 'syncing' | 'conflict';
-export const USER_ROLES: readonly UserRole[] = [
-  'Sistemas',
-  'Jefatura',
-  'Supervisor',
-  'Operario',
-  'Asistente',
-  'Asistente de Producción',
-  'Encargado de Clisés, Troqueles y Tintas',
-  'Encargado de Clisés y Troqueles',
-  'Encargado de Tintas',
-  'Encargado de Troquelado y Rebobinado',
-  'Jefe de Calidad',
-  'Auditor',
-] as const;
-
-const ROLE_CAPABILITIES: Record<UserRole, readonly UserRole[]> = {
-  Sistemas: USER_ROLES,
-  Jefatura: ['Jefatura'],
-  Supervisor: ['Supervisor', 'Operario'],
-  Operario: ['Operario'],
-  Asistente: ['Asistente'],
-  'Asistente de Producción': ['Asistente de Producción', 'Asistente', 'Operario'],
-  'Encargado de Clisés, Troqueles y Tintas': [
-    'Encargado de Clisés, Troqueles y Tintas',
-    'Encargado de Clisés y Troqueles',
-    'Encargado de Tintas',
-  ],
-  'Encargado de Clisés y Troqueles': ['Encargado de Clisés y Troqueles'],
-  'Encargado de Tintas': ['Encargado de Tintas'],
-  'Encargado de Troquelado y Rebobinado': ['Encargado de Troquelado y Rebobinado', 'Operario'],
-  'Jefe de Calidad': ['Jefe de Calidad'],
-  Auditor: ['Auditor'],
-};
 
 export interface User {
   id: string;
   name: string;
   role: UserRole;
+  roleId?: string | null;
+  roleCode?: string | null;
+  roleName?: string;
+  permissionCodes: string[];
   username?: string;
-  roleCode?: string;
   avatar?: string;
+}
+
+export interface ActiveOperatorContext {
+  id: string;
+  dni: string;
+  name: string;
+  roleCode?: string | null;
+  roleName?: string;
+  assignedAreas: string[];
 }
 
 export interface Machine {
@@ -95,6 +62,7 @@ interface PersistedUserSession {
   shift: Shift;
   sessionId?: string | null;
   expiresAt?: string;
+  activeOperator?: ActiveOperatorContext | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -119,6 +87,7 @@ export class StateService {
 
   readonly currentUser = signal<User | null>(null);
   readonly currentShift = signal<Shift>(null);
+  readonly activeOperator = signal<ActiveOperatorContext | null>(null);
 
   readonly isSidebarCollapsed = signal<boolean>(false);
   readonly syncStatus = signal<SyncStatus>('online');
@@ -129,12 +98,18 @@ export class StateService {
   readonly adminMachines = signal<Machine[]>([]);
   readonly plantAreas = signal<PlantArea[]>([]);
   readonly plantShifts = signal<PlantShift[]>([]);
-  readonly permissions = signal<{ id: string; code: string; name: string; description?: string }[]>([]);
+  readonly permissions = signal<PermissionDefinition[]>([]);
 
-  readonly isLoggedIn = computed(() => !!this.currentUser());
+  readonly isLoggedIn = computed(() => !!this.currentUser() && this.canUseInteractiveSession(this.currentUser()));
   readonly userName = computed(() => this.currentUser()?.name || 'Invitado');
-  readonly userRole = computed(() => this.currentUser()?.role || '');
+  readonly userRole = computed(() => this.currentUser()?.roleName || this.currentUser()?.role || '');
   readonly roleCode = computed(() => this.currentUser()?.roleCode || '');
+  readonly canHostOperatorPanel = computed(() => this.hasPermission('operator.host'));
+  readonly homeRoute = computed(() => this.canHostOperatorPanel() ? '/operator' : '/dashboard');
+  readonly hasActiveOperator = computed(() => !!this.activeOperator());
+  readonly activeOperatorName = computed(() => this.activeOperator()?.name || 'Operario no identificado');
+  readonly activeOperatorDni = computed(() => this.activeOperator()?.dni || '');
+  readonly activeOperatorAreas = computed(() => this.activeOperator()?.assignedAreas || []);
   readonly sessionExpired = computed(() => {
     const session = this.readSession();
     if (!session?.expiresAt) return false;
@@ -164,12 +139,14 @@ export class StateService {
 
     const mappedUser = this.mapAuthUser(response.user);
     const expiresAt = new Date(Date.now() + this.config().autoLogoutMinutes * 60_000).toISOString();
+    this.activeOperator.set(null);
 
     this.persistSession({
       user: mappedUser,
       shift,
       sessionId: response.sessionId,
       expiresAt,
+      activeOperator: null,
     });
 
     this.apiClient.setSession(
@@ -188,7 +165,7 @@ export class StateService {
     this.currentUser.set(mappedUser);
     this.currentShift.set(shift);
 
-    this.audit.log(mappedUser.name, mappedUser.role, 'ACCESO', 'Inicio de Sesion', `Usuario ${username} inicio sesion en ${shift}.`);
+    this.audit.log(mappedUser.name, mappedUser.roleName || mappedUser.role, 'ACCESO', 'Inicio de Sesion', `Usuario ${username} inicio sesion en ${shift}.`);
     await this.loadBootstrapData();
     return mappedUser;
   }
@@ -211,6 +188,7 @@ export class StateService {
 
     this.currentUser.set(null);
     this.currentShift.set(null);
+    this.activeOperator.set(null);
   }
 
   toggleSidebar() {
@@ -246,7 +224,7 @@ export class StateService {
     this.applyShiftConfigFromShifts(shifts);
   }
 
-  setPermissions(permissions: { id: string; code: string; name: string; description?: string }[]) {
+  setPermissions(permissions: PermissionDefinition[]) {
     this.permissions.set(permissions);
   }
 
@@ -255,22 +233,101 @@ export class StateService {
     this.audit.log(this.userName(), this.userRole(), 'OPERACIONES', 'Estado Maquina', `Maquina ${updatedMachine.name} cambio a ${updatedMachine.status}`);
   }
 
+  async identifyOperatorByDni(dni: string) {
+    const response = await this.backend.identifyOperatorByDni({ dni: this.normalizeOperatorDni(dni) });
+    const operator = this.mapOperatorUser(response);
+    this.setActiveOperatorContext(operator);
+    this.audit.log(
+      this.userName(),
+      this.userRole(),
+      'OPERACION',
+      'Identificar Operario',
+      `Operario ${operator.name} identificado para terminal anfitrion con DNI ${operator.dni}.`,
+    );
+    return operator;
+  }
+
+  clearActiveOperatorContext() {
+    this.setActiveOperatorContext(null);
+  }
+
+  isProcessAllowedForActiveOperator(process: string): boolean {
+    const operator = this.activeOperator();
+    if (!operator) return false;
+
+    const assignedTokens = (operator.assignedAreas || [])
+      .map((area) => this.toRoleToken(area))
+      .filter(Boolean);
+
+    if (!assignedTokens.length) return false;
+
+    const aliases = this.getProcessAliases(process);
+    return assignedTokens.some((token) =>
+      aliases.some((alias) => token.includes(alias) || alias.includes(token)),
+    );
+  }
+
+  isMachineAllowedForActiveOperator(machine: Machine, process?: string): boolean {
+    const operator = this.activeOperator();
+    if (!operator) return false;
+
+    const assignedTokens = (operator.assignedAreas || [])
+      .map((area) => this.toRoleToken(area))
+      .filter(Boolean);
+
+    if (!assignedTokens.length) return false;
+
+    const machineAreaToken = this.toRoleToken(machine.area);
+    if (machineAreaToken && assignedTokens.some((token) => machineAreaToken.includes(token) || token.includes(machineAreaToken))) {
+      return true;
+    }
+
+    if (process) {
+      return this.isProcessAllowedForActiveOperator(process);
+    }
+
+    const machineTypeAliases = this.getProcessAliases(machine.type || machine.rawType || '');
+    return assignedTokens.some((token) =>
+      machineTypeAliases.some((alias) => token.includes(alias) || alias.includes(token)),
+    );
+  }
+
+  hasPermission(permission: string | null | undefined): boolean {
+    const code = String(permission || '').trim();
+    if (!code) return false;
+    return new Set(this.currentUser()?.permissionCodes || []).has(code);
+  }
+
+  hasAnyPermission(permissions: readonly string[]): boolean {
+    if (!permissions.length) return false;
+    const currentPermissions = new Set(this.currentUser()?.permissionCodes || []);
+    return permissions.some((permission) => currentPermissions.has(String(permission || '').trim()));
+  }
+
+  hasAllPermissions(permissions: readonly string[]): boolean {
+    if (!permissions.length) return true;
+    const currentPermissions = new Set(this.currentUser()?.permissionCodes || []);
+    return permissions.every((permission) => currentPermissions.has(String(permission || '').trim()));
+  }
+
   hasAnyRole(roles: readonly UserRole[]): boolean {
-    const currentRole = this.currentUser()?.role;
-    if (!currentRole || !roles.length) return false;
-    const capabilities = new Set(ROLE_CAPABILITIES[currentRole] || [currentRole]);
-    return roles
-      .map((role) => this.normalizeUserRole(role))
-      .some((role) => capabilities.has(role));
+    const current = this.currentUser();
+    if (!current || !roles.length) return false;
+
+    const currentRoles = new Set(
+      [current.role, current.roleName, current.roleCode]
+        .map((value) => this.toRoleToken(value))
+        .filter(Boolean),
+    );
+
+    return roles.some((role) => currentRoles.has(this.toRoleToken(role)));
   }
 
   normalizeUserRole(value: string): UserRole {
-    const normalized = String(value || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase()
-      .trim();
+    const raw = String(value || '').trim();
+    if (!raw) return '';
 
+    const normalized = this.toRoleToken(raw);
     if (normalized.includes('AUDIT')) return 'Auditor';
     if (normalized.includes('QUALITY') || (normalized.includes('CALIDAD') && normalized.includes('JEFE'))) return 'Jefe de Calidad';
     if (normalized.includes('PRODUCTION_ASSISTANT') || normalized.includes('ASISTENTE DE PRODUCCION')) return 'Asistente de Producción';
@@ -281,18 +338,18 @@ export class StateService {
     if (normalized.includes('ADMIN') || normalized.includes('SISTEM')) return 'Sistemas';
     if (normalized.includes('SUPERVISOR')) return 'Supervisor';
     if (normalized.includes('OPERATOR') || normalized.includes('OPERARIO')) return 'Operario';
-    if (normalized.includes('WAREHOUSE') || normalized.includes('ENCARG')) return 'Encargado de Clisés, Troqueles y Tintas';
-    if (normalized.includes('PLANNER') || normalized.includes('ASIST')) return 'Asistente';
+    if (normalized.includes('WAREHOUSE')) return 'Encargado de Clisés, Troqueles y Tintas';
+    if (normalized.includes('PLANNER') || normalized === 'ASISTENTE') return 'Asistente';
     if (normalized.includes('JEFAT') || normalized.includes('MANAGER') || normalized.includes('GEREN')) return 'Jefatura';
-    return 'Jefatura';
+    return raw;
   }
 
   toUiMachineType(value: string): string {
     const normalized = String(value || '').toUpperCase();
-    if (normalized.includes('PRINT') || normalized.includes('IMP')) return 'Impresion';
+    if (normalized.includes('PRINT') || normalized.includes('IMP')) return 'Impresión';
     if (normalized.includes('DIECUT') || normalized.includes('TROQ')) return 'Troquelado';
     if (normalized.includes('REWIND') || normalized.includes('PACK') || normalized.includes('ACAB')) return 'Acabado';
-    return value || 'Impresion';
+    return value || 'Impresión';
   }
 
   toUiMachineStatus(value: string): Machine['status'] {
@@ -313,12 +370,21 @@ export class StateService {
       return;
     }
 
-    this.currentUser.set(session.user || null);
+    const mappedUser = this.mapPersistedUser(session.user);
+    if (!this.canUseInteractiveSession(mappedUser)) {
+      this.clearPersistedSession();
+      this.apiClient.clearSession();
+      return;
+    }
+
+    this.currentUser.set(mappedUser);
     this.currentShift.set(session.shift || null);
+    this.activeOperator.set(this.mapPersistedOperator(session.activeOperator || null));
   }
 
   private async loadBootstrapData() {
     const tasks = await Promise.allSettled([
+      this.backend.me(),
       this.backend.getRoles(),
       this.backend.getMachines(),
       this.backend.getUsers(),
@@ -328,7 +394,23 @@ export class StateService {
       this.backend.getSystemConfig(),
     ]);
 
-    const [roles, machines, users, areas, shifts, permissions, config] = tasks;
+    const [me, roles, machines, users, areas, shifts, permissions, config] = tasks;
+
+    if (me.status === 'fulfilled') {
+      const refreshedUser = this.mapAuthUser(me.value);
+      if (!this.isSameUserAccess(this.currentUser(), refreshedUser)) {
+        const persistedSession = this.readSession();
+        const nextSession: PersistedUserSession = {
+          user: refreshedUser,
+          shift: this.currentShift(),
+          sessionId: persistedSession?.sessionId || null,
+          expiresAt: persistedSession?.expiresAt,
+          activeOperator: this.activeOperator(),
+        };
+        this.persistSession(nextSession);
+        this.currentUser.set(refreshedUser);
+      }
+    }
 
     if (roles.status === 'fulfilled') {
       this.adminRoles.set(roles.value.map((role) => this.mapRole(role)));
@@ -379,11 +461,11 @@ export class StateService {
     if (config.status === 'fulfilled') {
       this.config.update((current) => ({
         ...current,
-        plantName: config.value.plant_name || current.plantName,
-        autoLogoutMinutes: config.value.auto_logout_minutes ?? current.autoLogoutMinutes,
-        passwordExpiryWarningDays: config.value.password_expiry_warning_days ?? current.passwordExpiryWarningDays,
-        passwordPolicyDays: config.value.password_policy_days ?? current.passwordPolicyDays,
-        operatorMessage: config.value.operator_message || current.operatorMessage,
+        plantName: config.value.plant_name || config.value.plantName || current.plantName,
+        autoLogoutMinutes: config.value.auto_logout_minutes ?? config.value.autoLogoutMinutes ?? current.autoLogoutMinutes,
+        passwordExpiryWarningDays: config.value.password_expiry_warning_days ?? config.value.passwordExpiryWarningDays ?? current.passwordExpiryWarningDays,
+        passwordPolicyDays: config.value.password_policy_days ?? config.value.passwordPolicyDays ?? current.passwordPolicyDays,
+        operatorMessage: config.value.operator_message || config.value.operatorMessage || current.operatorMessage,
       }));
     }
   }
@@ -400,33 +482,96 @@ export class StateService {
   }
 
   private mapAuthUser(user: any): User {
+    const roleName = this.normalizeUserRole(user.roleName || user.role || user.role_name || user.roleCode);
     return {
       id: user.id,
       username: user.username,
       name: user.name,
-      role: this.normalizeUserRole(user.role || user.roleCode || user.role_name),
-      roleCode: user.roleCode || user.role,
+      role: roleName,
+      roleId: user.roleId || user.role_id || null,
+      roleCode: user.roleCode || user.role_code || null,
+      roleName,
+      permissionCodes: this.normalizePermissionCodes(user.permissionCodes),
+    };
+  }
+
+  private mapOperatorUser(user: any): ActiveOperatorContext {
+    return {
+      id: user.id,
+      dni: this.normalizeOperatorDni(user.username || user.dni || ''),
+      name: user.name,
+      roleCode: user.role?.code || user.roleCode || user.role_code || 'OPERATOR',
+      roleName: this.normalizeUserRole(user.role?.name || user.roleName || user.role?.code || user.role_code || 'Operario'),
+      assignedAreas: user.assignedAreas?.map((item: any) => item.area?.name || item.name).filter(Boolean) || [],
+    };
+  }
+
+  private mapPersistedUser(user: User | null): User | null {
+    if (!user) return null;
+    return {
+      ...user,
+      role: this.normalizeUserRole(user.roleName || user.role || user.roleCode || ''),
+      roleName: this.normalizeUserRole(user.roleName || user.role || user.roleCode || ''),
+      permissionCodes: this.normalizePermissionCodes(user.permissionCodes),
+    };
+  }
+
+  private mapPersistedOperator(operator: ActiveOperatorContext | null): ActiveOperatorContext | null {
+    if (!operator) return null;
+    return {
+      ...operator,
+      dni: this.normalizeOperatorDni(operator.dni),
+      roleName: this.normalizeUserRole(operator.roleName || operator.roleCode || 'Operario'),
+      assignedAreas: Array.isArray(operator.assignedAreas)
+        ? [...new Set(operator.assignedAreas.map((area) => String(area || '').trim()).filter(Boolean))]
+        : [],
     };
   }
 
   private mapAdminUser(user: any): AppUser {
+    const roleName = this.normalizeUserRole(user.role?.name || user.roleName || user.role?.code || user.role_code);
+    const permissionCodes = (user.role?.permissions || [])
+      .map((permission: any) => permission?.code || permission?.permission?.code)
+      .filter(Boolean);
+
     return {
       id: user.id,
       name: user.name,
       username: user.username,
-      role: this.normalizeUserRole(user.role?.code || user.role_code || user.role?.name),
+      role: roleName,
+      roleId: user.role?.id || user.role_id || null,
+      roleCode: user.role?.code || user.role_code || null,
+      roleName,
+      permissionCodes: this.normalizePermissionCodes(permissionCodes),
       active: user.active !== false,
-      assignedAreas: user.assignedAreas?.map((item: any) => item.area?.name).filter(Boolean) || [],
+      lastLoginAt: user.last_login_at || user.lastLoginAt || null,
+      assignedAreas: user.assignedAreas?.map((item: any) => item.area?.name || item.name).filter(Boolean) || [],
     };
   }
 
   private mapRole(role: any): RoleDefinition {
-    const roleName = this.normalizeUserRole(role.code || role.name);
+    const permissions = (role.permissions || [])
+      .map((permission: any) => permission?.code ? permission : permission?.permission)
+      .filter(Boolean)
+      .map((permission: any) => ({
+        id: permission.id,
+        code: permission.code,
+        name: permission.name,
+        description: permission.description,
+      }));
+
+    const name = this.normalizeUserRole(role.name || role.legacyName || role.code);
     return {
       id: role.id,
-      name: roleName,
-      description: role.description || role.name || roleName,
-      permissions: (role.permissions || []).map((entry: any) => entry.permission?.name || entry.permission?.code).filter(Boolean),
+      code: role.code,
+      name,
+      legacyName: role.legacyName || name,
+      description: role.description || role.name || name,
+      permissions,
+      permissionCodes: role.permissionCodes || permissions.map((permission) => permission.code),
+      active: role.active !== false,
+      assignedUserCount: role.assignedUserCount,
+      isSystem: !String(role.code || '').startsWith('CUSTOM_'),
     };
   }
 
@@ -435,10 +580,10 @@ export class StateService {
       id: machine.id,
       code: machine.code,
       name: machine.name,
-      type: this.toUiMachineType(machine.type),
+      type: this.toUiMachineType(machine.uiType || machine.type),
       area: machine.area?.name || machine.area_name || '',
       areaId: machine.area_id,
-      status: this.toUiMachineStatus(machine.status),
+      status: this.toUiMachineStatus(machine.uiStatus || machine.status),
       active: machine.active !== false,
       rawType: machine.type,
     };
@@ -456,7 +601,9 @@ export class StateService {
       JSON.stringify({
         sessionId: session.sessionId || null,
         user: session.user,
+        shift: session.shift,
         expiresAt: session.expiresAt,
+        activeOperator: session.activeOperator || null,
       }),
     );
   }
@@ -478,5 +625,72 @@ export class StateService {
       this.storage.removeItem(this.userSessionKey);
       return null;
     }
+  }
+
+  private setActiveOperatorContext(operator: ActiveOperatorContext | null) {
+    const normalizedOperator = this.mapPersistedOperator(operator);
+    this.activeOperator.set(normalizedOperator);
+
+    const currentSession = this.readSession();
+    if (!currentSession) return;
+
+    this.persistSession({
+      ...currentSession,
+      activeOperator: normalizedOperator,
+    });
+  }
+
+  private canUseInteractiveSession(user: Pick<User, 'role' | 'roleCode' | 'roleName'> | null | undefined) {
+    const tokens = [user?.roleCode, user?.roleName, user?.role]
+      .map((value) => this.toRoleToken(value))
+      .filter(Boolean);
+
+    return !tokens.some((token) => token === 'OPERATOR' || token.includes('OPERARIO'));
+  }
+
+  private normalizeOperatorDni(value: string | null | undefined) {
+    return String(value || '').replace(/\D/g, '').trim();
+  }
+
+  private getProcessAliases(process: string): string[] {
+    const normalized = this.toRoleToken(process);
+    if (normalized.includes('PRINT') || normalized.includes('IMPRES')) {
+      return ['IMPRESION', 'IMPRENTA', 'PRINT'];
+    }
+    if (normalized.includes('DIECUT') || normalized.includes('TROQ')) {
+      return ['TROQUELADO', 'DIECUT'];
+    }
+    if (normalized.includes('PACK') || normalized.includes('EMPAQ')) {
+      return ['EMPAQUETADO', 'PACKAGING', 'PACK', 'ACABADO', 'FINISH'];
+    }
+    if (normalized.includes('REWIND') || normalized.includes('REBOB') || normalized.includes('ACAB')) {
+      return ['REBOBINADO', 'REWIND', 'ACABADO', 'FINISH'];
+    }
+    return [normalized].filter(Boolean);
+  }
+
+  private toRoleToken(value: string | null | undefined) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+  }
+
+  private isSameUserAccess(current: User | null, next: User | null) {
+    if (!current && !next) return true;
+    if (!current || !next) return false;
+    if (current.id !== next.id) return false;
+    if ((current.roleCode || '') !== (next.roleCode || '')) return false;
+    if ((current.roleName || current.role || '') !== (next.roleName || next.role || '')) return false;
+
+    const currentPermissions = [...new Set(current.permissionCodes || [])].sort();
+    const nextPermissions = [...new Set(next.permissionCodes || [])].sort();
+    return currentPermissions.join('|') === nextPermissions.join('|');
+  }
+
+  private normalizePermissionCodes(values: unknown): string[] {
+    if (!Array.isArray(values)) return [];
+    return [...new Set(values.map((code) => String(code || '').trim()).filter((code) => Boolean(code)))];
   }
 }

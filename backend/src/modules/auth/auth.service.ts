@@ -18,12 +18,24 @@ export class AuthService {
   async login(loginDto: LoginDto, ipAddress: string, userAgent: string) {
     const user = await this.prisma.user.findUnique({
       where: { username: loginDto.username },
-      include: { role: true },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!user || !user.active) {
       throw new UnauthorizedException('Invalid credentials or inactive user');
     }
+
+    this.assertUserCanUsePasswordLogin(user);
 
     const isPasswordValid = await bcrypt.compare(loginDto.password, user.password_hash);
     if (!isPasswordValid) {
@@ -31,8 +43,8 @@ export class AuthService {
     }
 
     const sessionId = uuid.v4();
-    const normalizedRole = normalizeRoleName(user.role.name || user.role.code);
-    const tokens = await this.generateTokens(user.id, sessionId, normalizedRole);
+    const accessUser = this.mapAccessUser(user);
+    const tokens = await this.generateTokens(user.id, sessionId, accessUser.roleName, accessUser.roleCode);
     const refreshTokenHash = await bcrypt.hash(tokens.refreshToken, 10);
 
     await this.prisma.$transaction([
@@ -77,13 +89,7 @@ export class AuthService {
     ]);
 
     return {
-      user: {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        role: normalizedRole,
-        roleCode: user.role.code,
-      },
+      user: accessUser,
       ...tokens,
       sessionId,
     };
@@ -127,17 +133,30 @@ export class AuthService {
     // Generate new pair
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { role: true },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
     });
     
     if (!user || !user.active) {
       throw new UnauthorizedException('User inactive');
     }
 
+    this.assertUserCanUsePasswordLogin(user);
+
     const tokens = await this.generateTokens(
       user.id,
       sessionId,
-      normalizeRoleName(user.role.name || user.role.code),
+      user.role.name || normalizeRoleName(user.role.code),
+      user.role.code,
     );
 
     // Rotate token (revoke old, create new)
@@ -162,7 +181,11 @@ export class AuthService {
        })
     ]);
 
-    return tokens;
+    return {
+      ...tokens,
+      user: this.mapAccessUser(user),
+      sessionId,
+    };
   }
 
   async logout(sessionId: string, userId: string) {
@@ -187,10 +210,19 @@ export class AuthService {
     ]);
   }
 
-  private async generateTokens(userId: string, sessionId: string, role: string) {
+  async me(userId: string) {
+    const user = await this.findUserAccessById(userId);
+    if (!user || !user.active) {
+      throw new UnauthorizedException('User inactive');
+    }
+    this.assertUserCanUsePasswordLogin(user);
+    return this.mapAccessUser(user);
+  }
+
+  private async generateTokens(userId: string, sessionId: string, role: string, roleCode: string) {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(
-        { sub: userId, sid: sessionId, role },
+        { sub: userId, sid: sessionId, role, roleCode },
         {
           secret: this.configService.get('JWT_ACCESS_SECRET'),
           expiresIn: this.configService.get('JWT_ACCESS_EXPIRATION', '15m'),
@@ -206,6 +238,48 @@ export class AuthService {
     ]);
 
     return { accessToken, refreshToken };
+  }
+
+  private async findUserAccessById(userId: string) {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  private mapAccessUser(user: any) {
+    const permissionCodes = (user.role?.permissions || [])
+      .filter((entry: any) => !entry?.deleted_at)
+      .map((entry: any) => entry.permission?.code)
+      .filter(Boolean);
+
+    return {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role?.name || normalizeRoleName(user.role?.code),
+      roleId: user.role?.id || null,
+      roleCode: user.role?.code || '',
+      roleName: user.role?.name || normalizeRoleName(user.role?.code),
+      permissionCodes,
+    };
+  }
+
+  private assertUserCanUsePasswordLogin(user: any) {
+    const roleCode = String(user?.role?.code || '').toUpperCase();
+    if (roleCode === 'OPERATOR') {
+      throw new ForbiddenException('El operario no puede iniciar sesion directa. Debe identificarse desde un terminal anfitrion.');
+    }
   }
 
   async getSessions(userId: string) {

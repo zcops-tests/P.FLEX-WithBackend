@@ -202,13 +202,17 @@ export class ApiClientService {
 
         const payload = await response.json();
         const data = payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload;
+        const currentSession = this.session || {};
         this.setSession(
           {
             accessToken: data.accessToken,
             refreshToken: data.refreshToken,
-            sessionId: (this.session?.sessionId as string | undefined) || data.sessionId,
+            sessionId: (currentSession.sessionId as string | undefined) || data.sessionId,
           },
-          this.session || undefined,
+          {
+            ...currentSession,
+            ...(data.user ? { user: data.user } : {}),
+          },
         );
         return true;
       } catch {

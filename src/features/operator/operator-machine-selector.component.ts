@@ -160,6 +160,9 @@ export class OperatorMachineSelectorComponent {
   constructor() {
     this.route.params.subscribe(params => {
       this.type = params['type'];
+      if (!this.state.hasActiveOperator()) {
+        this.router.navigate(['/operator']);
+      }
     });
   }
 
@@ -173,13 +176,13 @@ export class OperatorMachineSelectorComponent {
 
   get machines(): Machine[] {
      if (this.type === 'print') {
-        return this.state.adminMachines().filter(m => m.type === 'Impresión');
+        return this.state.adminMachines().filter((m) => m.type === 'Impresión' && this.state.isMachineAllowedForActiveOperator(m, 'print'));
      }
      if (this.type === 'diecut') {
-        return this.state.adminMachines().filter(m => m.type === 'Troquelado');
+        return this.state.adminMachines().filter((m) => m.type === 'Troquelado' && this.state.isMachineAllowedForActiveOperator(m, 'diecut'));
      }
      if (this.type === 'rewind') {
-        return this.state.adminMachines().filter(m => m.type === 'Acabado');
+        return this.state.adminMachines().filter((m) => m.type === 'Acabado' && this.state.isMachineAllowedForActiveOperator(m, 'rewind'));
      }
      return [];
   }
@@ -198,7 +201,7 @@ export class OperatorMachineSelectorComponent {
   }
 
   selectMachine(machine: Machine) {
-    if (machine.status !== 'Operativa') return;
+    if (machine.status !== 'Operativa' || !this.state.isMachineAllowedForActiveOperator(machine, this.type)) return;
     this.router.navigate(['/operator/report', this.type, machine.name]);
   }
 }

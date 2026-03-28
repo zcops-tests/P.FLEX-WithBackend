@@ -46,9 +46,9 @@ export class PermissionsGuard implements CanActivate {
       return false;
     }
 
-    const userPermissions = userWithPermissions.role.permissions.map(
-      (rp) => rp.permission.code,
-    );
+    const userPermissions = userWithPermissions.role.permissions
+      .filter((rp) => !rp.deleted_at && !rp.permission?.deleted_at)
+      .map((rp) => rp.permission.code);
 
     const hasPermission = requiredPermissions.every((permission) =>
       userPermissions.includes(permission),

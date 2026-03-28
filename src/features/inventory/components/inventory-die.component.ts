@@ -726,7 +726,6 @@ export class InventoryDieComponent implements OnDestroy {
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
   destroyRef = inject(DestroyRef);
-  private readonly writeRoles = ['Sistemas', 'Supervisor', 'Encargado de Clisés, Troqueles y Tintas', 'Encargado de Clisés y Troqueles'] as const;
   Math = Math;
   @ViewChild('dieDetailCard') dieDetailCard?: ElementRef<HTMLElement>;
 
@@ -765,7 +764,7 @@ export class InventoryDieComponent implements OnDestroy {
   private loadingProgressInterval?: number;
 
   get canManageInventory() {
-      return this.state.hasAnyRole(this.writeRoles);
+      return this.state.hasPermission('inventory.dies.manage');
   }
 
   constructor() {
