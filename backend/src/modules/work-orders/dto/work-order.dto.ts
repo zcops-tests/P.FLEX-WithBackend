@@ -12,6 +12,12 @@ export enum WorkOrderStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum WorkOrderManagementExitAction {
+  REMOVE_ONLY = 'REMOVE_ONLY',
+  CLEAR_PLANT_ENTRY = 'CLEAR_PLANT_ENTRY',
+  REVERT_TO_IMPORTED = 'REVERT_TO_IMPORTED',
+}
+
 export class CreateWorkOrderDto {
   @ApiProperty({ example: 'OT-12345' })
   @IsString()
@@ -183,4 +189,11 @@ export class UpdateWorkOrderStatusDto {
   @IsEnum(WorkOrderStatus)
   @IsNotEmpty()
   status: WorkOrderStatus;
+}
+
+export class ExitWorkOrderManagementDto {
+  @ApiProperty({ enum: WorkOrderManagementExitAction })
+  @IsEnum(WorkOrderManagementExitAction)
+  @IsNotEmpty()
+  exit_action: WorkOrderManagementExitAction;
 }

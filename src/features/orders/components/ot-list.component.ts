@@ -1,5 +1,5 @@
 
-import { Component, ViewChild, ElementRef, inject, ChangeDetectorRef, NgZone, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, ChangeDetectorRef, NgZone, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -7,7 +7,7 @@ import { OtDetailComponent } from './ot-detail.component';
 import { OtImportComponent } from './ot-import.component';
 import { OtFormComponent } from './ot-form.component';
 import { OrdersService } from '../services/orders.service';
-import { OT } from '../models/orders.models';
+import { OT, OTDatabaseBrowserState, OTImportProgress, OTManagementExitAction } from '../models/orders.models';
 import { StateService } from '../../../services/state.service';
 import { AuditService } from '../../../services/audit.service';
 
@@ -19,7 +19,61 @@ import { AuditService } from '../../../services/audit.service';
     <div class="bg-gradient-mesh text-slate-200 font-sans min-h-screen w-full p-4 md:p-6 flex flex-col overflow-hidden relative pb-20">
       
       <!-- MODALS -->
-      <app-ot-import *ngIf="showImportModal" (close)="showImportModal = false" (dataImported)="handleImport($event)"></app-ot-import>
+      <app-ot-import
+        *ngIf="showImportModal"
+        [importProgress]="importProgress"
+        (close)="closeImportModal()"
+        (dataImported)="handleImport($event)">
+      </app-ot-import>
+
+      <div *ngIf="managementExitTarget" class="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+        <div class="glassmorphism-card rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden border border-white/20">
+          <div class="bg-white/5 px-6 py-4 border-b border-white/10">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <span class="material-icons text-amber-400">exit_to_app</span>
+              Quitar OT de Gestión
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">
+              OT {{ managementExitTarget.OT }} · Seleccione cómo desea registrar la salida del panel.
+            </p>
+          </div>
+
+          <div class="p-5 space-y-3 bg-[#0f172a]">
+            <button
+              (click)="confirmManagementExit('REMOVE_ONLY')"
+              [disabled]="isApplyingManagementExit"
+              class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-colors hover:bg-white/10 disabled:opacity-60">
+              <span class="block text-sm font-bold text-white">Quitar solo de Gestión</span>
+              <span class="block text-xs text-slate-400 mt-1">Cierra la membresía del panel y conserva el resto de datos.</span>
+            </button>
+
+            <button
+              (click)="confirmManagementExit('CLEAR_PLANT_ENTRY')"
+              [disabled]="isApplyingManagementExit"
+              class="w-full rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left transition-colors hover:bg-amber-500/15 disabled:opacity-60">
+              <span class="block text-sm font-bold text-amber-200">Quitar y limpiar ingreso a planta</span>
+              <span class="block text-xs text-amber-100/70 mt-1">Saca la OT del panel y borra su fecha de ingreso a planta.</span>
+            </button>
+
+            <button
+              (click)="confirmManagementExit('REVERT_TO_IMPORTED')"
+              [disabled]="isApplyingManagementExit"
+              class="w-full rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-left transition-colors hover:bg-red-500/15 disabled:opacity-60">
+              <span class="block text-sm font-bold text-red-200">Quitar y revertir a importada</span>
+              <span class="block text-xs text-red-100/70 mt-1">Disponible solo si la OT sigue en estado planificado.</span>
+            </button>
+          </div>
+
+          <div class="bg-white/5 px-6 py-4 border-t border-white/10 flex justify-end">
+            <button
+              (click)="closeManagementExitModal()"
+              [disabled]="isApplyingManagementExit"
+              class="px-4 py-2 rounded-xl border border-white/10 text-sm font-bold text-slate-300 hover:bg-white/10 disabled:opacity-60">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
       
       <!-- NEW: INTERNAL DB SELECTOR MODAL (Glassmorphism) -->
       <div *ngIf="showDbSelector" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
@@ -39,7 +93,7 @@ import { AuditService } from '../../../services/audit.service';
             <div class="p-4 bg-white/5 border-b border-white/10 shrink-0">
                <div class="relative">
                   <span class="material-icons absolute left-3 top-2.5 text-slate-400">search</span>
-                  <input type="text" [(ngModel)]="dbSearchTerm" placeholder="Buscar OT, Cliente o Producto en base de datos..." 
+                  <input type="text" [(ngModel)]="dbSearchTerm" (ngModelChange)="onDbSearchChange($event)" placeholder="Buscar OT, Cliente o Producto en base de datos..." 
                      class="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm text-white bg-white/5 border border-white/10 focus:ring-2 focus:ring-primary/50 focus:bg-white/10 outline-none placeholder-slate-500 backdrop-blur-sm">
                </div>
             </div>
@@ -57,7 +111,7 @@ import { AuditService } from '../../../services/audit.service';
                       </tr>
                    </thead>
                    <tbody class="divide-y divide-white/5">
-                      <tr *ngFor="let item of filteredDbItems" 
+                      <tr *ngFor="let item of dbState.items" 
                           class="hover:bg-white/5 transition-colors cursor-pointer group"
                           (click)="toggleDbSelection(item)">
                          <td class="px-4 py-2">
@@ -74,7 +128,17 @@ import { AuditService } from '../../../services/audit.service';
                             <span *ngIf="!isAlreadyInList(item)" class="text-[10px] font-bold text-slate-400 bg-white/5 px-2 py-1 rounded border border-white/10">Disponible</span>
                          </td>
                       </tr>
-                      <tr *ngIf="filteredDbItems.length === 0">
+                      <tr *ngIf="dbState.isLoading">
+                          <td colspan="5" class="p-8 text-center text-slate-400">
+                              Cargando base de datos interna...
+                          </td>
+                      </tr>
+                      <tr *ngIf="!dbState.isLoading && !!dbState.error">
+                          <td colspan="5" class="p-8 text-center text-red-300">
+                              {{ dbState.error }}
+                          </td>
+                      </tr>
+                      <tr *ngIf="!dbState.isLoading && !dbState.error && dbState.hasLoaded && dbState.items.length === 0">
                           <td colspan="5" class="p-8 text-center text-slate-500">
                               No se encontraron registros en la Base de Datos.
                           </td>
@@ -85,10 +149,17 @@ import { AuditService } from '../../../services/audit.service';
 
             <!-- Footer -->
             <div class="bg-white/5 px-6 py-4 border-t border-white/10 flex justify-between items-center shrink-0">
-               <span class="text-sm font-bold text-primary">{{ dbSelectedItems.size }} seleccionados</span>
+               <div class="flex items-center gap-4">
+                  <span class="text-sm font-bold text-primary">{{ dbSelectedItems.size }} seleccionados</span>
+                  <span class="text-xs text-slate-500" *ngIf="dbState.hasLoaded">
+                    Página {{ dbState.page }} de {{ dbState.totalPages }} · {{ dbState.total }} registros
+                  </span>
+               </div>
                <div class="flex gap-3">
+                  <button (click)="changeDbPage('prev')" [disabled]="dbState.isLoading || dbState.page <= 1" class="px-4 py-2 text-slate-300 font-bold hover:bg-white/10 rounded-xl text-sm transition-colors border border-transparent hover:border-white/10 disabled:opacity-50 disabled:cursor-not-allowed">Anterior</button>
+                  <button (click)="changeDbPage('next')" [disabled]="dbState.isLoading || dbState.page >= dbState.totalPages" class="px-4 py-2 text-slate-300 font-bold hover:bg-white/10 rounded-xl text-sm transition-colors border border-transparent hover:border-white/10 disabled:opacity-50 disabled:cursor-not-allowed">Siguiente</button>
                   <button (click)="showDbSelector = false" class="px-4 py-2 text-slate-300 font-bold hover:bg-white/10 rounded-xl text-sm transition-colors border border-transparent hover:border-white/10">Cancelar</button>
-                  <button (click)="addSelectedToActiveList()" [disabled]="dbSelectedItems.size === 0" 
+                  <button (click)="addSelectedToActiveList()" [disabled]="dbSelectedItems.size === 0 || dbState.isLoading" 
                      class="px-6 py-2 bg-primary hover:bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-primary/30 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 border border-white/10">
                      <span class="material-icons text-sm">playlist_add</span> Agregar a Lista
                   </button>
@@ -127,7 +198,7 @@ import { AuditService } from '../../../services/audit.service';
             <p class="text-slate-400 text-xs mt-1 font-medium">Panel de control y seguimiento de órdenes de trabajo activas</p>
           </div>
           <div class="flex flex-wrap gap-3">
-            <button (click)="showImportModal = true" class="flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl font-medium transition-all text-xs">
+            <button (click)="openImportModal()" class="flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl font-medium transition-all text-xs">
               <span class="material-icons text-emerald-400 text-sm">sync</span>
               Actualizar BD
             </button>
@@ -330,7 +401,7 @@ import { AuditService } from '../../../services/audit.service';
                         <button (click)="openForm(ot)" class="text-slate-500 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors" title="Editar">
                             <span class="material-icons text-base">edit</span>
                         </button>
-                        <button (click)="deleteOt(ot)" class="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors" title="Eliminar">
+                        <button (click)="deleteOt(ot)" class="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors" title="Quitar de Gestión">
                             <span class="material-icons text-base">delete</span>
                         </button>
                      </div>
@@ -404,6 +475,7 @@ export class OtListComponent implements OnInit, OnDestroy {
   showImportModal = false;
   showFormModal = false;
   showDbSelector = false;
+  importProgress: OTImportProgress | null = null;
   
   selectedOt: OT | null = null;
   editingOt: OT | null = null;
@@ -411,6 +483,12 @@ export class OtListComponent implements OnInit, OnDestroy {
   // DB Selector
   dbSearchTerm = '';
   dbSelectedItems = new Set<string>();
+  dbState: OTDatabaseBrowserState = this.createEmptyDbState();
+  dbSearchDebounceId: ReturnType<typeof setTimeout> | null = null;
+
+  // Management exit
+  managementExitTarget: OT | null = null;
+  isApplyingManagementExit = false;
 
   // Local State
   localOts: OT[] = [];
@@ -426,6 +504,9 @@ export class OtListComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     if (this.subscription) {
         this.subscription.unsubscribe();
+    }
+    if (this.dbSearchDebounceId) {
+        clearTimeout(this.dbSearchDebounceId);
     }
   }
 
@@ -491,17 +572,6 @@ export class OtListComponent implements OnInit, OnDestroy {
   get totalPages() { return Math.ceil(this.filteredOts.length / this.pageSize) || 1; }
   get showingStart() { return this.filteredOts.length === 0 ? 0 : (this.currentPage - 1) * this.pageSize + 1; }
   get showingEnd() { return Math.min(this.currentPage * this.pageSize, this.filteredOts.length); }
-
-  get filteredDbItems() {
-     const term = this.dbSearchTerm.toLowerCase().trim();
-     const fullDb = this.ordersService.internalDatabase;
-     if (!term) return fullDb.slice(0, 50);
-     return fullDb.filter(ot => 
-        String(ot.OT).toLowerCase().includes(term) ||
-        String(ot['Razon Social']).toLowerCase().includes(term) ||
-        String(ot.descripcion).toLowerCase().includes(term)
-     ).slice(0, 50);
-  }
 
   trackByOt(index: number, ot: OT) { return ot.OT; }
 
@@ -576,6 +646,16 @@ export class OtListComponent implements OnInit, OnDestroy {
   // CRUD & Modals
   openDetail(ot: OT) { this.selectedOt = ot; }
   closeDetail() { this.selectedOt = null; }
+
+  openImportModal() {
+    this.importProgress = null;
+    this.showImportModal = true;
+  }
+
+  closeImportModal() {
+    this.showImportModal = false;
+    this.importProgress = null;
+  }
   
   openForm(ot: OT | null) { this.editingOt = ot; this.showFormModal = true; }
   closeForm() { this.showFormModal = false; this.editingOt = null; }
@@ -585,8 +665,17 @@ export class OtListComponent implements OnInit, OnDestroy {
       const updatedOt = { ...ot, [field]: value };
 
       if (field === 'Estado_pedido') {
-          await this.ordersService.updateStatus(updatedOt, String(value || ''));
-          this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Cambio Estado', `OT ${ot.OT} cambió de ${oldVal} a ${value}`);
+          const previousStatus = String(oldVal || '').trim().toUpperCase();
+          const nextStatus = String(value || '').trim().toUpperCase();
+          if (previousStatus === nextStatus) return;
+
+          try {
+            await this.ordersService.updateStatus(updatedOt, String(value || ''));
+            this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Cambio Estado', `OT ${ot.OT} cambió de ${oldVal} a ${value}`);
+          } catch (error) {
+            await this.ordersService.reloadManagementOrders();
+            alert(this.getErrorMessage(error, `No se pudo actualizar el estado de la OT ${ot.OT}.`));
+          }
           return;
       }
 
@@ -613,35 +702,130 @@ export class OtListComponent implements OnInit, OnDestroy {
   }
 
   async deleteOt(ot: OT) {
-    if(confirm(`¿Eliminar OT ${ot.OT}?`)) {
-        await this.ordersService.deleteOt(String(ot.OT));
-        this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Eliminar OT', `Se eliminó la OT ${ot.OT} permanentemente.`);
+    this.managementExitTarget = ot;
+  }
+
+  closeManagementExitModal() {
+    if (this.isApplyingManagementExit) return;
+    this.managementExitTarget = null;
+  }
+
+  async confirmManagementExit(exitAction: OTManagementExitAction) {
+    if (!this.managementExitTarget) return;
+
+    try {
+      this.isApplyingManagementExit = true;
+      await this.ordersService.exitManagementWorkOrder(this.managementExitTarget, exitAction);
+      this.audit.log(
+        this.state.userName(),
+        this.state.userRole(),
+        'OTS',
+        'Salida de Gestión',
+        `OT ${this.managementExitTarget.OT} salió de Gestión con acción ${exitAction}.`,
+      );
+      this.managementExitTarget = null;
+    } catch (error: any) {
+      console.error('Error removing work order from management:', error);
+      alert(`No se pudo quitar la OT de Gestión.\n${error?.message || 'Error desconocido.'}`);
+    } finally {
+      this.isApplyingManagementExit = false;
     }
   }
 
   async handleImport(data: any[]) {
     try {
-      const result = await this.ordersService.importWorkOrders(data);
-      this.showImportModal = false;
+      this.importProgress = {
+        currentBatch: 0,
+        totalBatches: 0,
+        processedItems: 0,
+        totalItems: data.length,
+        percentage: 0,
+      };
+
+      const result = await this.ordersService.importWorkOrders(data, (progress) => {
+        this.ngZone.run(() => {
+          this.importProgress = progress;
+          this.cdr.markForCheck();
+        });
+      });
+
+      if (result.affectedManagementOtNumbers.length > 0) {
+        const shouldRefresh = confirm(
+          `Se actualizaron ${result.affectedManagementOtNumbers.length} OTs que ya están en Gestión.\n\n¿Desea refrescar las filas visibles del panel?`,
+        );
+
+        if (shouldRefresh) {
+          await this.ordersService.reloadManagementOrders();
+        }
+      }
+
+      this.closeImportModal();
       this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Importación Masiva', `Se procesaron ${result.total} registros. Nuevos: ${result.created}, Actualizados: ${result.updated}.`);
       alert(`Proceso completado.\n\nBase de Datos:\n- Nuevos: ${result.created}\n- Actualizados: ${result.updated}\n- Total procesados: ${result.total}`);
     } catch (error: any) {
       console.error('Error importing work orders:', error);
-      this.showImportModal = false;
+      this.closeImportModal();
       alert(`No se pudo completar la importación de OTs.\n${error?.message || 'Error desconocido.'}`);
     }
   }
 
   // DB Selector
-  openDbSelector() {
-      if(this.ordersService.internalDatabase.length === 0) {
-          alert('Base de datos vacía. Importe primero.');
-          return;
-      }
+  async openDbSelector() {
       this.dbSearchTerm = '';
       this.dbSelectedItems.clear();
+      this.dbState = this.createEmptyDbState();
       this.showDbSelector = true;
+      await this.loadDbPage(1);
   }
+
+  onDbSearchChange(value: string) {
+      this.dbSearchTerm = value;
+      if (this.dbSearchDebounceId) {
+          clearTimeout(this.dbSearchDebounceId);
+      }
+      this.dbSearchDebounceId = setTimeout(() => {
+          void this.loadDbPage(1);
+      }, 250);
+  }
+
+  async changeDbPage(direction: 'next' | 'prev') {
+      const nextPage = direction === 'next' ? this.dbState.page + 1 : this.dbState.page - 1;
+      if (nextPage < 1 || nextPage > this.dbState.totalPages || this.dbState.isLoading) return;
+      await this.loadDbPage(nextPage);
+  }
+
+  private async loadDbPage(page: number) {
+      this.dbSelectedItems.clear();
+      this.dbState = {
+          ...this.dbState,
+          isLoading: true,
+          error: '',
+          hasLoaded: this.dbState.hasLoaded,
+          page,
+          query: this.dbSearchTerm.trim(),
+      };
+      this.cdr.markForCheck();
+
+      try {
+          const nextState = await this.ordersService.searchDatabasePage({
+              q: this.dbSearchTerm,
+              page,
+              pageSize: this.dbState.pageSize,
+          });
+          this.dbState = nextState;
+      } catch (error: any) {
+          this.dbState = {
+              ...this.dbState,
+              items: [],
+              isLoading: false,
+              hasLoaded: true,
+              error: error?.message || 'No se pudo consultar la base de datos interna.',
+          };
+      } finally {
+          this.cdr.markForCheck();
+      }
+  }
+
   toggleDbSelection(item: any) {
       const id = String(item.OT);
       this.dbSelectedItems.has(id) ? this.dbSelectedItems.delete(id) : this.dbSelectedItems.add(id);
@@ -652,24 +836,47 @@ export class OtListComponent implements OnInit, OnDestroy {
       return this.ordersService.isOtActive(item.OT); 
   }
 
-  addSelectedToActiveList() {
-      const db = this.ordersService.internalDatabase;
-      const selected = db.filter(i => this.dbSelectedItems.has(String(i.OT)));
-      const newItems = selected
-          .filter(s => !this.ordersService.isOtActive(String(s.OT)))
-          .map(s => ({
-              ...s, 
-              Estado_pedido: 'PENDIENTE',
-              'FECHA INGRESO PLANTA': s['FECHA INGRESO PLANTA'] || new Date().toISOString().split('T')[0]
-          }));
-      
-      if(newItems.length > 0) {
-          this.ordersService.activateOts(newItems);
-          this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Activar OTs', `Se activaron ${newItems.length} OTs desde la base de datos.`);
-          alert(`${newItems.length} OTs agregadas.`);
-      } else {
-          alert('Las OTs seleccionadas ya están en la lista.');
+  async addSelectedToActiveList() {
+      const selected = this.dbState.items.filter((item) => this.dbSelectedItems.has(String(item.OT)));
+
+      if (selected.length === 0) {
+          alert('Seleccione al menos una OT para agregar.');
+          return;
       }
-      this.showDbSelector = false;
+
+      try {
+          const result = await this.ordersService.enterManagementWorkOrders(selected);
+
+          if (result.added > 0) {
+              this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Ingreso a Gestión', `Se ingresaron ${result.added} OTs desde la base interna.`);
+              alert(`${result.added} OTs agregadas a Gestión.`);
+          } else {
+              alert('Las OTs seleccionadas ya están en la lista.');
+          }
+
+          this.showDbSelector = false;
+      } catch (error: any) {
+          console.error('Error entering work orders into management:', error);
+          alert(`No se pudieron agregar las OTs seleccionadas.\n${error?.message || 'Error desconocido.'}`);
+      }
+  }
+
+  private createEmptyDbState(): OTDatabaseBrowserState {
+    return {
+      items: [],
+          page: 1,
+          pageSize: 25,
+          total: 0,
+          totalPages: 1,
+          query: '',
+          isLoading: false,
+          hasLoaded: false,
+      error: '',
+    };
+  }
+
+  private getErrorMessage(error: unknown, fallback: string) {
+    const message = error instanceof Error ? error.message : '';
+    return message || fallback;
   }
 }

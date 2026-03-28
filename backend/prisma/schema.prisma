@@ -128,6 +128,8 @@ model User {
   file_objects    FileObject[]
   audit_logs      AuditLog[]         @relation("UserAudit")
   change_log      ChangeLog[]
+  management_entries_entered WorkOrderManagementEntry[] @relation("ManagementEnteredBy")
+  management_entries_exited  WorkOrderManagementEntry[] @relation("ManagementExitedBy")
 
   @@map("users")
 }
@@ -381,12 +383,35 @@ model WorkOrder {
   incidents      Incident[]
   print_reports  PrintReport[]
   diecut_reports DiecutReport[]
+  management_entries WorkOrderManagementEntry[]
 
   @@index([updated_at])
   @@index([deleted_at])
   @@index([status])
   @@fulltext([ot_number, cliente_razon_social, descripcion, material, vendedor])
   @@map("work_orders")
+}
+
+model WorkOrderManagementEntry {
+  id                 String    @id @default(uuid()) @db.VarChar(36)
+  work_order_id      String    @db.VarChar(36)
+  entered_at         DateTime  @default(now()) @db.DateTime(3)
+  entered_by_user_id String    @db.VarChar(36)
+  exited_at          DateTime? @db.DateTime(3)
+  exited_by_user_id  String?   @db.VarChar(36)
+  exit_action        String?   @db.VarChar(50)
+  created_at         DateTime  @default(now()) @db.DateTime(3)
+  updated_at         DateTime  @updatedAt @db.DateTime(3)
+
+  work_order WorkOrder @relation(fields: [work_order_id], references: [id])
+  entered_by User      @relation("ManagementEnteredBy", fields: [entered_by_user_id], references: [id])
+  exited_by  User?     @relation("ManagementExitedBy", fields: [exited_by_user_id], references: [id])
+
+  @@index([work_order_id, exited_at])
+  @@index([entered_at])
+  @@index([entered_by_user_id])
+  @@index([exited_by_user_id])
+  @@map("work_order_management_entries")
 }
 
 model WorkOrderImportRow {

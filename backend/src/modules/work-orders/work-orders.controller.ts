@@ -13,7 +13,13 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { WorkOrdersService } from './work-orders.service';
-import { BulkUpsertWorkOrdersDto, CreateWorkOrderDto, WorkOrderStatus, UpdateWorkOrderStatusDto } from './dto/work-order.dto';
+import {
+  BulkUpsertWorkOrdersDto,
+  CreateWorkOrderDto,
+  ExitWorkOrderManagementDto,
+  WorkOrderStatus,
+  UpdateWorkOrderStatusDto,
+} from './dto/work-order.dto';
 import { WorkOrderQueryDto } from './dto/work-order-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -51,6 +57,12 @@ export class WorkOrdersController {
     return this.workOrdersService.findAll(query);
   }
 
+  @Get('management')
+  @ApiOperation({ summary: 'List work orders currently in management' })
+  async findManagement() {
+    return this.workOrdersService.findManagement();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a specific work order by ID' })
   async findOne(@Param('id') id: string) {
@@ -69,6 +81,20 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Update work order status (state machine)' })
   async updateStatus(@Param('id') id: string, @Body() dto: UpdateWorkOrderStatusDto) {
     return this.workOrdersService.updateStatus(id, dto.status);
+  }
+
+  @Post(':id/management/enter')
+  @Roles('ADMIN', 'SUPERVISOR', 'PLANNER', 'PRODUCTION_ASSISTANT')
+  @ApiOperation({ summary: 'Enter a work order into management' })
+  async enterManagement(@Param('id') id: string, @Request() req) {
+    return this.workOrdersService.enterManagement(id, req.user.sub);
+  }
+
+  @Post(':id/management/exit')
+  @Roles('ADMIN', 'SUPERVISOR', 'PLANNER', 'PRODUCTION_ASSISTANT')
+  @ApiOperation({ summary: 'Exit a work order from management' })
+  async exitManagement(@Param('id') id: string, @Body() dto: ExitWorkOrderManagementDto, @Request() req) {
+    return this.workOrdersService.exitManagement(id, dto.exit_action, req.user.sub);
   }
 
   @Delete(':id')

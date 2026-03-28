@@ -1,8 +1,18 @@
 
-import { Component, Output, EventEmitter, inject, ChangeDetectorRef } from '@angular/core';
+import { Component, Output, EventEmitter, inject, ChangeDetectorRef, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FileExportService } from '../../../services/file-export.service';
-import { OT_IMPORT_HEADERS } from '../models/orders.models';
+import { OT_IMPORT_HEADERS, OTImportProgress } from '../models/orders.models';
+
+const ANALYSIS_CHUNK_SIZE = 200;
+
+interface OtAnalysisProgress {
+  phase: string;
+  percentage: number;
+  processedItems: number;
+  totalItems: number;
+  detail: string;
+}
 
 @Component({
   selector: 'app-ot-import',
@@ -79,7 +89,29 @@ import { OT_IMPORT_HEADERS } from '../models/orders.models';
                     <div class="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                  </div>
                  <h3 class="text-xl font-black text-white mb-1">Analizando Datos...</h3>
-                 <p class="text-sm text-slate-400 font-medium">Normalizando y eliminando duplicados</p>
+                 <p class="text-sm text-slate-400 font-medium">{{ analysisDetailLabel }}</p>
+
+                 <div class="mt-6 w-full max-w-md rounded-2xl border border-white/10 bg-slate-950/40 p-4 shadow-xl">
+                   <div class="flex items-center justify-between gap-4">
+                     <div>
+                       <p class="text-sm font-bold text-white">{{ analysisPhaseLabel }}</p>
+                       <p class="text-xs text-slate-400">
+                         {{ analysisProcessedItems }} de {{ analysisTotalItems }} registros
+                       </p>
+                     </div>
+                     <div class="text-right">
+                       <p class="text-lg font-black text-blue-400">{{ analysisPercentage }}%</p>
+                       <p class="text-[11px] text-slate-500">Análisis previo</p>
+                     </div>
+                   </div>
+
+                   <div class="mt-3 h-3 overflow-hidden rounded-full border border-white/10 bg-white/10">
+                     <div
+                       class="h-full rounded-full bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400 transition-all duration-300"
+                       [style.width.%]="analysisPercentage">
+                     </div>
+                   </div>
+                 </div>
             </div>
 
           </div>
@@ -100,6 +132,31 @@ import { OT_IMPORT_HEADERS } from '../models/orders.models';
               <button (click)="reset()" class="text-slate-400 hover:text-red-400 hover:bg-red-500/10 p-2 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold border border-transparent hover:border-red-500/20" [disabled]="isImporting">
                  <span class="material-icons text-base">delete</span> Descartar
               </button>
+            </div>
+
+            <div *ngIf="isImporting" class="px-5 py-4 border-b border-white/10 bg-slate-950/40">
+              <div class="flex flex-col gap-3">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p class="text-sm font-bold text-white">Importando a la base de datos</p>
+                    <p class="text-xs text-slate-400">
+                      {{ progressProcessedItems }} de {{ progressTotalItems }} registros procesados
+                      <span *ngIf="progressTotalBatches > 0">· Lote {{ progressCurrentBatchLabel }} de {{ progressTotalBatches }}</span>
+                    </p>
+                  </div>
+                  <div class="text-right">
+                    <p class="text-lg font-black text-emerald-400">{{ progressPercentage }}%</p>
+                    <p class="text-[11px] text-slate-500">{{ progressStatusLabel }}</p>
+                  </div>
+                </div>
+
+                <div class="h-3 overflow-hidden rounded-full bg-white/10 border border-white/10">
+                  <div
+                    class="h-full rounded-full bg-gradient-to-r from-emerald-500 via-cyan-400 to-blue-500 transition-all duration-300"
+                    [style.width.%]="progressPercentage">
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="flex-1 overflow-auto custom-scrollbar relative bg-[#0f172a]">
@@ -177,6 +234,7 @@ import { OT_IMPORT_HEADERS } from '../models/orders.models';
   `]
 })
 export class OtImportComponent {
+  @Input() importProgress: OTImportProgress | null = null;
   @Output() close = new EventEmitter<void>();
   @Output() dataImported = new EventEmitter<any[]>();
   
@@ -188,6 +246,7 @@ export class OtImportComponent {
   isLoading = false;
   isImporting = false; 
   importedData: any[] = [];
+  analysisProgress: OtAnalysisProgress = this.createAnalysisProgress();
 
   columnMappings: { [key: string]: string[] } = {
     'OT': ['ot', 'orden', 'nro', 'numero', 'op', 'id', 'nro. orden', 'ot numero', 'n°', 'número'],
@@ -229,11 +288,21 @@ export class OtImportComponent {
     console.log('[OtImport] Iniciando carga de:', file.name);
     
     this.isLoading = true;
+    this.analysisProgress = this.createAnalysisProgress({
+      phase: 'Preparando archivo',
+      percentage: 5,
+      detail: 'Cargando utilidades de Excel...',
+    });
     this.cdr.detectChanges(); 
 
     await new Promise(resolve => setTimeout(resolve, 150));
 
     try {
+      this.updateAnalysisProgress({
+        phase: 'Preparando archivo',
+        percentage: 10,
+        detail: 'Inicializando lector de hojas...',
+      });
       await this.fileExport.preloadXlsx();
       const xlsxLib = this.fileExport.getXlsx();
       
@@ -241,7 +310,17 @@ export class OtImportComponent {
         throw new Error('La librería Excel no se ha cargado correctamente.');
       }
 
+      this.updateAnalysisProgress({
+        phase: 'Leyendo archivo',
+        percentage: 18,
+        detail: `Leyendo ${file.name}...`,
+      });
       const buffer = await file.arrayBuffer();
+      this.updateAnalysisProgress({
+        phase: 'Leyendo archivo',
+        percentage: 28,
+        detail: 'Interpretando hojas del archivo...',
+      });
       const workbook = await this.fileExport.readWorkbook(buffer);
       
       if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
@@ -251,17 +330,39 @@ export class OtImportComponent {
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       
+      this.updateAnalysisProgress({
+        phase: 'Extrayendo registros',
+        percentage: 36,
+        detail: `Procesando hoja ${firstSheetName}...`,
+      });
       const rawData = await this.fileExport.sheetToJson(worksheet, { defval: '', raw: false });
 
       if (!rawData || rawData.length === 0) {
         throw new Error('No se encontraron datos en la hoja.');
       }
 
-      this.importedData = this.normalizeData(rawData);
+      this.updateAnalysisProgress({
+        phase: 'Normalizando datos',
+        percentage: 42,
+        totalItems: rawData.length,
+        processedItems: 0,
+        detail: 'Detectando columnas y limpiando filas...',
+      });
+
+      this.importedData = await this.normalizeData(rawData);
 
       if (this.importedData.length === 0) {
           throw new Error('No se encontraron registros válidos (revise que la columna OT exista).');
       }
+
+      this.updateAnalysisProgress({
+        phase: 'Análisis completado',
+        percentage: 100,
+        totalItems: rawData.length,
+        processedItems: rawData.length,
+        detail: `${this.importedData.length} registros únicos listos para importar.`,
+      });
+      await this.yieldToUi();
 
       console.log(`[OtImport] Parseo y normalización exitosa. ${this.importedData.length} filas.`);
       this.step = 'preview';
@@ -276,9 +377,11 @@ export class OtImportComponent {
     }
   }
 
-  normalizeData(rawData: any[]): any[] {
-     // 1. First pass: Map keys and basic cleaning
-     const mappedData = rawData.map(row => {
+  async normalizeData(rawData: any[]): Promise<any[]> {
+     const mappedData: any[] = [];
+
+     for (let index = 0; index < rawData.length; index += 1) {
+        const row = rawData[index];
         const newRow: any = Object.fromEntries(OT_IMPORT_HEADERS.map((header) => [header, '']));
 
         Object.assign(newRow, row);
@@ -317,31 +420,61 @@ export class OtImportComponent {
              }
         });
 
-        return newRow;
-     }).filter(row => {
-        if (!row.OT) return false;
-        
-        const otStr = String(row.OT);
-        const invalidOTs = ['OT', 'ORDEN', 'NRO', 'NUMERO', 'ID', 'OP', 'N°', 'TOTAL', 'SUBTOTAL', 'RESUMEN', 'OT DEL MES'];
-        
-        if (invalidOTs.includes(otStr)) return false;
-        
-        // Strict garbage filter based on user evidence
-        if (otStr.includes('OT DEL MES') || otStr.startsWith('TOTAL')) return false;
-        if (String(row['Razon Social']).toUpperCase().includes('OT DEL MES')) return false;
+        if (this.isValidNormalizedRow(newRow)) {
+          mappedData.push(newRow);
+        }
 
-        return true;
-     });
+        if ((index + 1) % ANALYSIS_CHUNK_SIZE === 0 || index === rawData.length - 1) {
+          const processedItems = index + 1;
+          const normalizationPercentage = 42 + Math.round((processedItems / rawData.length) * 38);
 
-     // 2. Second pass: Deduplication
-     // If the same OT ID appears multiple times in the file, we keep the LAST occurrence
-     // (assuming bottom rows are more recent updates in some reports)
+          this.updateAnalysisProgress({
+            phase: 'Normalizando datos',
+            percentage: normalizationPercentage,
+            totalItems: rawData.length,
+            processedItems,
+            detail: 'Detectando columnas y limpiando filas...',
+          });
+          await this.yieldToUi();
+        }
+     }
+
      const uniqueMap = new Map();
-     mappedData.forEach(item => {
-         uniqueMap.set(item.OT, item);
-     });
+
+     for (let index = 0; index < mappedData.length; index += 1) {
+        const item = mappedData[index];
+        uniqueMap.set(item.OT, item);
+
+        if ((index + 1) % ANALYSIS_CHUNK_SIZE === 0 || index === mappedData.length - 1) {
+          const processedItems = index + 1;
+          const dedupePercentage = 80 + Math.round((processedItems / Math.max(mappedData.length, 1)) * 20);
+
+          this.updateAnalysisProgress({
+            phase: 'Eliminando duplicados',
+            percentage: dedupePercentage,
+            totalItems: mappedData.length,
+            processedItems,
+            detail: 'Conservando la ultima version de cada OT...',
+          });
+          await this.yieldToUi();
+        }
+     }
 
      return Array.from(uniqueMap.values());
+  }
+
+  private isValidNormalizedRow(row: any) {
+    if (!row.OT) return false;
+    
+    const otStr = String(row.OT);
+    const invalidOTs = ['OT', 'ORDEN', 'NRO', 'NUMERO', 'ID', 'OP', 'N°', 'TOTAL', 'SUBTOTAL', 'RESUMEN', 'OT DEL MES'];
+    
+    if (invalidOTs.includes(otStr)) return false;
+    
+    if (otStr.includes('OT DEL MES') || otStr.startsWith('TOTAL')) return false;
+    if (String(row['Razon Social']).toUpperCase().includes('OT DEL MES')) return false;
+
+    return true;
   }
 
   reset() {
@@ -350,6 +483,59 @@ export class OtImportComponent {
     this.isDragging = false;
     this.isLoading = false;
     this.isImporting = false;
+    this.analysisProgress = this.createAnalysisProgress();
+  }
+
+  get progressPercentage() {
+    return Math.max(0, Math.min(100, Math.round(this.importProgress?.percentage ?? 0)));
+  }
+
+  get progressProcessedItems() {
+    return Math.max(0, Number(this.importProgress?.processedItems ?? 0));
+  }
+
+  get progressTotalItems() {
+    return Math.max(this.importedData.length, Number(this.importProgress?.totalItems ?? this.importedData.length));
+  }
+
+  get progressTotalBatches() {
+    return Math.max(0, Number(this.importProgress?.totalBatches ?? 0));
+  }
+
+  get progressCurrentBatchLabel() {
+    if (!this.importProgress || this.importProgress.currentBatch <= 0) {
+      return '1';
+    }
+
+    return String(this.importProgress.currentBatch);
+  }
+
+  get progressStatusLabel() {
+    if (!this.importProgress || this.importProgress.currentBatch === 0) {
+      return 'Preparando lotes...';
+    }
+
+    return this.progressPercentage >= 100 ? 'Finalizando recarga...' : 'Aplicando cambios...';
+  }
+
+  get analysisPhaseLabel() {
+    return this.analysisProgress.phase || 'Analizando archivo';
+  }
+
+  get analysisDetailLabel() {
+    return this.analysisProgress.detail || 'Normalizando y eliminando duplicados';
+  }
+
+  get analysisPercentage() {
+    return Math.max(0, Math.min(100, Math.round(this.analysisProgress.percentage || 0)));
+  }
+
+  get analysisProcessedItems() {
+    return Math.max(0, Number(this.analysisProgress.processedItems || 0));
+  }
+
+  get analysisTotalItems() {
+    return Math.max(this.analysisProcessedItems, Number(this.analysisProgress.totalItems || 0));
   }
 
   importData() {
@@ -359,5 +545,29 @@ export class OtImportComponent {
     setTimeout(() => {
         this.dataImported.emit(this.importedData);
     }, 100);
+  }
+
+  private createAnalysisProgress(overrides: Partial<OtAnalysisProgress> = {}): OtAnalysisProgress {
+    return {
+      phase: 'Esperando archivo',
+      percentage: 0,
+      processedItems: 0,
+      totalItems: 0,
+      detail: 'Normalizando y eliminando duplicados',
+      ...overrides,
+    };
+  }
+
+  private updateAnalysisProgress(progress: Partial<OtAnalysisProgress>) {
+    this.analysisProgress = {
+      ...this.analysisProgress,
+      ...progress,
+    };
+    this.cdr.detectChanges();
+  }
+
+  private async yieldToUi() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    this.cdr.detectChanges();
   }
 }

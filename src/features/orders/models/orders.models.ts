@@ -66,6 +66,9 @@ export const OT_IMPORT_HEADERS = [
 ] as const;
 
 export interface OT {
+  id?: string;
+  row_version?: bigint | number | string;
+  backend_status?: string;
   descripcion: string;
   'Nro. Cotizacion': string;
   'Nro. Ficha': string;
@@ -131,4 +134,29 @@ export interface OT {
   t_acabado: string;
   ta_acabado: string;
   d_max_bob: string;
+}
+
+export interface OTImportProgress {
+  currentBatch: number;
+  totalBatches: number;
+  processedItems: number;
+  totalItems: number;
+  percentage: number;
+}
+
+export type OTManagementExitAction =
+  | 'REMOVE_ONLY'
+  | 'CLEAR_PLANT_ENTRY'
+  | 'REVERT_TO_IMPORTED';
+
+export interface OTDatabaseBrowserState {
+  items: Partial<OT>[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  query: string;
+  isLoading: boolean;
+  hasLoaded: boolean;
+  error: string;
 }

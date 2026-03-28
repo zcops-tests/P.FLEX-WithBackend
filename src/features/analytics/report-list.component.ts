@@ -516,8 +516,7 @@ export class ReportListComponent implements OnInit, AfterViewInit {
     this.isLoading = true;
 
     try {
-      await this.ordersService.reload();
-      const orders = [...this.ordersService.internalDatabase];
+      const orders = await this.ordersService.loadAllOrdersSnapshot();
 
       const [oeeResponse, wasteResponse, downtimeResponse, printResponse] = await Promise.all([
         this.backend.getAnalyticsOee({
@@ -571,7 +570,7 @@ export class ReportListComponent implements OnInit, AfterViewInit {
       this.notifications.showError('No se pudieron cargar los indicadores reales de producción.');
       this.trendData = this.buildEmptyTrendData();
       this.topWasteItems = [];
-      this.stats = this.buildStats(this.ordersService.internalDatabase, 0, 0);
+      this.stats = this.buildStats([], 0, 0);
       this.oee = 0;
       this.availability = 0;
       this.performance = 0;

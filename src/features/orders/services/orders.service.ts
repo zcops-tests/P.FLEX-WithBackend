@@ -1,13 +1,21 @@
 import { Injectable, effect, inject, untracked } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
-import { OT, OT_IMPORT_HEADERS } from '../models/orders.models';
+import {
+  OT,
+  OT_IMPORT_HEADERS,
+  OTDatabaseBrowserState,
+  OTImportProgress,
+  OTManagementExitAction,
+} from '../models/orders.models';
 import { BackendApiService } from '../../../services/backend-api.service';
 import { StateService } from '../../../services/state.service';
 import { BrowserStorageService } from '../../../services/browser-storage.service';
 
 const WORK_ORDER_FETCH_PAGE_SIZE = 500;
 const WORK_ORDER_FETCH_PARALLELISM = 4;
-const WORK_ORDER_IMPORT_BATCH_SIZE = 500;
+const WORK_ORDER_IMPORT_BATCH_SIZE = 200;
+const DATABASE_BROWSER_PAGE_SIZE = 25;
+const LEGACY_ACTIVE_OT_STORAGE_KEY = 'pflex_active_work_orders';
 const OT_PERSISTED_HEADERS = [...OT_IMPORT_HEADERS, 'FECHA INGRESO PLANTA'] as const;
 
 @Injectable({ providedIn: 'root' })
@@ -19,7 +27,6 @@ export class OrdersService {
   private _ots = new BehaviorSubject<Partial<OT>[]>([]);
   private _internalDatabase = new BehaviorSubject<Partial<OT>[]>([]);
   private _dbLastUpdated = new BehaviorSubject<Date | null>(null);
-  private readonly activeOtStorageKey = 'pflex_active_work_orders';
 
   get ots() { return this._ots.value; }
   get internalDatabase() { return this._internalDatabase.value; }
@@ -33,51 +40,61 @@ export class OrdersService {
       if (!this.state.currentUser()) {
         this._ots.next([]);
         this._internalDatabase.next([]);
-        this.storage.removeItem(this.activeOtStorageKey);
+        this.storage.removeItem(LEGACY_ACTIVE_OT_STORAGE_KEY);
         return;
       }
 
+      this.storage.removeItem(LEGACY_ACTIVE_OT_STORAGE_KEY);
+
       untracked(() => {
-        void this.reload();
+        void this.reloadManagementOrders();
       });
     });
   }
 
   async reload() {
+    return this.reloadManagementOrders();
+  }
+
+  async reloadManagementOrders() {
     try {
-      const mapped = await this.fetchAllWorkOrders();
-      this._internalDatabase.next(mapped);
-      this._ots.next(this.mapActiveOrders(mapped));
+      const items = await this.backend.getManagementWorkOrders();
+      const mapped = (items || []).map((item: any) => this.mapWorkOrder(item));
+      this._ots.next(mapped);
       this._dbLastUpdated.next(new Date());
+      return mapped;
     } catch {
-      // Keep current data if the API fails.
+      return this._ots.value;
     }
   }
 
-  updateOts(newOts: Partial<OT>[]) {
-    this._ots.next(newOts);
-    this.persistActiveOtIds(newOts);
+  async loadAllOrdersSnapshot() {
+    const mapped = await this.fetchAllWorkOrders();
+    this._internalDatabase.next(mapped);
+    this._dbLastUpdated.next(new Date());
+    return mapped;
   }
 
-  async deleteOt(otId: string) {
-    const current = this._internalDatabase.value;
-    const match = current.find((ot) => String(ot.OT) === String(otId)) as any;
+  async searchDatabasePage(query?: { q?: string; page?: number; pageSize?: number }): Promise<OTDatabaseBrowserState> {
+    const page = Math.max(1, Number(query?.page || 1));
+    const pageSize = Math.max(1, Number(query?.pageSize || DATABASE_BROWSER_PAGE_SIZE));
+    const q = String(query?.q || '').trim();
+    const response = await this.backend.getWorkOrders({ page, pageSize, q: q || undefined });
+    const items = Array.isArray(response?.items) ? response.items.map((item: any) => this.mapWorkOrder(item)) : [];
+    const total = Number(response?.meta?.total || items.length || 0);
+    const totalPages = Math.max(1, Number(response?.meta?.totalPages || 1));
 
-    if (match?.id) {
-      await this.backend.deleteWorkOrder(match.id);
-    }
-
-    const filtered = current.filter((ot) => String(ot.OT) !== String(otId));
-    this._internalDatabase.next(filtered);
-    const active = this._ots.value.filter((ot) => String(ot.OT) !== String(otId));
-    this._ots.next(active);
-    this.persistActiveOtIds(active);
-    this._dbLastUpdated.next(new Date());
-  }
-
-  updateInternalDatabase(data: Partial<OT>[]) {
-    this._internalDatabase.next(data);
-    this._dbLastUpdated.next(new Date());
+    return {
+      items,
+      page,
+      pageSize,
+      total,
+      totalPages,
+      query: q,
+      isLoading: false,
+      hasLoaded: true,
+      error: '',
+    };
   }
 
   findInDatabase(searchTerm: string): Partial<OT>[] {
@@ -89,36 +106,80 @@ export class OrdersService {
     );
   }
 
+  async findWorkOrderByOtNumber(otNumber: string | undefined) {
+    const normalized = String(otNumber || '').trim().toUpperCase();
+    if (!normalized) return null;
+
+    const localMatch = this.findStoredOt(normalized);
+    if (localMatch) return localMatch;
+
+    const response = await this.backend.getWorkOrders({ q: normalized, page: 1, pageSize: 50 });
+    const items = Array.isArray(response?.items) ? response.items : [];
+    const match = items.find((item: any) => String(item.ot_number || item.OT || '').trim().toUpperCase() === normalized);
+    return match ? this.mapWorkOrder(match) : null;
+  }
+
   async saveOt(ot: Partial<OT>, options?: { activate?: boolean }) {
-    const existing = this.findStoredOt(ot.OT);
+    const existing = await this.findWorkOrderByOtNumber(ot.OT);
     const payload = this.mapOtToPayload({ ...existing, ...ot });
     let saved;
 
-    if (existing?.id) {
-      saved = await this.backend.updateWorkOrder(existing.id, payload);
+    if ((existing as any)?.id) {
+      saved = await this.backend.updateWorkOrder((existing as any).id, payload);
     } else {
       saved = await this.backend.createWorkOrder(payload);
     }
 
-    this.replaceOtInStores(this.mapWorkOrder(saved), options);
+    const mapped = this.mapWorkOrder(saved);
+    this.replaceOtInStores(mapped);
+
+    if (options?.activate && mapped.id && !this.isOtActive(mapped.OT)) {
+      await this.backend.enterWorkOrderManagement(String(mapped.id));
+      await this.reloadManagementOrders();
+      return;
+    }
+
+    if (options?.activate && this.isOtActive(mapped.OT)) {
+      this.replaceManagementOt(mapped);
+    }
   }
 
   async importWorkOrders(
     rows: Partial<OT>[],
-    onProgress?: (progress: { currentBatch: number; totalBatches: number; processedItems: number; totalItems: number }) => void,
+    onProgress?: (progress: OTImportProgress) => void,
   ) {
     const normalizedRows = rows
       .map((row) => this.normalizeImportedOt(row))
       .filter((row) => String(row.OT || '').trim());
 
     if (normalizedRows.length === 0) {
-      return { created: 0, updated: 0, total: 0 };
+      return { created: 0, updated: 0, total: 0, affectedManagementOtNumbers: [] as string[] };
     }
 
     let created = 0;
     let updated = 0;
     const totalItems = normalizedRows.length;
     const totalBatches = Math.max(1, Math.ceil(totalItems / WORK_ORDER_IMPORT_BATCH_SIZE));
+    const activeOtNumbers = new Set(
+      this._ots.value
+        .map((item) => String(item.OT || '').trim().toUpperCase())
+        .filter(Boolean),
+    );
+    const affectedManagementOtNumbers = Array.from(
+      new Set(
+        normalizedRows
+          .map((row) => String(row.OT || '').trim().toUpperCase())
+          .filter((otNumber) => activeOtNumbers.has(otNumber)),
+      ),
+    );
+
+    onProgress?.({
+      currentBatch: 0,
+      totalBatches,
+      processedItems: 0,
+      totalItems,
+      percentage: 0,
+    });
 
     for (let index = 0; index < totalBatches; index += 1) {
       const start = index * WORK_ORDER_IMPORT_BATCH_SIZE;
@@ -134,39 +195,110 @@ export class OrdersService {
         totalBatches,
         processedItems: Math.min(end, totalItems),
         totalItems,
+        percentage: Math.round((Math.min(end, totalItems) / totalItems) * 100),
       });
     }
 
-    await this.reload();
-    return { created, updated, total: totalItems };
+    this._dbLastUpdated.next(new Date());
+    this._internalDatabase.next([]);
+
+    return { created, updated, total: totalItems, affectedManagementOtNumbers };
   }
 
   async updateStatus(ot: Partial<OT>, status: string) {
-    const target = this.findStoredOt(ot.OT);
-    if (!target?.id) return;
+    const target = await this.findWorkOrderByOtNumber(ot.OT);
+    if (!(target as any)?.id) return;
 
-    const saved = await this.backend.updateWorkOrderStatus(target.id, {
-      status: this.mapStatusToApi(status),
+    const currentBackendStatus = this.normalizeApiStatus((target as any).backend_status);
+    const nextBackendStatus = this.mapStatusToApi(status, currentBackendStatus);
+
+    if (currentBackendStatus && currentBackendStatus === nextBackendStatus) {
+      this.replaceOtInStores({
+        ...target,
+        Estado_pedido: this.mapStatusFromApi(currentBackendStatus),
+        backend_status: currentBackendStatus,
+      });
+      return;
+    }
+
+    const saved = await this.backend.updateWorkOrderStatus(String((target as any).id), {
+      status: nextBackendStatus,
     });
 
     this.replaceOtInStores(this.mapWorkOrder(saved));
   }
 
-  activateOts(items: Partial<OT>[]) {
-    if (!items.length) return;
+  async enterManagementWorkOrders(items: Partial<OT>[]) {
+    const targets = await Promise.all(
+      items.map(async (item) => {
+        const resolved = (item as any).id ? item : await this.findWorkOrderByOtNumber(item.OT);
+        return resolved && (resolved as any).id ? resolved : null;
+      }),
+    );
 
-    const active = [...this._ots.value];
-    items.forEach((item) => {
-      const index = active.findIndex((entry) => String(entry.OT).trim().toUpperCase() === String(item.OT).trim().toUpperCase());
-      if (index >= 0) {
-        active[index] = { ...active[index], ...item };
-      } else {
-        active.push(item);
-      }
+    const pending = Array.from(
+      new Map(
+        targets
+          .filter((item): item is Partial<OT> & { id: string } => Boolean(item && (item as any).id))
+          .filter((item) => !this.isOtActive(item.OT))
+          .map((item) => [String(item.id), item]),
+      ).values(),
+    );
+
+    if (!pending.length) {
+      return { added: 0 };
+    }
+
+    await Promise.all(
+      pending.map((item) => this.backend.enterWorkOrderManagement(String(item.id))),
+    );
+
+    await this.reloadManagementOrders();
+    return { added: pending.length };
+  }
+
+  async exitManagementWorkOrder(ot: Partial<OT>, exitAction: OTManagementExitAction) {
+    const target = await this.findWorkOrderByOtNumber(ot.OT);
+    if (!(target as any)?.id) {
+      throw new Error(`No se encontró la OT ${ot.OT} en la base de datos.`);
+    }
+
+    await this.backend.exitWorkOrderManagement(String((target as any).id), {
+      exit_action: exitAction,
     });
 
-    this._ots.next(active);
-    this.persistActiveOtIds(active);
+    this._ots.next(
+      this._ots.value.filter((item) => String(item.OT || '').trim().toUpperCase() !== String(target.OT || '').trim().toUpperCase()),
+    );
+
+    if (this._internalDatabase.value.length > 0) {
+      const refreshed = await this.backend.getWorkOrder(String((target as any).id));
+      this.replaceOtInDatabase(this.mapWorkOrder(refreshed));
+    }
+  }
+
+  async deleteOt(otId: string) {
+    const current = this._internalDatabase.value;
+    const match = current.find((ot) => String(ot.OT) === String(otId)) as any
+      || this._ots.value.find((ot) => String(ot.OT) === String(otId)) as any;
+
+    if (match?.id) {
+      await this.backend.deleteWorkOrder(match.id);
+    }
+
+    const normalizedOt = String(otId || '').trim().toUpperCase();
+    this._internalDatabase.next(
+      current.filter((ot) => String(ot.OT || '').trim().toUpperCase() !== normalizedOt),
+    );
+    this._ots.next(
+      this._ots.value.filter((ot) => String(ot.OT || '').trim().toUpperCase() !== normalizedOt),
+    );
+    this._dbLastUpdated.next(new Date());
+  }
+
+  updateInternalDatabase(data: Partial<OT>[]) {
+    this._internalDatabase.next(data);
+    this._dbLastUpdated.next(new Date());
   }
 
   isOtActive(otNumber: string | undefined) {
@@ -193,20 +325,28 @@ export class OrdersService {
     return items.map((item: any) => this.mapWorkOrder(item));
   }
 
-  private replaceOtInStores(item: Partial<OT>, options?: { activate?: boolean }) {
-    const database = this.mergeByOt(this._internalDatabase.value, item);
-    const shouldKeepActive = options?.activate || this.isOtActive(item.OT);
-    const active = shouldKeepActive ? this.mergeByOt(this._ots.value, item) : this._ots.value;
+  private replaceOtInStores(item: Partial<OT>) {
+    this.replaceOtInDatabase(item);
 
-    this._internalDatabase.next(database);
-    this._ots.next(active);
-    this.persistActiveOtIds(active);
+    if (this.isOtActive(item.OT)) {
+      this.replaceManagementOt(item);
+    }
+
     this._dbLastUpdated.next(new Date());
+  }
+
+  private replaceOtInDatabase(item: Partial<OT>) {
+    if (this._internalDatabase.value.length === 0) return;
+    this._internalDatabase.next(this.mergeByOt(this._internalDatabase.value, item));
+  }
+
+  private replaceManagementOt(item: Partial<OT>) {
+    this._ots.next(this.mergeByOt(this._ots.value, item));
   }
 
   private mergeByOt(source: Partial<OT>[], item: Partial<OT>) {
     const list = [...source];
-    const index = list.findIndex((entry) => String(entry.OT) === String(item.OT));
+    const index = list.findIndex((entry) => String(entry.OT).trim().toUpperCase() === String(item.OT).trim().toUpperCase());
 
     if (index >= 0) {
       list[index] = { ...list[index], ...item };
@@ -221,40 +361,9 @@ export class OrdersService {
     const normalized = String(otNumber || '').trim().toUpperCase();
     if (!normalized) return null;
 
-    return (this._internalDatabase.value.find((item: any) => String(item.OT).trim().toUpperCase() === normalized)
-      || this._ots.value.find((item: any) => String(item.OT).trim().toUpperCase() === normalized)
+    return (this._ots.value.find((item: any) => String(item.OT).trim().toUpperCase() === normalized)
+      || this._internalDatabase.value.find((item: any) => String(item.OT).trim().toUpperCase() === normalized)
       || null) as any;
-  }
-
-  private mapActiveOrders(allOrders: Partial<OT>[]) {
-    const activeIds = this.readActiveOtIds();
-    if (activeIds.size === 0) return [];
-
-    return allOrders.filter((item) => activeIds.has(String(item.OT).trim().toUpperCase()));
-  }
-
-  private readActiveOtIds() {
-    try {
-      const raw = this.storage.getItem(this.activeOtStorageKey);
-      if (!raw) return new Set<string>();
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return new Set<string>();
-      return new Set(
-        parsed
-          .map((value) => String(value || '').trim().toUpperCase())
-          .filter(Boolean),
-      );
-    } catch {
-      return new Set<string>();
-    }
-  }
-
-  private persistActiveOtIds(items: Partial<OT>[]) {
-    const ids = items
-      .map((item) => String(item.OT || '').trim().toUpperCase())
-      .filter(Boolean);
-
-    this.storage.setItem(this.activeOtStorageKey, JSON.stringify(ids));
   }
 
   private normalizeImportedOt(row: Partial<OT>) {
@@ -281,6 +390,7 @@ export class OrdersService {
       ...rawPayload,
       id: item.id,
       row_version: item.row_version,
+      backend_status: this.normalizeApiStatus(item.status),
       OT: String(item.OT || item.ot_number || rawPayload.OT || '').trim().toUpperCase(),
       descripcion: this.readRawValue(rawPayload, 'descripcion', item.descripcion),
       'Nro. Cotizacion': this.readRawValue(rawPayload, 'Nro. Cotizacion', item.nro_cotizacion),
@@ -359,7 +469,7 @@ export class OrdersService {
       orden_compra: this.toNullableString(ot['ORDEN COMPRA']),
       cliente_razon_social: this.toNullableString(ot['Razon Social']),
       vendedor: this.toNullableString(ot.Vendedor),
-      status: this.mapStatusToApi(ot.Estado_pedido),
+      status: this.mapStatusToApi(ot.Estado_pedido, ot.backend_status),
       fecha_pedido: this.normalizeDate(ot['FECHA PED']),
       fecha_entrega: this.normalizeDate(ot['FECHA ENT']),
       fecha_ingreso_planta: this.normalizeDate(ot['FECHA INGRESO PLANTA']),
@@ -445,7 +555,7 @@ export class OrdersService {
   }
 
   private mapStatusFromApi(status: string) {
-    const normalized = String(status || '').toUpperCase();
+    const normalized = this.normalizeApiStatus(status);
     if (normalized === 'IN_PRODUCTION') return 'EN PROCESO';
     if (normalized === 'COMPLETED') return 'FINALIZADO';
     if (normalized === 'PARTIAL') return 'PAUSADA';
@@ -453,13 +563,28 @@ export class OrdersService {
     return 'PENDIENTE';
   }
 
-  private mapStatusToApi(status: unknown) {
-    const normalized = String(status || '').toUpperCase();
-    if (normalized.includes('PROCESO')) return 'IN_PRODUCTION';
-    if (normalized.includes('FINAL')) return 'COMPLETED';
-    if (normalized.includes('PAUS')) return 'PARTIAL';
-    if (normalized.includes('PLAN')) return 'PLANNED';
-    return 'IMPORTED';
+  private mapStatusToApi(status: unknown, currentStatus?: unknown) {
+    const normalized = this.normalizeApiStatus(status);
+    const normalizedCurrentStatus = this.normalizeApiStatus(currentStatus);
+
+    if (normalized === 'IN_PRODUCTION' || normalized.includes('PROCESO')) return 'IN_PRODUCTION';
+    if (normalized === 'COMPLETED' || normalized.includes('FINAL')) return 'COMPLETED';
+    if (normalized === 'PARTIAL' || normalized.includes('PAUS')) return 'PARTIAL';
+    if (normalized === 'CANCELLED') return 'CANCELLED';
+    if (normalized === 'PLANNED' || normalized.includes('PLAN')) return 'PLANNED';
+    if (normalized === 'IMPORTED') return 'IMPORTED';
+    if (normalized.includes('PEND')) {
+      if (normalizedCurrentStatus === 'PLANNED' || normalizedCurrentStatus === 'IMPORTED') {
+        return normalizedCurrentStatus;
+      }
+      return 'IMPORTED';
+    }
+
+    return normalizedCurrentStatus || 'IMPORTED';
+  }
+
+  private normalizeApiStatus(status: unknown) {
+    return String(status || '').trim().toUpperCase();
   }
 
   private normalizeDate(value: unknown) {

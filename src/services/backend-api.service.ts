@@ -51,11 +51,14 @@ export class BackendApiService {
   updateSystemConfig(body: any) { return this.api.put<any>('/system-config', body); }
 
   getWorkOrders(query?: any) { return this.api.get<any>('/work-orders', { query }); }
+  getManagementWorkOrders() { return this.api.get<any[]>('/work-orders/management'); }
   getWorkOrder(id: string) { return this.api.get<any>(`/work-orders/${id}`); }
   createWorkOrder(body: any) { return this.api.post<any>('/work-orders', body); }
   bulkUpsertWorkOrders(body: any) { return this.api.post<any>('/work-orders/bulk-upsert', body); }
   updateWorkOrder(id: string, body: any) { return this.api.put<any>(`/work-orders/${id}`, body); }
   updateWorkOrderStatus(id: string, body: any) { return this.api.patch<any>(`/work-orders/${id}/status`, body); }
+  enterWorkOrderManagement(id: string) { return this.api.post<any>(`/work-orders/${id}/management/enter`, {}); }
+  exitWorkOrderManagement(id: string, body: any) { return this.api.post<any>(`/work-orders/${id}/management/exit`, body); }
   deleteWorkOrder(id: string) { return this.api.delete(`/work-orders/${id}`); }
 
   getClises(query?: any) { return this.api.get<any>('/inventory/clises', { query }); }

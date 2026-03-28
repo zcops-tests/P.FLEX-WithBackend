@@ -680,7 +680,7 @@ export class DashboardComponent implements OnDestroy {
   }
 
   async handleOtSave(formData: Partial<OT>) {
-    const existing = this.ordersService.internalDatabase.find((ot) => String(ot.OT).trim() === String(formData.OT).trim());
+    const existing = await this.ordersService.findWorkOrderByOtNumber(formData.OT);
 
     if (existing && !confirm(`La OT ${formData.OT} ya existe. ¿Desea sobrescribirla?`)) {
       return;

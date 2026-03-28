@@ -1,15 +1,20 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { CreateWorkOrderDto, WorkOrderStatus } from './dto/work-order.dto';
+import {
+  CreateWorkOrderDto,
+  WorkOrderManagementExitAction,
+  WorkOrderStatus,
+} from './dto/work-order.dto';
 import { WorkOrderQueryDto } from './dto/work-order-query.dto';
 import { buildPaginatedResult, resolvePagination } from '../../common/utils/pagination.util';
-import { assertAllowedTransition } from '../../common/utils/state-transition.util';
 import { toFrontendWorkOrder } from '../../common/utils/frontend-entity.util';
 import { normalizeOptionalDateInput } from '../../common/utils/date-input.util';
 
 const WORK_ORDER_BULK_CHUNK_SIZE = 200;
+
 type NormalizedWorkOrderInput = CreateWorkOrderDto & { ot_number: string };
+type RawPayloadRecord = Record<string, unknown>;
 
 @Injectable()
 export class WorkOrdersService {
@@ -108,6 +113,25 @@ export class WorkOrdersService {
     return buildPaginatedResult(items.map((item) => toFrontendWorkOrder(item)), total, pagination);
   }
 
+  async findManagement() {
+    const entries = await this.prisma.workOrderManagementEntry.findMany({
+      where: {
+        exited_at: null,
+        work_order: {
+          is: {
+            deleted_at: null,
+          },
+        },
+      },
+      orderBy: { entered_at: 'desc' },
+      include: {
+        work_order: true,
+      },
+    });
+
+    return entries.map((entry) => toFrontendWorkOrder(entry.work_order));
+  }
+
   async findOne(id: string) {
     const wo = await this.prisma.workOrder.findUnique({
       where: { id },
@@ -142,25 +166,150 @@ export class WorkOrdersService {
   }
 
   async updateStatus(id: string, status: WorkOrderStatus) {
-    const wo = await this.findOne(id);
+    const workOrder = await this.requireWorkOrderRecord(id);
 
-    const allowedTransitions: Record<string, string[]> = {
-      [WorkOrderStatus.IMPORTED]: [WorkOrderStatus.PLANNED, WorkOrderStatus.CANCELLED],
-      [WorkOrderStatus.PLANNED]: [WorkOrderStatus.IN_PRODUCTION, WorkOrderStatus.CANCELLED],
-      [WorkOrderStatus.IN_PRODUCTION]: [WorkOrderStatus.PARTIAL, WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED],
-      [WorkOrderStatus.PARTIAL]: [WorkOrderStatus.IN_PRODUCTION, WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED],
-      [WorkOrderStatus.COMPLETED]: [],
-      [WorkOrderStatus.CANCELLED]: [],
-    };
-
-    assertAllowedTransition(wo.status, status, allowedTransitions, 'Transition');
+    if (workOrder.status === status) {
+      return toFrontendWorkOrder({
+        ...workOrder,
+        raw_payload: this.mergeRawPayload(workOrder.raw_payload, {
+          Estado_pedido: this.toFrontendStatus(status),
+        }),
+      });
+    }
 
     const updated = await this.prisma.workOrder.update({
       where: { id },
-      data: { status },
+      data: {
+        status,
+        raw_payload: this.mergeRawPayload(workOrder.raw_payload, {
+          Estado_pedido: this.toFrontendStatus(status),
+        }),
+        row_version: { increment: 1 },
+      },
     });
 
     return toFrontendWorkOrder(updated);
+  }
+
+  async enterManagement(id: string, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const workOrder = await tx.workOrder.findUnique({
+        where: { id },
+      });
+
+      if (!workOrder || workOrder.deleted_at) {
+        throw new NotFoundException(`Work Order with ID ${id} not found`);
+      }
+
+      const activeEntry = await tx.workOrderManagementEntry.findFirst({
+        where: {
+          work_order_id: id,
+          exited_at: null,
+        },
+      });
+
+      if (activeEntry) {
+        throw new ConflictException(`Work Order ${workOrder.ot_number} is already in management`);
+      }
+
+      const today = new Date();
+      const effectivePlantEntryDate = workOrder.fecha_ingreso_planta ?? today;
+      const effectivePlantEntryDateText = this.toDateString(effectivePlantEntryDate);
+      const nextStatus = workOrder.status === WorkOrderStatus.IMPORTED
+        ? WorkOrderStatus.PLANNED
+        : workOrder.status;
+
+      const rawPayload = this.toRawPayloadRecord(workOrder.raw_payload);
+      const needsUpdate = !workOrder.fecha_ingreso_planta
+        || workOrder.status !== nextStatus
+        || String(rawPayload['FECHA INGRESO PLANTA'] ?? '') !== effectivePlantEntryDateText
+        || String(rawPayload.Estado_pedido ?? '') !== this.toFrontendStatus(nextStatus);
+
+      const updatedWorkOrder = needsUpdate
+        ? await tx.workOrder.update({
+          where: { id },
+          data: {
+            fecha_ingreso_planta: effectivePlantEntryDate,
+            status: nextStatus,
+            raw_payload: this.mergeRawPayload(workOrder.raw_payload, {
+              'FECHA INGRESO PLANTA': effectivePlantEntryDateText,
+              Estado_pedido: this.toFrontendStatus(nextStatus),
+            }),
+            row_version: { increment: 1 },
+          },
+        })
+        : workOrder;
+
+      await tx.workOrderManagementEntry.create({
+        data: {
+          work_order_id: id,
+          entered_by_user_id: userId,
+        },
+      });
+
+      return toFrontendWorkOrder(updatedWorkOrder);
+    });
+  }
+
+  async exitManagement(id: string, exitAction: WorkOrderManagementExitAction, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const activeEntry = await tx.workOrderManagementEntry.findFirst({
+        where: {
+          work_order_id: id,
+          exited_at: null,
+        },
+        include: {
+          work_order: true,
+        },
+      });
+
+      if (!activeEntry || activeEntry.work_order.deleted_at) {
+        throw new NotFoundException(`Work Order with ID ${id} is not currently in management`);
+      }
+
+      let updatedWorkOrder = activeEntry.work_order;
+
+      if (exitAction === WorkOrderManagementExitAction.REVERT_TO_IMPORTED) {
+        if (activeEntry.work_order.status !== WorkOrderStatus.PLANNED) {
+          throw new ConflictException('Only work orders still in PLANNED status can be reverted to IMPORTED');
+        }
+
+        updatedWorkOrder = await tx.workOrder.update({
+          where: { id },
+          data: {
+            status: WorkOrderStatus.IMPORTED,
+            fecha_ingreso_planta: null,
+            raw_payload: this.mergeRawPayload(activeEntry.work_order.raw_payload, {
+              'FECHA INGRESO PLANTA': '',
+              Estado_pedido: this.toFrontendStatus(WorkOrderStatus.IMPORTED),
+            }),
+            row_version: { increment: 1 },
+          },
+        });
+      } else if (exitAction === WorkOrderManagementExitAction.CLEAR_PLANT_ENTRY) {
+        updatedWorkOrder = await tx.workOrder.update({
+          where: { id },
+          data: {
+            fecha_ingreso_planta: null,
+            raw_payload: this.mergeRawPayload(activeEntry.work_order.raw_payload, {
+              'FECHA INGRESO PLANTA': '',
+            }),
+            row_version: { increment: 1 },
+          },
+        });
+      }
+
+      await tx.workOrderManagementEntry.update({
+        where: { id: activeEntry.id },
+        data: {
+          exited_at: new Date(),
+          exited_by_user_id: userId,
+          exit_action: exitAction,
+        },
+      });
+
+      return toFrontendWorkOrder(updatedWorkOrder);
+    });
   }
 
   async remove(id: string) {
@@ -170,13 +319,31 @@ export class WorkOrdersService {
       throw new ConflictException(`Cannot delete Work Order with ID ${id} because it has associated production reports`);
     }
 
-    return this.prisma.workOrder.update({
+    const updated = await this.prisma.workOrder.update({
       where: { id },
       data: {
         deleted_at: new Date(),
         status: WorkOrderStatus.CANCELLED,
+        raw_payload: this.mergeRawPayload((wo as any).raw_payload, {
+          Estado_pedido: this.toFrontendStatus(WorkOrderStatus.CANCELLED),
+        }),
+        row_version: { increment: 1 },
       },
     });
+
+    return toFrontendWorkOrder(updated);
+  }
+
+  private async requireWorkOrderRecord(id: string) {
+    const workOrder = await this.prisma.workOrder.findUnique({
+      where: { id },
+    });
+
+    if (!workOrder || workOrder.deleted_at) {
+      throw new NotFoundException(`Work Order with ID ${id} not found`);
+    }
+
+    return workOrder;
   }
 
   private buildCreateData(dto: Partial<CreateWorkOrderDto>): Prisma.WorkOrderCreateInput {
@@ -261,5 +428,35 @@ export class WorkOrdersService {
       ot_number: String(dto.ot_number || '').trim().toUpperCase(),
       raw_payload: rawPayload,
     };
+  }
+
+  private toFrontendStatus(status: string) {
+    const normalized = String(status || '').toUpperCase();
+    if (normalized === WorkOrderStatus.IN_PRODUCTION) return 'EN PROCESO';
+    if (normalized === WorkOrderStatus.COMPLETED) return 'FINALIZADO';
+    if (normalized === WorkOrderStatus.PARTIAL || normalized === WorkOrderStatus.CANCELLED) return 'PAUSADA';
+    return 'PENDIENTE';
+  }
+
+  private toRawPayloadRecord(rawPayload: unknown): RawPayloadRecord {
+    if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+      return {};
+    }
+
+    return { ...(rawPayload as RawPayloadRecord) };
+  }
+
+  private mergeRawPayload(rawPayload: unknown, updates: Record<string, unknown>) {
+    const merged = this.toRawPayloadRecord(rawPayload);
+
+    Object.entries(updates).forEach(([key, value]) => {
+      merged[key] = value ?? '';
+    });
+
+    return merged as Prisma.InputJsonValue;
+  }
+
+  private toDateString(value: Date | string) {
+    return new Date(value).toISOString().slice(0, 10);
   }
 }
