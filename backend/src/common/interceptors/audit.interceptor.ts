@@ -13,7 +13,11 @@ import { sanitizeForJson } from '../utils/serialization.util';
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   private readonly logger = new Logger(AuditInterceptor.name);
-  private readonly ignoredPaths = ['/api/v1/sync', '/api/v1/auth/refresh', '/docs'];
+  private readonly ignoredPaths = [
+    '/api/v1/sync',
+    '/api/v1/auth/refresh',
+    '/docs',
+  ];
 
   constructor(private prisma: PrismaService) {}
 
@@ -24,7 +28,10 @@ export class AuditInterceptor implements NestInterceptor {
     const url = this.normalizeUrl(request.originalUrl || request.url);
 
     // We only audit mutations (POST, PUT, PATCH, DELETE)
-    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || this.shouldSkipAudit(url)) {
+    if (
+      !['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ||
+      this.shouldSkipAudit(url)
+    ) {
       return next.handle();
     }
 
@@ -58,7 +65,8 @@ export class AuditInterceptor implements NestInterceptor {
       await this.prisma.auditLog.create({
         data: {
           user_id: (user?.sub as string) || (user?.id as string),
-          user_name_snapshot: (user?.username as string) || (user?.name as string),
+          user_name_snapshot:
+            (user?.username as string) || (user?.name as string),
           role_code_snapshot: user?.role as string,
           entity: this.extractEntityFromUrl(url),
           entity_id: data?.id || request.params?.id || 'unknown',
@@ -91,6 +99,12 @@ export class AuditInterceptor implements NestInterceptor {
     }
     if (path.startsWith('production/diecutting/reports')) {
       return 'diecut_reports';
+    }
+    if (path.startsWith('production/rewinding/reports')) {
+      return 'rewind_reports';
+    }
+    if (path.startsWith('production/packaging/reports')) {
+      return 'packaging_reports';
     }
     if (path.startsWith('quality/incidents')) {
       return 'incidents';

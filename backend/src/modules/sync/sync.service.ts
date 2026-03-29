@@ -1,6 +1,15 @@
-import { Injectable, Logger, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { SyncPullRequestDto, SyncPushRequestDto, SyncMutationDto } from './dto/sync.dto';
+import {
+  SyncPullRequestDto,
+  SyncPushRequestDto,
+  SyncMutationDto,
+} from './dto/sync.dto';
 
 type SyncMutationStatus = 'SUCCESS' | 'CONFLICT' | 'ERROR';
 
@@ -20,6 +29,8 @@ export class SyncService {
     'quality/capa-actions': 'capa_actions',
     'production/printing/reports': 'print_reports',
     'production/diecutting/reports': 'diecut_reports',
+    'production/rewinding/reports': 'rewind_reports',
+    'production/packaging/reports': 'packaging_reports',
     'inventory/stock': 'stock_items',
     'inventory/clises': 'clises',
     'inventory/dies': 'dies',
@@ -27,7 +38,7 @@ export class SyncService {
 
   constructor(
     private prisma: PrismaService,
-    // We could use HttpService to re-route push mutations to actual controllers 
+    // We could use HttpService to re-route push mutations to actual controllers
     // or call services directly. Calling services is safer/faster.
   ) {}
 
@@ -49,35 +60,40 @@ export class SyncService {
             OR: [
               { changed_at: { gt: lastTimestamp } },
               {
-                AND: [
-                  { changed_at: lastTimestamp },
-                  { id: { gt: lastId } },
-                ],
+                AND: [{ changed_at: lastTimestamp }, { id: { gt: lastId } }],
               },
             ],
           },
           { entity: { in: allowedEntities } },
         ],
       },
-      orderBy: [
-        { changed_at: 'asc' },
-        { id: 'asc' },
-      ],
+      orderBy: [{ changed_at: 'asc' }, { id: 'asc' }],
       take: batch_size,
     });
 
     const hasMore = logs.length === batch_size;
-    const newCursor = logs.length > 0 ? {
-      last_changed_at: logs[logs.length - 1].changed_at.toISOString(),
-      last_id: logs[logs.length - 1].id.toString(),
-    } : { last_changed_at, last_id };
+    const newCursor =
+      logs.length > 0
+        ? {
+            last_changed_at: logs[logs.length - 1].changed_at.toISOString(),
+            last_id: logs[logs.length - 1].id.toString(),
+          }
+        : { last_changed_at, last_id };
 
     // Fetch the actual data
     const results = await Promise.all(
       logs.map(async (log) => {
         const model = this.mapEntityToModel(log.entity);
-        const delegate = this.prisma[model] as { findUnique?: (args: { where: { id: string } }) => Promise<unknown> } | undefined;
-        const data = delegate?.findUnique ? await delegate.findUnique({ where: { id: log.entity_id } }) : null;
+        const delegate = this.prisma[model] as
+          | {
+              findUnique?: (args: {
+                where: { id: string };
+              }) => Promise<unknown>;
+            }
+          | undefined;
+        const data = delegate?.findUnique
+          ? await delegate.findUnique({ where: { id: log.entity_id } })
+          : null;
 
         return {
           log_id: log.id.toString(),
@@ -97,7 +113,15 @@ export class SyncService {
   }
 
   async getStatus() {
-    const [latestChange, latestMutation, pendingMutations, issues, pendingCount, conflictCount, errorCount] = await Promise.all([
+    const [
+      latestChange,
+      latestMutation,
+      pendingMutations,
+      issues,
+      pendingCount,
+      conflictCount,
+      errorCount,
+    ] = await Promise.all([
       this.prisma.changeLog.findFirst({
         orderBy: [{ changed_at: 'desc' }, { id: 'desc' }],
       }),
@@ -122,7 +146,10 @@ export class SyncService {
     return {
       connected: true,
       last_server_change_at: latestChange?.changed_at?.toISOString() || null,
-      last_sync_activity_at: latestMutation?.processed_at?.toISOString() || latestChange?.changed_at?.toISOString() || null,
+      last_sync_activity_at:
+        latestMutation?.processed_at?.toISOString() ||
+        latestChange?.changed_at?.toISOString() ||
+        null,
       counts: {
         pending: pendingCount,
         conflicts: conflictCount,
@@ -150,22 +177,37 @@ export class SyncService {
   }
 
   async pushMutations(dto: SyncPushRequestDto, userId: string) {
-    const pushResults: Array<{ mutation_id: string; status: SyncMutationStatus; response?: any; message?: string }> = [];
+    const pushResults: Array<{
+      mutation_id: string;
+      status: SyncMutationStatus;
+      response?: any;
+      message?: string;
+    }> = [];
     const { mutations, device_id } = dto;
 
     for (const mutation of mutations) {
-      const result = await this.processSingleMutation(mutation, userId, device_id);
+      const result = await this.processSingleMutation(
+        mutation,
+        userId,
+        device_id,
+      );
       pushResults.push(result);
     }
 
     return {
-      processedMutationIds: pushResults.filter(r => r.status === 'SUCCESS').map(r => r.mutation_id),
-      conflicts: pushResults.filter(r => r.status === 'CONFLICT'),
-      validationErrors: pushResults.filter(r => r.status === 'ERROR'),
+      processedMutationIds: pushResults
+        .filter((r) => r.status === 'SUCCESS')
+        .map((r) => r.mutation_id),
+      conflicts: pushResults.filter((r) => r.status === 'CONFLICT'),
+      validationErrors: pushResults.filter((r) => r.status === 'ERROR'),
     };
   }
 
-  private async processSingleMutation(mutation: SyncMutationDto, userId: string, deviceId: string) {
+  private async processSingleMutation(
+    mutation: SyncMutationDto,
+    userId: string,
+    deviceId: string,
+  ) {
     const metadata = this.parseMutationMetadata(mutation);
 
     // 1. Check idempotency
@@ -190,7 +232,7 @@ export class SyncService {
         user_id: userId,
         client_id: deviceId,
         action: metadata.action,
-        request_payload: mutation.payload as any,
+        request_payload: mutation.payload,
         response_payload: {} as any,
         status: 'PENDING',
         processed_at: new Date(),
@@ -209,13 +251,20 @@ export class SyncService {
         },
       });
 
-      return { mutation_id: mutation.mutation_id, status: 'SUCCESS' as const, response };
+      return {
+        mutation_id: mutation.mutation_id,
+        status: 'SUCCESS' as const,
+        response,
+      };
     } catch (error) {
-      this.logger.error(`Mutation ${mutation.mutation_id} failed: ${error.message}`);
-      
+      this.logger.error(
+        `Mutation ${mutation.mutation_id} failed: ${error.message}`,
+      );
+
       const status = error instanceof ConflictException ? 'CONFLICT' : 'ERROR';
-      const logStatus = error instanceof ConflictException ? 'CONFLICT' : 'REJECTED';
-      
+      const logStatus =
+        error instanceof ConflictException ? 'CONFLICT' : 'REJECTED';
+
       await this.prisma.syncMutationLog.update({
         where: { mutation_id: mutation.mutation_id },
         data: {
@@ -225,15 +274,19 @@ export class SyncService {
         },
       });
 
-      return { 
-        mutation_id: mutation.mutation_id, 
-        status: status as SyncMutationStatus, 
-        message: error.message 
+      return {
+        mutation_id: mutation.mutation_id,
+        status: status as SyncMutationStatus,
+        message: error.message,
       };
     }
   }
 
-  private async executeLogic(mutation: SyncMutationDto, userId: string, metadata: ParsedSyncMutation) {
+  private async executeLogic(
+    mutation: SyncMutationDto,
+    userId: string,
+    metadata: ParsedSyncMutation,
+  ) {
     return {
       success: true,
       accepted: true,
@@ -249,37 +302,98 @@ export class SyncService {
 
   private mapEntityToModel(entity: string): string {
     const mapping: Record<string, string> = {
-      'areas': 'area',
-      'machines': 'machine',
-      'work_orders': 'workOrder',
-      'clises': 'clise',
-      'dies': 'die',
-      'stock_items': 'stockItem',
-      'print_reports': 'printReport',
-      'diecut_reports': 'diecutReport',
-      'incidents': 'incident',
+      areas: 'area',
+      machines: 'machine',
+      work_orders: 'workOrder',
+      clises: 'clise',
+      dies: 'die',
+      stock_items: 'stockItem',
+      print_reports: 'printReport',
+      diecut_reports: 'diecutReport',
+      rewind_reports: 'rewindReport',
+      packaging_reports: 'packagingReport',
+      incidents: 'incident',
     };
     return mapping[entity] || entity;
   }
 
-  private getAllowedEntitiesForProfile(profile: string, scopes?: string[]): string[] {
+  private getAllowedEntitiesForProfile(
+    profile: string,
+    scopes?: string[],
+  ): string[] {
     const allSourcedEntities = [
-      'areas', 'machines', 'shifts', 'users', 'roles', 'permissions',
-      'work_orders', 'clises', 'dies', 'racks', 'stock_items',
-      'print_reports', 'print_activities', 'diecut_reports', 'diecut_activities',
-      'incidents', 'capa_actions'
+      'areas',
+      'machines',
+      'shifts',
+      'users',
+      'roles',
+      'permissions',
+      'work_orders',
+      'clises',
+      'dies',
+      'racks',
+      'stock_items',
+      'print_reports',
+      'print_activities',
+      'diecut_reports',
+      'diecut_activities',
+      'rewind_reports',
+      'packaging_reports',
+      'incidents',
+      'capa_actions',
     ];
 
     let allowedEntities = allSourcedEntities;
 
     if (profile === 'PRINT_STATION') {
-      allowedEntities = ['areas', 'machines', 'shifts', 'users', 'work_orders', 'clises', 'print_reports', 'print_activities', 'incidents'];
+      allowedEntities = [
+        'areas',
+        'machines',
+        'shifts',
+        'users',
+        'work_orders',
+        'clises',
+        'print_reports',
+        'print_activities',
+        'incidents',
+      ];
     }
     if (profile === 'DIECUT_STATION') {
-      allowedEntities = ['areas', 'machines', 'shifts', 'users', 'work_orders', 'dies', 'diecut_reports', 'diecut_activities', 'incidents'];
+      allowedEntities = [
+        'areas',
+        'machines',
+        'shifts',
+        'users',
+        'work_orders',
+        'dies',
+        'diecut_reports',
+        'diecut_activities',
+        'incidents',
+      ];
+    }
+    if (profile === 'FINISHING_STATION') {
+      allowedEntities = [
+        'areas',
+        'machines',
+        'shifts',
+        'users',
+        'work_orders',
+        'rewind_reports',
+        'packaging_reports',
+        'stock_items',
+        'incidents',
+      ];
     }
     if (profile === 'WAREHOUSE') {
-      allowedEntities = ['areas', 'users', 'clises', 'dies', 'racks', 'stock_items'];
+      allowedEntities = [
+        'areas',
+        'users',
+        'clises',
+        'dies',
+        'racks',
+        'stock_items',
+        'packaging_reports',
+      ];
     }
 
     if (!scopes?.length) {
@@ -295,10 +409,16 @@ export class SyncService {
     const resourcePath = normalizedEndpoint.replace(/^\/api\/v\d+\//, '');
     const matchedBasePath = Object.keys(this.syncEndpointMap)
       .sort((a, b) => b.length - a.length)
-      .find((candidate) => resourcePath === candidate || resourcePath.startsWith(`${candidate}/`));
+      .find(
+        (candidate) =>
+          resourcePath === candidate ||
+          resourcePath.startsWith(`${candidate}/`),
+      );
 
     if (!matchedBasePath) {
-      throw new BadRequestException(`Endpoint ${normalizedEndpoint} is not enabled for sync mutations`);
+      throw new BadRequestException(
+        `Endpoint ${normalizedEndpoint} is not enabled for sync mutations`,
+      );
     }
 
     const resourceSegments = resourcePath.split('/').filter(Boolean);
@@ -321,13 +441,18 @@ export class SyncService {
   }
 
   private extractEntityId(segments: string[]) {
-    const dynamicSegment = segments.find((segment) => !['status', 'lock', 'unlock', 'complete', 'capa'].includes(segment));
+    const dynamicSegment = segments.find(
+      (segment) =>
+        !['status', 'lock', 'unlock', 'complete', 'capa'].includes(segment),
+    );
     return dynamicSegment || null;
   }
 
   private extractPayloadId(payload: Record<string, unknown>) {
     const payloadId = payload?.id;
-    return typeof payloadId === 'string' && payloadId.length > 0 ? payloadId : null;
+    return typeof payloadId === 'string' && payloadId.length > 0
+      ? payloadId
+      : null;
   }
 
   private mapMethodToAction(method: string): ParsedSyncMutation['action'] {

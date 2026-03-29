@@ -34,15 +34,29 @@ describe('ShiftsService', () => {
 
   describe('create', () => {
     it('should throw ConflictException if shift code exists', async () => {
-      mockPrismaService.shift.findUnique.mockResolvedValue({ id: '1', code: 'T1' });
-      await expect(service.create({ code: 'T1', name: 'Turno 1', start_time: '06:00', end_time: '14:00' }))
-        .rejects.toThrow(ConflictException);
+      mockPrismaService.shift.findUnique.mockResolvedValue({
+        id: '1',
+        code: 'T1',
+      });
+      await expect(
+        service.create({
+          code: 'T1',
+          name: 'Turno 1',
+          start_time: '06:00',
+          end_time: '14:00',
+        }),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('should create a shift if it does not exist', async () => {
       mockPrismaService.shift.findUnique.mockResolvedValue(null);
       mockPrismaService.shift.create.mockResolvedValue({ id: '1', code: 'T1' });
-      const result = await service.create({ code: 'T1', name: 'Turno 1', start_time: '06:00', end_time: '14:00' });
+      const result = await service.create({
+        code: 'T1',
+        name: 'Turno 1',
+        start_time: '06:00',
+        end_time: '14:00',
+      });
       expect(result).toEqual({ id: '1', code: 'T1' });
     });
   });

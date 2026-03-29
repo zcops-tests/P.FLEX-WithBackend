@@ -149,14 +149,22 @@ async function main() {
   }
 
   // 3. Areas
-  const printArea = await prisma.area.upsert({
-    where: { code: 'IMP' },
-    update: {},
-    create: {
-      code: 'IMP',
-      name: 'Imprenta',
-    },
-  });
+  for (const area of [
+    { code: 'IMP', name: 'Imprenta' },
+    { code: 'TROQ', name: 'Troquelado' },
+    { code: 'REBOB', name: 'Rebobinado' },
+    { code: 'EMPAQ', name: 'Empaquetado' },
+  ]) {
+    await prisma.area.upsert({
+      where: { code: area.code },
+      update: {
+        name: area.name,
+        active: true,
+        deleted_at: null,
+      },
+      create: area,
+    });
+  }
 
   // 4. Shifts
   await prisma.shift.upsert({

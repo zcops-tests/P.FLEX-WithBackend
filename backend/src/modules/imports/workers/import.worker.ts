@@ -30,16 +30,30 @@ export class ImportWorker extends WorkerHost {
 
   private async handleParse(data: any) {
     const { jobId, fileId, options } = data;
-    const job = await this.prisma.importJob.findUnique({ where: { id: jobId } });
+    const job = await this.prisma.importJob.findUnique({
+      where: { id: jobId },
+    });
     if (!job) return;
 
     this.logger.log(`Performing Tolerant Parse for job ${jobId}`);
 
     // Simulate 3 rows from an Excel file
     const mockRows = [
-      { ot_number: 'OT-1001', cliente_razon_social: 'Client A', cantidad_pedida: 5000 },
-      { ot_number: '', cliente_razon_social: 'Client B', cantidad_pedida: 'INVALID' }, // Error: OT required + NaN
-      { ot_number: 'OT-1002', cliente_razon_social: 'Client C', cantidad_pedida: 2000 },
+      {
+        ot_number: 'OT-1001',
+        cliente_razon_social: 'Client A',
+        cantidad_pedida: 5000,
+      },
+      {
+        ot_number: '',
+        cliente_razon_social: 'Client B',
+        cantidad_pedida: 'INVALID',
+      }, // Error: OT required + NaN
+      {
+        ot_number: 'OT-1002',
+        cliente_razon_social: 'Client C',
+        cantidad_pedida: 2000,
+      },
     ];
 
     let validCount = 0;
@@ -47,7 +61,10 @@ export class ImportWorker extends WorkerHost {
 
     for (let i = 0; i < mockRows.length; i++) {
       const rowData = mockRows[i];
-      const errors = await this.importsService.validateRow(job.entity_name, rowData);
+      const errors = await this.importsService.validateRow(
+        job.entity_name,
+        rowData,
+      );
       const is_valid = errors.length === 0;
 
       if (is_valid) validCount++;
@@ -60,7 +77,7 @@ export class ImportWorker extends WorkerHost {
             import_job_id: jobId,
             row_number: i + 1,
             row_status: is_valid ? 'VALID' : 'INVALID',
-            business_key: rowData.ot_number || `ROW-${i+1}`,
+            business_key: rowData.ot_number || `ROW-${i + 1}`,
             raw_row: rowData as any,
             normalized_row: (is_valid ? rowData : null) as any,
             validation_errors: (errors.length > 0 ? errors : null) as any,
@@ -76,7 +93,9 @@ export class ImportWorker extends WorkerHost {
       timestamp: new Date().toISOString(),
     });
 
-    this.logger.log(`Import job ${jobId} staged. Valid: ${validCount}, Invalid: ${invalidCount}`);
+    this.logger.log(
+      `Import job ${jobId} staged. Valid: ${validCount}, Invalid: ${invalidCount}`,
+    );
   }
 
   private async handleApply(data: any) {

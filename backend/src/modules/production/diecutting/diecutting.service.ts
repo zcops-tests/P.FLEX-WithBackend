@@ -1,13 +1,25 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
-import { CreateDiecutReportDto, DiecutReportStatus } from './dto/diecut-report.dto';
+import {
+  CreateDiecutReportDto,
+  DiecutReportStatus,
+} from './dto/diecut-report.dto';
 import { StockService } from '../../inventory/stock/stock.service';
 import { DiecutReportQueryDto } from './dto/diecut-report-query.dto';
-import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import {
+  buildPaginatedResult,
+  resolvePagination,
+} from '../../../common/utils/pagination.util';
 import { assertAllowedTransition } from '../../../common/utils/state-transition.util';
 import { assertReportLockAvailable } from '../../../common/utils/report-lock.util';
 import { toFrontendDiecutReport } from '../../../common/utils/frontend-entity.util';
+import { machineSupportsProcess } from '../../../common/utils/production-machine.util';
 
 @Injectable()
 export class DiecuttingService {
@@ -16,15 +28,19 @@ export class DiecuttingService {
     private stock: StockService,
   ) {}
 
-  async createReport(dto: CreateDiecutReportDto, operatorId: string) {
+  async createReport(dto: CreateDiecutReportDto, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
+      const effectiveOperatorId = dto.operator_id || actorUserId;
+
       // 1. Get snapshots
       let woNumber: string | null = null;
       let client: string | null = null;
       let product: string | null = null;
 
       if (dto.work_order_id) {
-        const wo = await tx.workOrder.findUnique({ where: { id: dto.work_order_id } });
+        const wo = await tx.workOrder.findUnique({
+          where: { id: dto.work_order_id },
+        });
         if (wo) {
           woNumber = wo.ot_number;
           client = wo.cliente_razon_social;
@@ -32,7 +48,49 @@ export class DiecuttingService {
         }
       }
 
-      const operator = await tx.user.findUnique({ where: { id: operatorId } });
+      const operator = await tx.user.findUnique({
+        where: { id: effectiveOperatorId },
+        include: { role: true },
+      });
+
+      if (!operator || operator.deleted_at || operator.active === false) {
+        throw new NotFoundException(
+          `Operator with ID ${effectiveOperatorId} not found`,
+        );
+      }
+
+      const machine = await tx.machine.findUnique({
+        where: { id: dto.machine_id },
+        include: { area: true },
+      });
+
+      if (!machine || machine.deleted_at || machine.active === false) {
+        throw new NotFoundException(
+          `Machine with ID ${dto.machine_id} not found`,
+        );
+      }
+
+      if (!machineSupportsProcess(machine, 'DIECUT')) {
+        throw new BadRequestException(
+          'La máquina seleccionada no pertenece al área de troquelado.',
+        );
+      }
+
+      const die = dto.die_id
+        ? await tx.die.findUnique({ where: { id: dto.die_id } })
+        : dto.die_series
+          ? await tx.die.findUnique({ where: { serie: dto.die_series.trim() } })
+          : null;
+
+      if (dto.die_id && !die) {
+        throw new NotFoundException(`Die with ID ${dto.die_id} not found`);
+      }
+
+      if (!dto.die_id && dto.die_series && !die) {
+        throw new NotFoundException(
+          `Die with serie ${dto.die_series} not found`,
+        );
+      }
 
       // 2. Check for time overlaps
       for (const activity of dto.activities) {
@@ -56,7 +114,9 @@ export class DiecuttingService {
         });
 
         if (overlaps) {
-          throw new ConflictException(`Activity overlaps with existing record on machine ${dto.machine_id} at ${startTime}`);
+          throw new ConflictException(
+            `Activity overlaps with existing record on machine ${dto.machine_id} at ${startTime}`,
+          );
         }
       }
 
@@ -66,19 +126,23 @@ export class DiecuttingService {
           reported_at: new Date(dto.reported_at),
           work_order_id: dto.work_order_id,
           machine_id: dto.machine_id,
-          operator_id: operatorId,
+          operator_id: effectiveOperatorId,
           shift_id: dto.shift_id,
-          die_id: dto.die_id,
+          die_id: die?.id || dto.die_id,
           status: DiecutReportStatus.SUBMITTED,
           work_order_number_snapshot: woNumber,
           client_snapshot: client,
           product_snapshot: product,
           operator_name_snapshot: operator?.name || 'Unknown',
           observations: dto.observations,
+          frequency: dto.frequency,
           die_status: dto.die_status || 'OK',
           production_status: dto.production_status || 'TOTAL',
-          good_units: dto.activities.reduce((acc, a) => acc + (a.quantity || 0), 0),
-          waste_units: 0,
+          good_units: dto.activities.reduce(
+            (acc, a) => acc + (a.quantity || 0),
+            0,
+          ),
+          waste_units: dto.waste_units || 0,
         },
       });
 
@@ -92,6 +156,7 @@ export class DiecuttingService {
             end_time: a.end_time || '',
             duration_minutes: Math.max(0, a.duration_minutes || 0),
             quantity: a.quantity || 0,
+            observations: a.observations,
           })),
         });
       }
@@ -150,12 +215,28 @@ export class DiecuttingService {
         include: {
           machine: { select: { name: true, code: true } },
           operator: { select: { name: true } },
+          shift: { select: { name: true } },
           work_order: { select: { ot_number: true } },
+          die: { select: { serie: true } },
+          activities: {
+            select: {
+              activity_type: true,
+              start_time: true,
+              end_time: true,
+              duration_minutes: true,
+              quantity: true,
+              observations: true,
+            },
+          },
         },
       }),
     ]);
 
-    return buildPaginatedResult(items.map((item) => toFrontendDiecutReport(item)), total, pagination);
+    return buildPaginatedResult(
+      items.map((item) => toFrontendDiecutReport(item)),
+      total,
+      pagination,
+    );
   }
 
   async findOneReport(id: string) {
@@ -165,6 +246,7 @@ export class DiecuttingService {
         activities: true,
         machine: true,
         operator: true,
+        shift: true,
         work_order: true,
         die: true,
       },
@@ -181,7 +263,10 @@ export class DiecuttingService {
 
     const allowed: Record<string, string[]> = {
       [DiecutReportStatus.DRAFT]: [DiecutReportStatus.SUBMITTED],
-      [DiecutReportStatus.SUBMITTED]: [DiecutReportStatus.APPROVED, DiecutReportStatus.DRAFT],
+      [DiecutReportStatus.SUBMITTED]: [
+        DiecutReportStatus.APPROVED,
+        DiecutReportStatus.DRAFT,
+      ],
       [DiecutReportStatus.APPROVED]: [DiecutReportStatus.CORRECTED],
       [DiecutReportStatus.CORRECTED]: [DiecutReportStatus.APPROVED],
     };
@@ -206,7 +291,11 @@ export class DiecuttingService {
 
   async lockReport(id: string, userId: string) {
     const report = await this.findOneReport(id);
-    assertReportLockAvailable(report.locked_by_user_id, report.locked_at, userId);
+    assertReportLockAvailable(
+      report.locked_by_user_id,
+      report.locked_at,
+      userId,
+    );
 
     const updated = await this.prisma.diecutReport.update({
       where: { id },

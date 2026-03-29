@@ -26,7 +26,12 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
         const sanitized = sanitizeForJson(res);
 
         // If the result already follows the standard structure (e.g. from a custom logic), return it as is
-        if (sanitized && typeof sanitized === 'object' && 'success' in sanitized && 'data' in sanitized) {
+        if (
+          sanitized &&
+          typeof sanitized === 'object' &&
+          'success' in sanitized &&
+          'data' in sanitized
+        ) {
           return sanitized;
         }
 
@@ -34,7 +39,10 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
         return {
           success: true,
           data: sanitized,
-          meta: sanitized && typeof sanitized === 'object' && 'meta' in sanitized ? sanitized.meta : {},
+          meta:
+            sanitized && typeof sanitized === 'object' && 'meta' in sanitized
+              ? sanitized.meta
+              : {},
           error: null,
         };
       }),

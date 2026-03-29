@@ -9,9 +9,18 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { ClisesService } from './clises.service';
-import { BulkUpsertClisesDto, CreateCliseDto, UpdateCliseDto } from './dto/clise.dto';
+import {
+  BulkUpsertClisesDto,
+  CreateCliseDto,
+  UpdateCliseDto,
+} from './dto/clise.dto';
 import { CliseQueryDto } from './dto/clise-query.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
@@ -43,7 +52,12 @@ export class ClisesController {
   @ApiOperation({ summary: 'Get all clichés with filters' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
-  @ApiQuery({ name: 'q', required: false, type: String, description: 'Search by item code, description, or client' })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    type: String,
+    description: 'Search by item code, description, or client',
+  })
   async findAll(@Query() query: CliseQueryDto) {
     return this.clisesService.findAll(query);
   }

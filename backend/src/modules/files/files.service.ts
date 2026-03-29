@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { FileUploadDto } from './dto/file.dto';
 import { createHash } from 'crypto';
@@ -18,7 +23,11 @@ export class FilesService {
     this.uploadDir = this.configService.get('UPLOAD_DIR', './uploads');
   }
 
-  async uploadFile(file: Express.Multer.File, dto: FileUploadDto, userId: string) {
+  async uploadFile(
+    file: Express.Multer.File,
+    dto: FileUploadDto,
+    userId: string,
+  ) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
@@ -28,7 +37,9 @@ export class FilesService {
     const filePath = join(this.uploadDir, objectKey);
 
     // Create directory if not exists
-    await fs.mkdir(join(this.uploadDir, dto.entity_name, dto.entity_id), { recursive: true });
+    await fs.mkdir(join(this.uploadDir, dto.entity_name, dto.entity_id), {
+      recursive: true,
+    });
     await fs.writeFile(filePath, file.buffer);
 
     const fileObject = await this.prisma.fileObject.create({
@@ -80,7 +91,7 @@ export class FilesService {
 
   async deleteFile(id: string) {
     const file = await this.getFileMetadata(id);
-    
+
     await this.prisma.fileObject.update({
       where: { id },
       data: { deleted_at: new Date() },

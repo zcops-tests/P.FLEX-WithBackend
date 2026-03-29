@@ -18,11 +18,11 @@ export class ExportWorker extends WorkerHost {
 
     // In a real implementation, we would use exceljs or pdfmake here
     // For now, we simulate the generation and return a "mock" URL/FileID
-    
+
     await job.updateProgress(50);
-    
+
     // Simulate complex calculation
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     await job.updateProgress(100);
 

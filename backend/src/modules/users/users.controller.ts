@@ -8,9 +8,18 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
-import { CreateUserDto, IdentifyOperatorDto, UpdateUserDto } from './dto/user.dto';
+import {
+  CreateUserDto,
+  IdentifyOperatorDto,
+  UpdateUserDto,
+} from './dto/user.dto';
 import { AssignAreaDto } from './dto/assign-area.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -40,7 +49,9 @@ export class UsersController {
 
   @Post('operator-identification')
   @Permissions('operator.host')
-  @ApiOperation({ summary: 'Identify an operator by DNI for a hosted terminal session' })
+  @ApiOperation({
+    summary: 'Identify an operator by DNI for a hosted terminal session',
+  })
   async identifyOperator(@Body() dto: IdentifyOperatorDto) {
     return this.usersService.identifyOperatorByDni(dto.dni);
   }
@@ -61,7 +72,7 @@ export class UsersController {
 
   @Delete(':id')
   @Permissions('admin.users.manage')
-  @ApiOperation({ summary: 'Soft-delete a user' })
+  @ApiOperation({ summary: 'Delete a user permanently when no historical references exist' })
   async remove(@Param('id') id: string) {
     return this.usersService.remove(id);
   }

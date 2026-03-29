@@ -27,7 +27,7 @@ describe('GlobalExceptionFilter', () => {
 
   it('should format HttpException correctly', () => {
     const exception = new HttpException('Bad Request', HttpStatus.BAD_REQUEST);
-    
+
     filter.catch(exception, mockArgumentsHost);
 
     expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
@@ -40,24 +40,26 @@ describe('GlobalExceptionFilter', () => {
         }),
         meta: expect.objectContaining({
           path: '/test',
-        })
-      })
+        }),
+      }),
     );
   });
 
   it('should format unknown Error as 500', () => {
     const error = new Error('Database Error');
-    
+
     filter.catch(error, mockArgumentsHost);
 
-    expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
+    expect(mockResponse.status).toHaveBeenCalledWith(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
     expect(mockResponse.json).toHaveBeenCalledWith(
       expect.objectContaining({
         error: expect.objectContaining({
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
           message: 'Internal server error',
-        })
-      })
+        }),
+      }),
     );
   });
 });

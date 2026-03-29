@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { toFrontendRole } from '../../common/utils/frontend-entity.util';
 import { CreateRoleDto, UpdateRoleDto } from './dto/role.dto';
@@ -52,7 +56,9 @@ export class RolesService {
 
   async create(dto: CreateRoleDto) {
     const code = await this.buildUniqueCode(dto.name);
-    const permissionIds = await this.resolvePermissionIds(dto.permission_codes || []);
+    const permissionIds = await this.resolvePermissionIds(
+      dto.permission_codes || [],
+    );
 
     const role = await this.prisma.$transaction(async (tx) => {
       const created = await tx.role.create({
@@ -94,7 +100,9 @@ export class RolesService {
 
   async update(id: string, dto: UpdateRoleDto) {
     await this.findOne(id);
-    const permissionIds = dto.permission_codes ? await this.resolvePermissionIds(dto.permission_codes) : null;
+    const permissionIds = dto.permission_codes
+      ? await this.resolvePermissionIds(dto.permission_codes)
+      : null;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.role.update({
@@ -153,11 +161,15 @@ export class RolesService {
     const role = await this.findOne(id);
 
     if (role.assignedUserCount && role.assignedUserCount > 0) {
-      throw new ConflictException('No se puede eliminar un rol con usuarios asignados.');
+      throw new ConflictException(
+        'No se puede eliminar un rol con usuarios asignados.',
+      );
     }
 
     if (!String(role.code || '').startsWith('CUSTOM_')) {
-      throw new ConflictException('No se puede eliminar un rol predefinido del sistema.');
+      throw new ConflictException(
+        'No se puede eliminar un rol predefinido del sistema.',
+      );
     }
 
     await this.prisma.rolePermission.updateMany({
@@ -177,7 +189,13 @@ export class RolesService {
   }
 
   private async resolvePermissionIds(permissionCodes: string[]) {
-    const normalizedCodes = [...new Set(permissionCodes.map((code) => String(code || '').trim()).filter(Boolean))];
+    const normalizedCodes = [
+      ...new Set(
+        permissionCodes
+          .map((code) => String(code || '').trim())
+          .filter(Boolean),
+      ),
+    ];
     if (!normalizedCodes.length) return [];
 
     const permissions = await this.prisma.permission.findMany({
@@ -189,21 +207,27 @@ export class RolesService {
     });
 
     if (permissions.length !== normalizedCodes.length) {
-      const foundCodes = new Set(permissions.map((permission) => permission.code));
+      const foundCodes = new Set(
+        permissions.map((permission) => permission.code),
+      );
       const missing = normalizedCodes.filter((code) => !foundCodes.has(code));
-      throw new NotFoundException(`Permissions not found: ${missing.join(', ')}`);
+      throw new NotFoundException(
+        `Permissions not found: ${missing.join(', ')}`,
+      );
     }
 
     return permissions.map((permission) => permission.id);
   }
 
   private async buildUniqueCode(name: string) {
-    const base = `CUSTOM_${String(name || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-zA-Z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .toUpperCase() || 'ROLE'}`;
+    const base = `CUSTOM_${
+      String(name || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .toUpperCase() || 'ROLE'
+    }`;
 
     let candidate = base;
     let suffix = 1;

@@ -1,12 +1,13 @@
 
-import { Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Router } from '@angular/router';
 import { StateService } from '../../../services/state.service';
-import { OrdersService } from '../../orders/services/orders.service';
-import { OT } from '../../orders/models/orders.models';
-
-import { PrintActivity, PrintReport } from '../models/reports.models';
+import { NotificationService } from '../../../services/notification.service';
+import { PrintReport } from '../models/reports.models';
+import { ProductionService } from '../services/production.service';
 
 @Component({
   selector: 'app-reports-print',
@@ -35,7 +36,7 @@ import { PrintActivity, PrintReport } from '../models/reports.models';
            <button class="bg-[#1e293b]/80 border border-white/10 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-white/10 text-slate-300 transition-all backdrop-blur-sm">
               <span class="material-icons text-sm">filter_list</span> Filtros
            </button>
-           <button class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-95 border border-blue-500/50">
+           <button type="button" (click)="startNewReport()" [disabled]="!canCreateReport" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-95 border border-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed">
               <span class="material-icons text-sm">add</span> Nuevo Reporte
            </button>
         </div>
@@ -237,7 +238,10 @@ import { PrintActivity, PrintReport } from '../models/reports.models';
                               </div>
                               <div class="p-3 rounded-lg bg-black/20 border border-white/5">
                                   <label class="block text-[10px] text-slate-500 uppercase font-bold mb-1">Troquel</label>
-                                  <div class="text-white font-mono font-bold text-sm mb-1">ASIGNADO</div>
+                                  <div class="text-white font-mono font-bold text-sm mb-1">{{ selectedReport.die.type || 'N/A' }}</div>
+                                  <div class="text-[10px] text-slate-400" *ngIf="selectedReport.die.series || selectedReport.die.location">
+                                      {{ selectedReport.die.series || 'Sin serie' }}<span *ngIf="selectedReport.die.location"> · {{ selectedReport.die.location }}</span>
+                                  </div>
                                   <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border uppercase"
                                       [ngClass]="getStatusClass(selectedReport.die.status)">
                                       {{ selectedReport.die.status }}
@@ -337,58 +341,27 @@ import { PrintActivity, PrintReport } from '../models/reports.models';
 })
 export class ReportsPrintComponent implements OnInit {
   state = inject(StateService);
-  ordersService = inject(OrdersService);
+  router = inject(Router);
+  notifications = inject(NotificationService);
+  production = inject(ProductionService);
+  destroyRef = inject(DestroyRef);
+  cdr = inject(ChangeDetectorRef);
   
   reports: PrintReport[] = [];
   searchTerm = '';
   selectedReport: PrintReport | null = null;
+  isLoading = true;
+  isDetailLoading = false;
 
   ngOnInit() {
-    this.generateReports();
-  }
+    this.production.printReports$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((reports) => {
+        this.reports = reports;
+        queueMicrotask(() => this.cdr.detectChanges());
+      });
 
-  generateReports() {
-    const ots = this.ordersService.ots.slice(0, 20); // Take recent OTs
-    const machines = this.state.adminMachines().filter(m => m.type === 'Impresión');
-    const operators = ['Juan Martinez', 'Carlos Ruiz', 'Miguel Torres', 'Ana Lopez'];
-    
-    this.reports = ots.map((ot, index) => {
-      const isComplete = index % 3 !== 0;
-      const totalMeters = Math.floor(Math.random() * 15000) + 2000;
-      
-      // Simulate Activities
-      const activities: PrintActivity[] = [
-          { type: 'Setup', startTime: '07:00', endTime: '08:30', meters: 0 },
-          { type: 'Impresión', startTime: '08:30', endTime: '11:00', meters: Math.floor(totalMeters * 0.4) },
-          { type: 'Parada - Cambio Bobina', startTime: '11:00', endTime: '11:15', meters: 0 },
-          { type: 'Impresión', startTime: '11:15', endTime: '13:00', meters: Math.floor(totalMeters * 0.6) },
-      ];
-
-      const date = new Date();
-      date.setDate(date.getDate() - (index % 7));
-      date.setHours(7 + (index % 10), 0);
-
-      // Status logic
-      const dieStatus = index % 5 === 0 ? 'Desgaste' : (index % 15 === 0 ? 'Dañado' : 'OK');
-      const cliseStatus = index % 7 === 0 ? 'Desgaste' : 'OK';
-
-      return {
-        id: `REP-${1000 + index}`,
-        date: date,
-        ot: ot.OT,
-        client: ot['Razon Social'],
-        product: ot.descripcion || ot.impresion || 'Etiqueta Genérica',
-        machine: machines[index % machines.length]?.name || 'Máquina 1',
-        operator: operators[index % operators.length],
-        shift: index % 2 === 0 ? 'Día - A' : 'Noche - B',
-        activities: activities,
-        totalMeters: totalMeters,
-        clise: { code: `CL-${ot.OT}-01`, status: cliseStatus },
-        die: { status: dieStatus },
-        observations: index % 4 === 0 ? 'Leve variación de tono en la segunda bobina. Ajuste de presión realizado.' : '',
-        productionStatus: isComplete ? 'TOTAL' : 'PARCIAL'
-      };
-    });
+    void this.loadReports();
   }
 
   get filteredReports() {
@@ -403,23 +376,54 @@ export class ReportsPrintComponent implements OnInit {
 
   get kpis() {
       const totalMeters = this.reports.reduce((acc, r) => acc + r.totalMeters, 0);
-      const totalHours = this.reports.length * 6; // Mock avg hours per report
-      const avgSpeed = totalHours > 0 ? (totalMeters / (totalHours * 60)) : 0; // m/min approx
+      const runMinutes = this.reports.reduce((acc, report) => acc + report.activities.reduce((activityAcc, activity) => {
+          if ((activity.meters || 0) <= 0) return activityAcc;
+          return activityAcc + this.calculateDurationMinutes(activity.startTime, activity.endTime);
+      }, 0), 0);
+      const avgSpeed = runMinutes > 0 ? (totalMeters / runMinutes) : 0;
       
       return {
           totalMeters,
-          avgSpeed: avgSpeed * 5, // Scaling for realistic m/min
+          avgSpeed,
           completedOts: this.reports.filter(r => r.productionStatus === 'TOTAL').length,
           toolingIssues: this.reports.filter(r => r.die.status !== 'OK' || r.clise.status !== 'OK').length
       };
   }
 
-  openDetail(report: PrintReport) {
-      this.selectedReport = report;
+  get canCreateReport() {
+      return this.state.hasPermission('operator.host') && this.state.canCreateProcessReport('print');
+  }
+
+  async openDetail(report: PrintReport) {
+      try {
+          this.isDetailLoading = true;
+          this.selectedReport = await this.production.getPrintReport(report.id);
+      } catch (error: any) {
+          this.selectedReport = report;
+          this.notifications.showError(error?.message || 'No fue posible cargar el detalle del reporte.');
+      } finally {
+          this.isDetailLoading = false;
+          queueMicrotask(() => this.cdr.detectChanges());
+      }
   }
 
   closeDetail() {
       this.selectedReport = null;
+      queueMicrotask(() => this.cdr.detectChanges());
+  }
+
+  startNewReport() {
+      if (!this.canCreateReport) {
+          this.notifications.showWarning('Tu sesión no tiene permisos para registrar reportes de impresión.');
+          return;
+      }
+
+      if (this.state.hasActiveOperator() && this.state.isProcessAllowedForActiveOperator('print')) {
+          this.router.navigate(['/operator/select-machine', 'print']);
+          return;
+      }
+
+      this.router.navigate(['/operator']);
   }
 
   getInitials(name: string) {
@@ -444,5 +448,24 @@ export class ReportsPrintComponent implements OnInit {
       const hours = Math.floor(diff / 60);
       const mins = diff % 60;
       return `${hours}h ${mins}m`;
+  }
+
+  private calculateDurationMinutes(start: string, end: string) {
+      const [h1, m1] = start.split(':').map(Number);
+      const [h2, m2] = end.split(':').map(Number);
+      let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+      if (diff < 0) diff += 24 * 60;
+      return Math.max(0, diff);
+  }
+
+  private async loadReports() {
+      try {
+          this.isLoading = true;
+          await this.production.reload();
+      } catch {
+          this.notifications.showError('No fue posible cargar los reportes de impresión.');
+      } finally {
+          this.isLoading = false;
+      }
   }
 }

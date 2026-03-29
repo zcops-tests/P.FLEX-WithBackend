@@ -35,12 +35,12 @@ export const prismaExtension = (client: PrismaClient) => {
         },
         // Also for findUnique, findFirst, etc.
         async findUnique({ args, query }) {
-           if (args.where && (args.where as any).deleted_at === undefined) {
-            // Prisma findUnique only allows unique fields in where, 
+          if (args.where && (args.where as any).deleted_at === undefined) {
+            // Prisma findUnique only allows unique fields in where,
             // so we might need to change it to findFirst or handle it differently
           }
           return query(args);
-        }
+        },
       },
     },
   });

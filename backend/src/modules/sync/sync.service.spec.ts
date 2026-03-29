@@ -35,14 +35,16 @@ describe('SyncService', () => {
 
   describe('getAllowedEntitiesForProfile', () => {
     it('should return correct tables for PRINT_STATION', () => {
-      const tables = (service as any).getAllowedEntitiesForProfile('PRINT_STATION');
+      const tables = (service as any).getAllowedEntitiesForProfile(
+        'PRINT_STATION',
+      );
       expect(tables).toContain('work_orders');
       expect(tables).toContain('clises');
     });
 
     it('should return all tables for defaults or unknown', () => {
-       const tables = (service as any).getAllowedEntitiesForProfile('UNKNOWN');
-       expect(tables.length).toBeGreaterThan(5);
+      const tables = (service as any).getAllowedEntitiesForProfile('UNKNOWN');
+      expect(tables.length).toBeGreaterThan(5);
     });
   });
 });

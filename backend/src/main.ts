@@ -1,5 +1,9 @@
 import { NestFactory } from '@nestjs/core';
-import { Logger as NestLogger, VersioningType, ValidationPipe } from '@nestjs/common';
+import {
+  Logger as NestLogger,
+  VersioningType,
+  ValidationPipe,
+} from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';

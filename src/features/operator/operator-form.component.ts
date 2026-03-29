@@ -1,5 +1,6 @@
 
-import { Component, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -7,6 +8,8 @@ import { OrdersService } from '../orders/services/orders.service';
 import { OT } from '../orders/models/orders.models';
 import { StateService } from '../../services/state.service';
 import { AuditService } from '../../services/audit.service';
+import { NotificationService } from '../../services/notification.service';
+import { ProductionService } from '../reports/services/production.service';
 
 @Component({
   selector: 'app-operator-form',
@@ -115,8 +118,41 @@ import { AuditService } from '../../services/audit.service';
                         <!-- ITEM / CLISE / TROQUEL INPUT -->
                         <div>
                             <ng-container *ngIf="type === 'print'">
-                                <label class="text-[10px] text-blue-300/70 font-tech font-bold uppercase tracking-wider mb-1.5 block">Item / Cliché Ref.</label>
-                                <input type="text" [(ngModel)]="formData.cliseItem" class="glass-input w-full px-3 py-1.5 rounded-lg text-sm text-white border border-white/10 bg-[#0a0f18] focus:border-blue-500 outline-none placeholder-gray-600" placeholder="Código de Item/Cliché">
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="text-[10px] text-blue-300/70 font-tech font-bold uppercase tracking-wider mb-1.5 block">Item / Cliché Ref.</label>
+                                        <input type="text" [(ngModel)]="formData.cliseItem" class="glass-input w-full px-3 py-1.5 rounded-lg text-sm text-white border border-white/10 bg-[#0a0f18] focus:border-blue-500 outline-none placeholder-gray-600" placeholder="Código de Item/Cliché">
+                                    </div>
+
+                                    <div class="rounded-xl border border-white/10 bg-[#0a0f18]/70 p-4 space-y-4">
+                                        <div>
+                                            <label class="text-[10px] text-blue-300/70 font-tech font-bold uppercase tracking-wider mb-1.5 block">Tipo de Troquel</label>
+                                            <select [(ngModel)]="formData.dieType" class="glass-input w-full px-3 py-2 rounded-lg text-sm text-white border border-white/10 bg-[#0a0f18] focus:border-blue-500 outline-none">
+                                                <option value="">Selecciona el tipo</option>
+                                                <option *ngFor="let option of printDieTypes" [value]="option.value">{{ option.label }}</option>
+                                            </select>
+                                        </div>
+
+                                        <div *ngIf="formData.dieType" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="text-[10px] text-blue-300/70 font-tech font-bold uppercase tracking-wider mb-1.5 block">
+                                                    {{ isMagneticDieSelected ? 'Serie del Troquel' : 'Serie del Troquel (Opcional)' }}
+                                                </label>
+                                                <input type="text" [(ngModel)]="formData.dieSeries" class="glass-input w-full px-3 py-2 rounded-lg text-sm text-white border border-white/10 bg-[#0a0f18] focus:border-blue-500 outline-none placeholder-gray-600 uppercase" placeholder="Ej: TR-00125">
+                                            </div>
+
+                                            <div *ngIf="isFlatbedOrSolidDieSelected">
+                                                <label class="text-[10px] text-blue-300/70 font-tech font-bold uppercase tracking-wider mb-1.5 block">Ubicación del Troquel (Opcional)</label>
+                                                <input type="text" [(ngModel)]="formData.dieLocation" class="glass-input w-full px-3 py-2 rounded-lg text-sm text-white border border-white/10 bg-[#0a0f18] focus:border-blue-500 outline-none placeholder-gray-600 uppercase" placeholder="Ej: RACK-A1">
+                                            </div>
+                                        </div>
+
+                                        <p class="text-[10px] text-slate-500 leading-relaxed">
+                                            Magnético: requiere serie.
+                                            Plano o sólido: requiere serie o ubicación.
+                                        </p>
+                                    </div>
+                                </div>
                             </ng-container>
                             
                             <ng-container *ngIf="type === 'diecut'">
@@ -176,17 +212,17 @@ import { AuditService } from '../../services/audit.service';
                           <!-- Horas -->
                           <div class="lg:col-span-2">
                               <label class="block text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">Hora Inicio</label>
-                              <input type="time" [(ngModel)]="currentActivity.startTime" class="glass-input w-full px-3 py-3 rounded-xl text-sm font-mono font-bold text-white outline-none bg-[#0a0f18] border border-white/10 text-center focus:border-blue-500 transition-colors shadow-inner">
+                              <input type="time" [(ngModel)]="currentActivity.startTime" (input)="updateCurrentActivityTime('startTime', $event)" class="glass-input w-full px-3 py-3 rounded-xl text-sm font-mono font-bold text-white outline-none bg-[#0a0f18] border border-white/10 text-center focus:border-blue-500 transition-colors shadow-inner">
                           </div>
                           <div class="lg:col-span-2">
                               <label class="block text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">Hora Fin</label>
-                              <input type="time" [(ngModel)]="currentActivity.endTime" class="glass-input w-full px-3 py-3 rounded-xl text-sm font-mono font-bold text-white outline-none bg-[#0a0f18] border border-white/10 text-center focus:border-blue-500 transition-colors shadow-inner">
+                              <input type="time" [(ngModel)]="currentActivity.endTime" (input)="updateCurrentActivityTime('endTime', $event)" class="glass-input w-full px-3 py-3 rounded-xl text-sm font-mono font-bold text-white outline-none bg-[#0a0f18] border border-white/10 text-center focus:border-blue-500 transition-colors shadow-inner">
                           </div>
 
                           <!-- Metros -->
                           <div class="lg:col-span-2">
                               <label class="block text-[10px] font-bold text-emerald-400 uppercase mb-2 ml-1">Metros</label>
-                              <input type="number" [(ngModel)]="currentActivity.meters" class="glass-input w-full px-4 py-3 rounded-xl text-sm font-mono font-bold text-emerald-400 outline-none bg-[#0a0f18] border border-white/10 text-right focus:border-emerald-500 transition-colors shadow-inner placeholder-gray-700" placeholder="0">
+                              <input type="number" [(ngModel)]="currentActivity.meters" (input)="updateCurrentActivityMeters($event)" class="glass-input w-full px-4 py-3 rounded-xl text-sm font-mono font-bold text-emerald-400 outline-none bg-[#0a0f18] border border-white/10 text-right focus:border-emerald-500 transition-colors shadow-inner placeholder-gray-700" placeholder="0">
                           </div>
 
                           <!-- Add Button -->
@@ -283,7 +319,7 @@ import { AuditService } from '../../services/audit.service';
                <div *ngIf="type === 'diecut'" class="animate-fadeIn">
                   
                   <!-- Info Data Box -->
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
                       <div class="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-center justify-between">
                           <div>
                               <p class="text-[10px] text-blue-300 font-bold uppercase tracking-widest">Total Metros OT</p>
@@ -295,6 +331,11 @@ import { AuditService } from '../../services/audit.service';
                       <div *ngIf="isFlatbed" class="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
                           <label class="block text-[10px] font-bold text-purple-300 uppercase tracking-widest mb-2">Frecuencia (Troqueladora Plana)</label>
                           <input type="text" [(ngModel)]="formData.frequency" class="w-full bg-purple-900/20 border border-purple-500/30 rounded-lg px-3 py-1.5 text-white font-mono text-sm outline-none focus:border-purple-400 transition-colors" placeholder="Ingrese frecuencia...">
+                      </div>
+
+                      <div class="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+                          <label class="block text-[10px] font-bold text-red-300 uppercase tracking-widest mb-2">Mermas Totales</label>
+                          <input type="number" [(ngModel)]="formData.waste" (input)="updateFormNumber('waste', $event)" class="w-full bg-red-950/30 border border-red-500/30 rounded-lg px-3 py-2 text-red-100 font-mono text-lg outline-none focus:border-red-400 transition-colors text-right" placeholder="0">
                       </div>
                   </div>
 
@@ -322,17 +363,17 @@ import { AuditService } from '../../services/audit.service';
                           <!-- Horas -->
                           <div class="lg:col-span-2">
                               <label class="block text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">Hora Inicio</label>
-                              <input type="time" [(ngModel)]="currentDiecutActivity.startTime" class="glass-input w-full px-3 py-3 rounded-xl text-sm font-mono font-bold text-white outline-none bg-[#0a0f18] border border-white/10 text-center focus:border-purple-500 transition-colors shadow-inner">
+                              <input type="time" [(ngModel)]="currentDiecutActivity.startTime" (input)="updateCurrentDiecutField('startTime', $event)" class="glass-input w-full px-3 py-3 rounded-xl text-sm font-mono font-bold text-white outline-none bg-[#0a0f18] border border-white/10 text-center focus:border-purple-500 transition-colors shadow-inner">
                           </div>
                           <div class="lg:col-span-2">
                               <label class="block text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">Hora Fin</label>
-                              <input type="time" [(ngModel)]="currentDiecutActivity.endTime" class="glass-input w-full px-3 py-3 rounded-xl text-sm font-mono font-bold text-white outline-none bg-[#0a0f18] border border-white/10 text-center focus:border-purple-500 transition-colors shadow-inner">
+                              <input type="time" [(ngModel)]="currentDiecutActivity.endTime" (input)="updateCurrentDiecutField('endTime', $event)" class="glass-input w-full px-3 py-3 rounded-xl text-sm font-mono font-bold text-white outline-none bg-[#0a0f18] border border-white/10 text-center focus:border-purple-500 transition-colors shadow-inner">
                           </div>
 
                           <!-- Metros -->
                           <div class="lg:col-span-2">
                               <label class="block text-[10px] font-bold text-purple-400 uppercase mb-2 ml-1">Metros Lineales</label>
-                              <input type="number" [(ngModel)]="currentDiecutActivity.meters" class="glass-input w-full px-4 py-3 rounded-xl text-sm font-mono font-bold text-purple-400 outline-none bg-[#0a0f18] border border-white/10 text-right focus:border-purple-500 transition-colors shadow-inner placeholder-gray-700" placeholder="0">
+                              <input type="number" [(ngModel)]="currentDiecutActivity.meters" (input)="updateCurrentDiecutMeters($event)" class="glass-input w-full px-4 py-3 rounded-xl text-sm font-mono font-bold text-purple-400 outline-none bg-[#0a0f18] border border-white/10 text-right focus:border-purple-500 transition-colors shadow-inner placeholder-gray-700" placeholder="0">
                           </div>
 
                           <!-- Add Button -->
@@ -345,7 +386,7 @@ import { AuditService } from '../../services/audit.service';
                           
                           <!-- Observacion por actividad -->
                           <div class="col-span-full">
-                              <input type="text" [(ngModel)]="currentDiecutActivity.observations" placeholder="Observaciones específicas de la actividad..." class="glass-input w-full px-4 py-2 rounded-lg text-xs text-gray-300 bg-[#0a0f18] border border-white/10 focus:border-purple-500 outline-none">
+                              <input type="text" [(ngModel)]="currentDiecutActivity.observations" (input)="updateCurrentDiecutField('observations', $event)" placeholder="Observaciones específicas de la actividad..." class="glass-input w-full px-4 py-2 rounded-lg text-xs text-gray-300 bg-[#0a0f18] border border-white/10 focus:border-purple-500 outline-none">
                           </div>
                       </div>
                   </div>
@@ -429,18 +470,18 @@ import { AuditService } from '../../services/audit.service';
                          <label class="block text-xs font-tech font-bold text-blue-400 uppercase tracking-widest mb-3">
                             {{ type === 'rewind' ? 'Rollos Terminados' : 'Golpes / Unid' }}
                          </label>
-                         <input type="number" [(ngModel)]="formData.goodQty" class="glass-input w-full p-5 rounded-2xl text-4xl font-mono font-bold text-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-right placeholder-gray-800 bg-[#0a0f18] border border-white/10 shadow-inner" placeholder="0">
+                         <input type="number" [(ngModel)]="formData.goodQty" (input)="updateFormNumber('goodQty', $event)" class="glass-input w-full p-5 rounded-2xl text-4xl font-mono font-bold text-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-right placeholder-gray-800 bg-[#0a0f18] border border-white/10 shadow-inner" placeholder="0">
                       </div>
 
                       <div class="col-span-1">
                          <label class="block text-xs font-tech font-bold text-red-400 uppercase tracking-widest mb-3">Mermas (Total)</label>
-                         <input type="number" [(ngModel)]="formData.waste" class="glass-input w-full p-5 rounded-2xl text-4xl font-mono font-bold text-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none text-right placeholder-gray-800 bg-[#0a0f18] border border-white/10 shadow-inner" placeholder="0">
+                         <input type="number" [(ngModel)]="formData.waste" (input)="updateFormNumber('waste', $event)" class="glass-input w-full p-5 rounded-2xl text-4xl font-mono font-bold text-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none text-right placeholder-gray-800 bg-[#0a0f18] border border-white/10 shadow-inner" placeholder="0">
                       </div>
 
                       <div class="col-span-1">
                          <ng-container *ngIf="type === 'rewind'">
                             <label class="block text-xs font-tech font-bold text-gray-400 uppercase tracking-widest mb-3">Etiquetas x Rollo</label>
-                            <input type="number" [(ngModel)]="formData.labelsPerRoll" class="glass-input w-full p-5 rounded-2xl text-2xl font-mono font-bold text-white focus:border-blue-500 outline-none text-right bg-[#0a0f18]/60 border border-white/10">
+                            <input type="number" [(ngModel)]="formData.labelsPerRoll" (input)="updateFormNumber('labelsPerRoll', $event)" class="glass-input w-full p-5 rounded-2xl text-2xl font-mono font-bold text-white focus:border-blue-500 outline-none text-right bg-[#0a0f18]/60 border border-white/10">
                          </ng-container>
                       </div>
                    </div>
@@ -459,10 +500,10 @@ import { AuditService } from '../../services/audit.service';
                   Cancelar Operación
                </button>
                <button (click)="submitReport()" 
-                  [disabled]="!selectedOt || (type === 'print' ? reportActivities.length === 0 : (type === 'diecut' ? diecutReportActivities.length === 0 : !formData.goodQty))"
+                  [disabled]="isSubmitting || !selectedOt || !state.canCreateProcessReport(type) || (type === 'print' ? reportActivities.length === 0 : (type === 'diecut' ? diecutReportActivities.length === 0 : !formData.goodQty))"
                   class="flex-1 px-8 py-4 rounded-xl bg-gradient-to-r from-blue-700 to-blue-600 text-white font-bold hover:shadow-[0_0_30px_rgba(37,99,235,0.4)] hover:border-blue-400 transition-all border border-blue-500/50 uppercase tracking-widest text-xs font-tech disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-4 group">
                   <span class="material-symbols-outlined text-xl group-hover:scale-110 transition-transform">save</span> 
-                  Confirmar y Guardar Reporte
+                  {{ isSubmitting ? 'Guardando...' : 'Confirmar y Guardar Reporte' }}
                </button>
             </div>
 
@@ -526,10 +567,15 @@ export class OperatorFormComponent {
   ordersService = inject(OrdersService);
   state = inject(StateService);
   audit = inject(AuditService);
+  notifications = inject(NotificationService);
+  production = inject(ProductionService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   type = 'print';
   machineName = '';
   now = new Date();
+  isSubmitting = false;
 
   otSearch = '';
   showSuggestions = false;
@@ -542,6 +588,11 @@ export class OperatorFormComponent {
     'Parada - Espera de Material', 'Parada - Matizado', 
     'Parada - Espera de VB', 'Parada', 
     'Sin Operador', 'PARADA - VARIOS'
+  ];
+  printDieTypes = [
+    { value: 'FLATBED', label: 'Plano' },
+    { value: 'MAGNETIC', label: 'Magnético' },
+    { value: 'SOLID', label: 'Sólido' },
   ];
 
   // Diecut specific constants
@@ -573,7 +624,9 @@ export class OperatorFormComponent {
 
   formData: any = {
      cliseItem: '',
+     dieType: '',
      dieSeries: '',
+     dieLocation: '',
      frequency: '',
      cliseStatus: 'OK',
      dieStatus: 'OK',
@@ -592,7 +645,10 @@ export class OperatorFormComponent {
      const term = this.otSearch.toLowerCase();
      if (!term) return [];
      return this.ordersService.ots
-        .filter(ot => String(ot.OT).includes(term) || ot['Razon Social'].toLowerCase().includes(term))
+        .filter(ot =>
+          String(ot.OT || '').toLowerCase().includes(term)
+          || String(ot['Razon Social'] || '').toLowerCase().includes(term),
+        )
         .slice(0, 5);
   }
 
@@ -602,6 +658,14 @@ export class OperatorFormComponent {
 
   get totalDiecutMeters() {
       return this.diecutReportActivities.reduce((acc, curr) => acc + (curr.meters || 0), 0);
+  }
+
+  get isMagneticDieSelected() {
+      return this.formData.dieType === 'MAGNETIC';
+  }
+
+  get isFlatbedOrSolidDieSelected() {
+      return this.formData.dieType === 'FLATBED' || this.formData.dieType === 'SOLID';
   }
 
   get isFlatbed(): boolean {
@@ -616,8 +680,20 @@ export class OperatorFormComponent {
         this.router.navigate(['/operator']);
         return;
       }
+      if ((this.type === 'print' || this.type === 'diecut') && !this.state.canCreateProcessReport(this.type)) {
+        this.notifications.showError('La sesión anfitriona no tiene permiso para registrar reportes en esta área.');
+        this.router.navigate(['/operator']);
+        return;
+      }
       this.resetForm();
     });
+
+    this.ordersService.ots$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        if (!this.otSearch && !this.showSuggestions) return;
+        queueMicrotask(() => this.cdr.detectChanges());
+      });
 
     setInterval(() => this.now = new Date(), 60000);
   }
@@ -646,7 +722,9 @@ export class OperatorFormComponent {
 
       this.formData = {
          cliseItem: '',
+         dieType: '',
          dieSeries: '',
+         dieLocation: '',
          frequency: '',
          cliseStatus: 'OK',
          dieStatus: 'OK',
@@ -654,6 +732,7 @@ export class OperatorFormComponent {
          helper: '',
          goodQty: null,
          waste: null,
+         labelsPerRoll: null,
          status: 'OK',
          notes: '',
          observations: ''
@@ -732,33 +811,341 @@ export class OperatorFormComponent {
      this.selectedOt = ot;
      this.otSearch = String(ot.OT);
      this.showSuggestions = false;
+     if (!String(this.formData.dieSeries || '').trim()) {
+        this.formData.dieSeries = String(ot.troquel || '').trim();
+     }
   }
 
   goBack() {
      this.router.navigate(['/operator/select-machine', this.type]);
   }
 
-  submitReport() {
-     let details = '';
-     const operator = this.state.activeOperatorName();
-     
-     if (this.type === 'print') {
-         const activitySummary = this.reportActivities.map(a => `${a.type} (${a.meters || 0}m)`).join(', ');
-         details = `Op: ${operator}, Clisé: ${this.formData.cliseItem} (${this.formData.cliseStatus}), Troquel: ${this.formData.dieStatus}, Actividades: [${activitySummary}], Total Mts: ${this.totalMeters}`;
-     } else if (this.type === 'diecut') {
-         const activitySummary = this.diecutReportActivities.map(a => `${a.type} (${a.meters || 0}m)`).join(', ');
-         const freq = this.isFlatbed ? `, Frec: ${this.formData.frequency}` : '';
-         details = `Op: ${operator}, Troquel: ${this.formData.dieSeries}${freq}, Actividades: [${activitySummary}], Total Mts: ${this.totalDiecutMeters}`;
-     } else {
-         details = `Cant: ${this.formData.goodQty}`;
+  async submitReport() {
+     if (this.isSubmitting) return;
+
+     if (this.type !== 'print' && this.type !== 'diecut' && this.type !== 'rewind') {
+        this.submitLegacyProcessReport();
+        return;
      }
 
+     if (!this.state.canCreateProcessReport(this.type)) {
+        this.notifications.showError('La sesión anfitriona no tiene permiso para registrar reportes en esta área.');
+        return;
+     }
+
+     const activeOperator = this.state.activeOperator();
+     if (!activeOperator) {
+        this.notifications.showWarning('Identifica primero al operario antes de registrar producción.');
+        this.router.navigate(['/operator']);
+        return;
+     }
+
+     if (!this.selectedOt) {
+        this.notifications.showWarning('Selecciona una OT antes de guardar el reporte.');
+        return;
+     }
+
+     const machine = this.resolveCurrentMachine();
+     if (!machine) {
+        this.notifications.showError('No se pudo resolver la máquina seleccionada para este reporte.');
+        return;
+     }
+
+     const workOrderId = await this.resolveSelectedWorkOrderId();
+     const shiftId = this.resolveShiftId();
+
+     try {
+        this.isSubmitting = true;
+
+        if (this.type === 'print') {
+          const printDieValidation = this.validatePrintDieData();
+          if (printDieValidation) {
+            this.notifications.showWarning(printDieValidation);
+            return;
+          }
+
+          const created = await this.production.createPrintReport({
+            reported_at: new Date().toISOString(),
+            work_order_id: workOrderId || undefined,
+            machine_id: machine.id,
+            operator_id: activeOperator.id,
+            shift_id: shiftId || undefined,
+            clise_item_code: this.normalizeOptionalText(this.formData.cliseItem),
+            die_type: this.normalizeOptionalText(this.formData.dieType),
+            die_series: this.normalizeOptionalText(this.formData.dieSeries),
+            die_location: this.normalizeOptionalText(this.formData.dieLocation),
+            clise_status: this.formData.cliseStatus || 'OK',
+            die_status: this.formData.dieStatus || 'OK',
+            production_status: this.formData.productionStatus || 'PARCIAL',
+            observations: this.normalizeOptionalText(this.formData.observations),
+            activities: this.reportActivities.map((activity) => ({
+              activity_type: this.mapPrintActivityType(activity.type),
+              start_time: this.normalizeTime(activity.startTime),
+              end_time: this.normalizeTime(activity.endTime),
+              duration_minutes: this.calculateDurationMinutes(activity.startTime, activity.endTime),
+              meters: Number(activity.meters || 0),
+            })),
+          });
+
+          this.audit.log(
+            this.state.userName(),
+            this.state.userRole(),
+            'PRODUCCIÓN',
+            'Reporte Impresión',
+            `Host: ${this.state.userName()}, Operario: ${activeOperator.name}, OT: ${this.selectedOt?.OT}, Máquina: ${machine.name}, Reporte: ${created.id}, Total Mts: ${created.totalMeters}`,
+          );
+          this.notifications.showSuccess(`Reporte de impresión ${created.id} guardado correctamente.`);
+        }
+
+        if (this.type === 'diecut') {
+          const created = await this.production.createDiecutReport({
+            reported_at: new Date().toISOString(),
+            work_order_id: workOrderId || undefined,
+            machine_id: machine.id,
+            operator_id: activeOperator.id,
+            shift_id: shiftId || undefined,
+            die_series: this.normalizeOptionalText(this.formData.dieSeries || this.selectedOt?.troquel),
+            frequency: this.isFlatbed ? this.normalizeOptionalText(this.formData.frequency) : undefined,
+            die_status: this.formData.dieStatus || 'OK',
+            waste_units: this.toNumberValue(this.formData.waste, 0),
+            production_status: this.formData.productionStatus || 'PARCIAL',
+            observations: this.normalizeOptionalText(this.formData.observations),
+            activities: this.diecutReportActivities.map((activity) => ({
+              activity_type: this.mapDiecutActivityType(activity.type),
+              start_time: this.normalizeTime(activity.startTime),
+              end_time: this.normalizeTime(activity.endTime),
+              duration_minutes: this.calculateDurationMinutes(activity.startTime, activity.endTime),
+              quantity: this.toNumberValue(activity.meters, 0),
+              observations: this.normalizeOptionalText(activity.observations),
+            })),
+          });
+
+          this.audit.log(
+            this.state.userName(),
+            this.state.userRole(),
+            'PRODUCCIÓN',
+            'Reporte Troquelado',
+            `Host: ${this.state.userName()}, Operario: ${activeOperator.name}, OT: ${this.selectedOt?.OT}, Máquina: ${machine.name}, Reporte: ${created.id}, Total Und: ${created.goodUnits}`,
+          );
+          this.notifications.showSuccess(`Reporte de troquelado ${created.id} guardado correctamente.`);
+        }
+
+        if (this.type === 'rewind') {
+          const rollsFinished = this.toNumberValue(this.formData.goodQty, 0);
+          const labelsPerRoll = this.toNumberValue(this.formData.labelsPerRoll, 0);
+
+          if (labelsPerRoll <= 0) {
+            this.notifications.showWarning('Ingresa la cantidad de etiquetas por rollo antes de guardar el reporte.');
+            return;
+          }
+
+          const created = await this.production.createRewindReport({
+            reported_at: new Date().toISOString(),
+            work_order_id: workOrderId || undefined,
+            machine_id: machine.id,
+            operator_id: activeOperator.id,
+            shift_id: shiftId || undefined,
+            rolls_finished: Math.max(0, Math.trunc(rollsFinished)),
+            labels_per_roll: Math.max(0, Math.trunc(labelsPerRoll)),
+            total_labels: Math.max(0, Math.trunc(rollsFinished)) * Math.max(0, Math.trunc(labelsPerRoll)),
+            total_meters: this.resolveSelectedOtTotalMeters(),
+            waste_rolls: Math.max(0, Math.trunc(this.toNumberValue(this.formData.waste, 0))),
+            quality_check: true,
+            production_status: this.formData.productionStatus || 'PARCIAL',
+            observations: this.normalizeOptionalText(this.formData.notes || this.formData.observations),
+          });
+
+          this.audit.log(
+            this.state.userName(),
+            this.state.userRole(),
+            'PRODUCCIÓN',
+            'Reporte Rebobinado',
+            `Host: ${this.state.userName()}, Operario: ${activeOperator.name}, OT: ${this.selectedOt?.OT}, Máquina: ${machine.name}, Reporte: ${created.id}, Rollos: ${created.rolls}`,
+          );
+          this.notifications.showSuccess(`Reporte de rebobinado ${created.id} guardado correctamente.`);
+        }
+
+        this.resetForm();
+        this.otSearch = '';
+        this.selectedOt = null;
+        this.showSuggestions = false;
+     } catch (error: any) {
+        this.notifications.showError(this.resolveErrorMessage(error, 'No fue posible guardar el reporte.'));
+     } finally {
+        this.isSubmitting = false;
+     }
+  }
+
+  private submitLegacyProcessReport() {
+     const operator = this.state.activeOperatorName();
+     const details = `Cant: ${this.formData.goodQty}`;
      this.audit.log(this.state.userName(), this.state.userRole(), 'PRODUCCIÓN', 'Reporte Turno', `Host: ${this.state.userName()}, Operario: ${operator}, OT: ${this.selectedOt?.OT}, Máquina: ${this.machineName}, ${details}`);
-     
-     alert(`Reporte guardado exitosamente.\n\nOT: ${this.selectedOt?.OT}\nProceso: ${this.typeName}\nMáquina: ${this.machineName}\n${details}`);
-     
+     this.notifications.showSuccess(`Reporte registrado localmente.\n\nOT: ${this.selectedOt?.OT}\nProceso: ${this.typeName}\nMáquina: ${this.machineName}\n${details}`);
      this.resetForm();
      this.otSearch = '';
      this.selectedOt = null;
+     this.showSuggestions = false;
+  }
+
+  private resolveCurrentMachine() {
+     const normalizedName = this.normalizeToken(this.machineName);
+     return this.state.adminMachines().find((machine) => {
+        const sameName = this.normalizeToken(machine.name) === normalizedName;
+        if (!sameName) return false;
+        if (this.type === 'print') return machine.type === 'Impresión';
+        if (this.type === 'diecut') return machine.type === 'Troquelado';
+        if (this.type === 'rewind') return machine.type === 'Rebobinado';
+        return true;
+     }) || null;
+  }
+
+  private resolveShiftId() {
+     const currentShift = this.normalizeToken(this.state.currentShift());
+     if (!currentShift) return undefined;
+
+     return this.state.plantShifts().find((shift) => {
+        const shiftName = this.normalizeToken(shift.name);
+        const shiftCode = this.normalizeToken(shift.code);
+        return shiftName === currentShift || shiftCode === currentShift || shiftName.includes(currentShift) || currentShift.includes(shiftName);
+     })?.id;
+  }
+
+  private async resolveSelectedWorkOrderId() {
+     if (this.selectedOt?.id) {
+        return String(this.selectedOt.id);
+     }
+
+     const resolved = await this.ordersService.findWorkOrderByOtNumber(this.selectedOt?.OT);
+     return resolved?.id ? String(resolved.id) : undefined;
+  }
+
+  updateCurrentActivityTime(field: 'startTime' | 'endTime', event: Event) {
+     const input = event.target as HTMLInputElement | null;
+     this.currentActivity[field] = String(input?.value || '');
+  }
+
+  updateCurrentActivityMeters(event: Event) {
+     const input = event.target as HTMLInputElement | null;
+     this.currentActivity.meters = this.readNullableNumber(input?.value);
+  }
+
+  updateCurrentDiecutField(field: 'startTime' | 'endTime' | 'observations', event: Event) {
+     const input = event.target as HTMLInputElement | null;
+     this.currentDiecutActivity[field] = String(input?.value || '');
+  }
+
+  updateCurrentDiecutMeters(event: Event) {
+     const input = event.target as HTMLInputElement | null;
+     this.currentDiecutActivity.meters = this.readNullableNumber(input?.value);
+  }
+
+  updateFormNumber(field: 'goodQty' | 'waste' | 'labelsPerRoll', event: Event) {
+     const input = event.target as HTMLInputElement | null;
+     this.formData[field] = this.readNullableNumber(input?.value);
+  }
+
+  private mapPrintActivityType(type: string) {
+     const normalized = this.normalizeToken(type);
+     if (normalized.includes('SETUP')) return 'SETUP';
+     if (
+       normalized.includes('PARADA')
+       || normalized.includes('REFRIGERIO')
+       || normalized.includes('MANTENIMIENTO')
+       || normalized.includes('SIN OPERADOR')
+     ) {
+       return 'STOP';
+     }
+     return 'RUN';
+  }
+
+  private mapDiecutActivityType(type: string) {
+     const normalized = this.normalizeToken(type);
+     if (normalized.includes('SETUP')) return 'SETUP';
+    if (normalized.includes('PARADA')) return 'STOP';
+    return 'RUN';
+  }
+
+  private validatePrintDieData() {
+     const dieType = String(this.formData.dieType || '').trim().toUpperCase();
+     const dieSeries = String(this.formData.dieSeries || '').trim();
+     const dieLocation = String(this.formData.dieLocation || '').trim();
+
+     if (!dieType) {
+        return 'Selecciona el tipo de troquel antes de guardar el reporte de impresión.';
+     }
+
+     if (dieType === 'MAGNETIC' && !dieSeries) {
+        return 'Ingresa la serie del troquel magnético antes de guardar el reporte.';
+     }
+
+     if ((dieType === 'FLATBED' || dieType === 'SOLID') && !dieSeries && !dieLocation) {
+        return 'Ingresa la serie o la ubicación del troquel antes de guardar el reporte.';
+     }
+
+     return null;
+  }
+
+  private normalizeTime(value: string) {
+     const normalized = String(value || '').trim();
+     if (!normalized) return '';
+     return normalized.length === 5 ? `${normalized}:00` : normalized;
+  }
+
+  private resolveSelectedOtTotalMeters() {
+     const candidates = [
+       this.selectedOt?.['total_mtl'],
+       this.selectedOt?.['MLL Pedido'],
+     ];
+
+     for (const candidate of candidates) {
+       const parsed = this.toNumberValue(candidate, Number.NaN);
+       if (Number.isFinite(parsed) && parsed > 0) {
+         return parsed;
+       }
+     }
+
+     return 0;
+  }
+
+  private calculateDurationMinutes(start: string, end: string) {
+     if (!start || !end) return 0;
+     const [h1, m1] = start.split(':').map(Number);
+     const [h2, m2] = end.split(':').map(Number);
+     let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+     if (diff < 0) diff += 24 * 60;
+     return Math.max(0, diff);
+  }
+
+  private normalizeOptionalText(value: unknown) {
+     const normalized = String(value ?? '').trim();
+     return normalized || undefined;
+  }
+
+  private readNullableNumber(value: unknown) {
+     const normalized = String(value ?? '').trim();
+     if (!normalized) return null;
+     const parsed = Number(normalized);
+     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private toNumberValue(value: unknown, fallback = 0) {
+     if (value === null || value === undefined || value === '') {
+       return fallback;
+     }
+
+     const parsed = typeof value === 'number' ? value : Number(String(value).trim());
+     return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  private normalizeToken(value: unknown) {
+     return String(value || '')
+       .normalize('NFD')
+       .replace(/[\u0300-\u036f]/g, '')
+       .toUpperCase()
+       .trim();
+  }
+
+  private resolveErrorMessage(error: any, fallback: string) {
+     return error?.message || error?.error?.message || fallback;
   }
 }

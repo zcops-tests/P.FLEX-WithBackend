@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { buildPaginatedResult, resolvePagination } from '../../common/utils/pagination.util';
+import {
+  buildPaginatedResult,
+  resolvePagination,
+} from '../../common/utils/pagination.util';
 import { AuditQueryDto } from './dto/audit-query.dto';
 
 export interface AuditLogData {
@@ -44,14 +47,20 @@ export class AuditService {
         },
       });
     } catch (error) {
-      this.logger.error(`Failed to create audit log for ${data.entity}/${data.action}`, error.stack);
+      this.logger.error(
+        `Failed to create audit log for ${data.entity}/${data.action}`,
+        error.stack,
+      );
       // We don't throw here to avoid breaking the main request if auditing fails
     }
   }
 
   async findLogs(params: AuditQueryDto) {
     const { q, entity, action, user_id } = params;
-    const pagination = resolvePagination(params, { defaultPageSize: 50, maxPageSize: 200 });
+    const pagination = resolvePagination(params, {
+      defaultPageSize: 50,
+      maxPageSize: 200,
+    });
 
     const where: Prisma.AuditLogWhereInput = {};
 
@@ -118,12 +127,16 @@ export class AuditService {
     }
 
     if (item.new_values && typeof item.new_values === 'object') {
-      const keys = Object.keys(item.new_values as Record<string, unknown>).slice(0, 5);
+      const keys = Object.keys(
+        item.new_values as Record<string, unknown>,
+      ).slice(0, 5);
       if (keys.length) {
         parts.push(`Campos: ${keys.join(', ')}`);
       }
     } else if (item.old_values && typeof item.old_values === 'object') {
-      const keys = Object.keys(item.old_values as Record<string, unknown>).slice(0, 5);
+      const keys = Object.keys(
+        item.old_values as Record<string, unknown>,
+      ).slice(0, 5);
       if (keys.length) {
         parts.push(`Campos previos: ${keys.join(', ')}`);
       }

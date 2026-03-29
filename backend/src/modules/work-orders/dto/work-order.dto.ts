@@ -1,5 +1,16 @@
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsEnum, IsInt, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString, Matches, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Matches,
+  ValidateNested,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { normalizeOptionalDateStringInput } from '../../../common/utils/date-input.util';
 
@@ -24,7 +35,10 @@ export class CreateWorkOrderDto {
   @IsNotEmpty()
   ot_number: string;
 
-  @ApiPropertyOptional({ example: WorkOrderStatus.IMPORTED, enum: WorkOrderStatus })
+  @ApiPropertyOptional({
+    example: WorkOrderStatus.IMPORTED,
+    enum: WorkOrderStatus,
+  })
   @IsEnum(WorkOrderStatus)
   @IsOptional()
   status?: WorkOrderStatus;
@@ -66,25 +80,33 @@ export class CreateWorkOrderDto {
 
   @ApiPropertyOptional({ example: '2026-03-22' })
   @Transform(({ value }) => normalizeOptionalDateStringInput(value))
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'fecha_pedido must be a valid YYYY-MM-DD date' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'fecha_pedido must be a valid YYYY-MM-DD date',
+  })
   @IsOptional()
   fecha_pedido?: string;
 
   @ApiPropertyOptional({ example: '2026-04-01' })
   @Transform(({ value }) => normalizeOptionalDateStringInput(value))
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'fecha_entrega must be a valid YYYY-MM-DD date' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'fecha_entrega must be a valid YYYY-MM-DD date',
+  })
   @IsOptional()
   fecha_entrega?: string;
 
   @ApiPropertyOptional({ example: '2026-03-24' })
   @Transform(({ value }) => normalizeOptionalDateStringInput(value))
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'fecha_ingreso_planta must be a valid YYYY-MM-DD date' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'fecha_ingreso_planta must be a valid YYYY-MM-DD date',
+  })
   @IsOptional()
   fecha_ingreso_planta?: string;
 
   @ApiPropertyOptional({ example: '2026-03-25' })
   @Transform(({ value }) => normalizeOptionalDateStringInput(value))
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'fecha_programada_produccion must be a valid YYYY-MM-DD date' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'fecha_programada_produccion must be a valid YYYY-MM-DD date',
+  })
   @IsOptional()
   fecha_programada_produccion?: string;
 

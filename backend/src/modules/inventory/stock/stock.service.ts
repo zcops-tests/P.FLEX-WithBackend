@@ -1,9 +1,20 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
-import { CreateStockItemDto, UpdateStockItemDto, StockStatus } from './dto/stock.dto';
+import {
+  CreateStockItemDto,
+  UpdateStockItemDto,
+  StockStatus,
+} from './dto/stock.dto';
 import { StockQueryDto } from './dto/stock-query.dto';
-import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import {
+  buildPaginatedResult,
+  resolvePagination,
+} from '../../../common/utils/pagination.util';
 import { toFrontendStockItem } from '../../../common/utils/frontend-entity.util';
 
 @Injectable()
@@ -16,7 +27,9 @@ export class StockService {
         where: { pallet_id: dto.pallet_id },
       });
       if (existingPallet) {
-        throw new ConflictException(`Pallet ID ${dto.pallet_id} already exists`);
+        throw new ConflictException(
+          `Pallet ID ${dto.pallet_id} already exists`,
+        );
       }
     }
 
@@ -68,7 +81,11 @@ export class StockService {
       }),
     ]);
 
-    return buildPaginatedResult(items.map((item) => toFrontendStockItem(item)), total, pagination);
+    return buildPaginatedResult(
+      items.map((item) => toFrontendStockItem(item)),
+      total,
+      pagination,
+    );
   }
 
   async findOne(id: string) {

@@ -10,20 +10,20 @@ export class SystemConfigService {
   async get() {
     const config = await this.prisma.systemConfig.findFirst();
     if (!config) {
-       // Should be initialized via seeding, but as a fallback:
-       const created = await this.prisma.systemConfig.create({
-         data: {
-           plant_name: 'P.FLEX-SYSTEM',
-         }
-       });
-       return toFrontendSystemConfig(created);
+      // Should be initialized via seeding, but as a fallback:
+      const created = await this.prisma.systemConfig.create({
+        data: {
+          plant_name: 'P.FLEX-SYSTEM',
+        },
+      });
+      return toFrontendSystemConfig(created);
     }
     return toFrontendSystemConfig(config);
   }
 
   async update(dto: UpdateSystemConfigDto) {
     const existing = await this.get();
-    
+
     const updated = await this.prisma.systemConfig.update({
       where: { id: existing.id },
       data: dto,

@@ -12,11 +12,13 @@ describe('Validation (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }));
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     await app.init();
   });
 
@@ -43,7 +45,7 @@ describe('Validation (e2e)', () => {
         .send({
           reported_at: 'invalid-date',
           machine_id: '861a337c-f1d2-45e3-85e6-c5e3d9370691',
-          activities: []
+          activities: [],
         })
         .expect(400);
     });

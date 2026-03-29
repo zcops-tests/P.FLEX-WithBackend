@@ -37,13 +37,18 @@ describe('StockService', () => {
   describe('create', () => {
     it('should throw ConflictException if pallet_id exists', async () => {
       mockPrisma.stockItem.findUnique.mockResolvedValue({ id: '1' });
-      await expect(service.create({ pallet_id: 'P1' } as any)).rejects.toThrow(ConflictException);
+      await expect(service.create({ pallet_id: 'P1' } as any)).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('should create stock item with default status', async () => {
       mockPrisma.stockItem.findUnique.mockResolvedValue(null);
-      mockPrisma.stockItem.create.mockResolvedValue({ id: '1', status: StockStatus.LIBERATED });
-      
+      mockPrisma.stockItem.create.mockResolvedValue({
+        id: '1',
+        status: StockStatus.LIBERATED,
+      });
+
       const result = await service.create({ pallet_id: 'P1' } as any);
       expect(result.status).toBe(StockStatus.LIBERATED);
     });

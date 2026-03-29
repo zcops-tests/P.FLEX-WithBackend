@@ -120,6 +120,15 @@ export class BackendApiService {
   lockDiecutReport(id: string) { return this.api.post<any>(`/production/diecutting/reports/${id}/lock`, {}); }
   unlockDiecutReport(id: string) { return this.api.post<any>(`/production/diecutting/reports/${id}/unlock`, {}); }
 
+  getRewindReports(query?: any) { return this.api.get<any>('/production/rewinding/reports', { query }); }
+  getRewindReport(id: string) { return this.api.get<any>(`/production/rewinding/reports/${id}`); }
+  createRewindReport(body: any) { return this.api.post<any>('/production/rewinding/reports', body); }
+
+  getPackagingReports(query?: any) { return this.api.get<any>('/production/packaging/reports', { query }); }
+  getPackagingReport(id: string) { return this.api.get<any>(`/production/packaging/reports/${id}`); }
+  createPackagingReport(body: any) { return this.api.post<any>('/production/packaging/reports', body); }
+  updatePackagingReport(id: string, body: any) { return this.api.put<any>(`/production/packaging/reports/${id}`, body); }
+
   getAnalyticsOee(query?: any) { return this.api.get<any>('/analytics/oee', { query }); }
   getAnalyticsWaste(query?: any) { return this.api.get<any>('/analytics/waste', { query }); }
   getAnalyticsDowntime(query?: any) { return this.api.get<any>('/analytics/downtime', { query }); }

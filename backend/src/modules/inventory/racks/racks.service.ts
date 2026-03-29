@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateRackConfigDto, UpdateRackConfigDto } from './dto/rack.dto';
 
@@ -54,7 +58,9 @@ export class RacksService {
     ]);
 
     if (cliseCount > 0 || dieCount > 0) {
-      throw new ConflictException(`Cannot delete Rack with ID ${id} because it still contains active items`);
+      throw new ConflictException(
+        `Cannot delete Rack with ID ${id} because it still contains active items`,
+      );
     }
 
     return this.prisma.rackConfig.update({

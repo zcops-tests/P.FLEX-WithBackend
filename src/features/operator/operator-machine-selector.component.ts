@@ -3,6 +3,7 @@ import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { StateService, Machine } from '../../services/state.service';
+import { NotificationService } from '../../services/notification.service';
 
 @Component({
   selector: 'app-operator-machine-selector',
@@ -51,9 +52,9 @@ import { StateService, Machine } from '../../services/state.service';
                <ng-container *ngFor="let machine of machines">
                   <button (click)="selectMachine(machine)" 
                      class="group relative glass-card rounded-2xl p-0 text-left cursor-pointer overflow-hidden h-56 transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_0_40px_-10px_rgba(59,130,246,0.3)] border border-white/5 hover:border-blue-500/30"
-                     [class.opacity-60]="machine.status !== 'Operativa'"
-                     [class.grayscale]="machine.status !== 'Operativa'"
-                     [class.cursor-not-allowed]="machine.status !== 'Operativa'">
+                     [class.opacity-60]="machine.status !== 'Activo'"
+                     [class.grayscale]="machine.status !== 'Activo'"
+                     [class.cursor-not-allowed]="machine.status !== 'Activo'">
                      
                      <div class="absolute inset-0 bg-gradient-to-br from-[#0f172a] to-[#020408] z-0"></div>
                      
@@ -64,9 +65,10 @@ import { StateService, Machine } from '../../services/state.service';
                      <!-- Status Indicator Line -->
                      <div class="absolute top-0 left-0 w-1 h-full z-20"
                         [ngClass]="{
-                           'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]': machine.status === 'Operativa',
+                           'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]': machine.status === 'Activo',
                            'bg-orange-500': machine.status === 'Mantenimiento',
-                           'bg-red-500': machine.status === 'Detenida'
+                           'bg-red-500': machine.status === 'Detenida',
+                           'bg-slate-500': machine.status === 'Sin Operario' || machine.status === 'Inactivo'
                         }"></div>
 
                      <div class="relative z-10 flex flex-col h-full w-full p-6 justify-between">
@@ -77,15 +79,17 @@ import { StateService, Machine } from '../../services/state.service';
                            
                            <div class="px-3 py-1 rounded-md text-[10px] font-bold uppercase flex items-center gap-2 border backdrop-blur-md shadow-sm font-tech tracking-wider"
                               [ngClass]="{
-                                 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20': machine.status === 'Operativa',
+                                 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20': machine.status === 'Activo',
                                  'bg-orange-500/10 text-orange-400 border-orange-500/20': machine.status === 'Mantenimiento',
-                                 'bg-red-500/10 text-red-400 border-red-500/20': machine.status === 'Detenida'
+                                 'bg-red-500/10 text-red-400 border-red-500/20': machine.status === 'Detenida',
+                                 'bg-slate-500/10 text-slate-300 border-white/10': machine.status === 'Sin Operario' || machine.status === 'Inactivo'
                               }">
                               <span class="w-1.5 h-1.5 rounded-full" 
                                  [ngClass]="{
-                                    'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]': machine.status === 'Operativa',
+                                    'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]': machine.status === 'Activo',
                                     'bg-orange-400': machine.status === 'Mantenimiento',
-                                    'bg-red-400': machine.status === 'Detenida'
+                                    'bg-red-400': machine.status === 'Detenida',
+                                    'bg-slate-400': machine.status === 'Sin Operario' || machine.status === 'Inactivo'
                                  }"></span>
                               {{ machine.status }}
                            </div>
@@ -154,6 +158,7 @@ export class OperatorMachineSelectorComponent {
   route: ActivatedRoute = inject(ActivatedRoute);
   router: Router = inject(Router);
   state = inject(StateService);
+  notifications = inject(NotificationService);
 
   type = 'print';
 
@@ -161,6 +166,12 @@ export class OperatorMachineSelectorComponent {
     this.route.params.subscribe(params => {
       this.type = params['type'];
       if (!this.state.hasActiveOperator()) {
+        this.router.navigate(['/operator']);
+        return;
+      }
+
+      if (!this.state.canCreateProcessReport(this.type)) {
+        this.notifications.showError('La sesión anfitriona no tiene permiso para registrar reportes en esta área.');
         this.router.navigate(['/operator']);
       }
     });
@@ -182,7 +193,7 @@ export class OperatorMachineSelectorComponent {
         return this.state.adminMachines().filter((m) => m.type === 'Troquelado' && this.state.isMachineAllowedForActiveOperator(m, 'diecut'));
      }
      if (this.type === 'rewind') {
-        return this.state.adminMachines().filter((m) => m.type === 'Acabado' && this.state.isMachineAllowedForActiveOperator(m, 'rewind'));
+        return this.state.adminMachines().filter((m) => m.type === 'Rebobinado' && this.state.isMachineAllowedForActiveOperator(m, 'rewind'));
      }
      return [];
   }
@@ -201,7 +212,12 @@ export class OperatorMachineSelectorComponent {
   }
 
   selectMachine(machine: Machine) {
-    if (machine.status !== 'Operativa' || !this.state.isMachineAllowedForActiveOperator(machine, this.type)) return;
+    if (!this.state.canCreateProcessReport(this.type)) {
+      this.notifications.showError('La sesión anfitriona no tiene permiso para registrar reportes en esta área.');
+      return;
+    }
+
+    if (machine.status !== 'Activo' || !this.state.isMachineAllowedForActiveOperator(machine, this.type)) return;
     this.router.navigate(['/operator/report', this.type, machine.name]);
   }
 }

@@ -7,22 +7,24 @@ import { ExportRequestDto } from './dto/export.dto';
 export class ExportsService {
   private readonly logger = new Logger(ExportsService.name);
 
-  constructor(
-    @InjectQueue('exports') private exportsQueue: Queue,
-  ) {}
+  constructor(@InjectQueue('exports') private exportsQueue: Queue) {}
 
   async requestExport(dto: ExportRequestDto, userId: string) {
-    const job = await this.exportsQueue.add('generate-export', {
-      ...dto,
-      userId,
-    }, {
-      removeOnComplete: true,
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 5000,
+    const job = await this.exportsQueue.add(
+      'generate-export',
+      {
+        ...dto,
+        userId,
       },
-    });
+      {
+        removeOnComplete: true,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+      },
+    );
 
     return {
       jobId: job.id,

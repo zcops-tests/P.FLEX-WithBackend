@@ -1,4 +1,14 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsUUID, IsDateString, IsNumber, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  IsUUID,
+  IsDateString,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -40,6 +50,14 @@ export class CreateDiecutActivityDto {
   @IsNumber()
   @IsOptional()
   quantity?: number;
+
+  @ApiProperty({
+    example: 'Se detecta leve rebaba en el lateral derecho.',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  observations?: string;
 }
 
 export class CreateDiecutReportDto {
@@ -58,6 +76,11 @@ export class CreateDiecutReportDto {
   @IsNotEmpty()
   machine_id: string;
 
+  @ApiProperty({ example: 'uuid-operator', required: false })
+  @IsUUID()
+  @IsOptional()
+  operator_id?: string;
+
   @ApiProperty({ example: 'uuid-shift' })
   @IsUUID()
   @IsOptional()
@@ -68,6 +91,16 @@ export class CreateDiecutReportDto {
   @IsOptional()
   die_id?: string;
 
+  @ApiProperty({ example: 'TR-12345', required: false })
+  @IsString()
+  @IsOptional()
+  die_series?: string;
+
+  @ApiProperty({ example: 'AUTOMATICA', required: false })
+  @IsString()
+  @IsOptional()
+  frequency?: string;
+
   @ApiProperty({ example: 'PARTIAL' })
   @IsString()
   @IsOptional()
@@ -77,6 +110,11 @@ export class CreateDiecutReportDto {
   @IsString()
   @IsOptional()
   die_status?: string;
+
+  @ApiProperty({ example: 120, required: false })
+  @IsNumber()
+  @IsOptional()
+  waste_units?: number;
 
   @ApiProperty({ example: 'Observations' })
   @IsString()

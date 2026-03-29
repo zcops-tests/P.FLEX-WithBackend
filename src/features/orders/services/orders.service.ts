@@ -1,4 +1,4 @@
-import { Injectable, effect, inject, untracked } from '@angular/core';
+import { Injectable, NgZone, effect, inject, untracked } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import {
   OT,
@@ -23,6 +23,7 @@ export class OrdersService {
   private backend = inject(BackendApiService);
   private state = inject(StateService);
   private storage = inject(BrowserStorageService);
+  private zone = inject(NgZone);
 
   private _ots = new BehaviorSubject<Partial<OT>[]>([]);
   private _internalDatabase = new BehaviorSubject<Partial<OT>[]>([]);
@@ -38,8 +39,10 @@ export class OrdersService {
   constructor() {
     effect(() => {
       if (!this.state.currentUser()) {
-        this._ots.next([]);
-        this._internalDatabase.next([]);
+        this.commitState(() => {
+          this._ots.next([]);
+          this._internalDatabase.next([]);
+        });
         this.storage.removeItem(LEGACY_ACTIVE_OT_STORAGE_KEY);
         return;
       }
@@ -60,8 +63,10 @@ export class OrdersService {
     try {
       const items = await this.backend.getManagementWorkOrders();
       const mapped = (items || []).map((item: any) => this.mapWorkOrder(item));
-      this._ots.next(mapped);
-      this._dbLastUpdated.next(new Date());
+      this.commitState(() => {
+        this._ots.next(mapped);
+        this._dbLastUpdated.next(new Date());
+      });
       return mapped;
     } catch {
       return this._ots.value;
@@ -297,8 +302,10 @@ export class OrdersService {
   }
 
   updateInternalDatabase(data: Partial<OT>[]) {
-    this._internalDatabase.next(data);
-    this._dbLastUpdated.next(new Date());
+    this.commitState(() => {
+      this._internalDatabase.next(data);
+      this._dbLastUpdated.next(new Date());
+    });
   }
 
   isOtActive(otNumber: string | undefined) {
@@ -332,16 +339,22 @@ export class OrdersService {
       this.replaceManagementOt(item);
     }
 
-    this._dbLastUpdated.next(new Date());
+    this.commitState(() => {
+      this._dbLastUpdated.next(new Date());
+    });
   }
 
   private replaceOtInDatabase(item: Partial<OT>) {
     if (this._internalDatabase.value.length === 0) return;
-    this._internalDatabase.next(this.mergeByOt(this._internalDatabase.value, item));
+    this.commitState(() => {
+      this._internalDatabase.next(this.mergeByOt(this._internalDatabase.value, item));
+    });
   }
 
   private replaceManagementOt(item: Partial<OT>) {
-    this._ots.next(this.mergeByOt(this._ots.value, item));
+    this.commitState(() => {
+      this._ots.next(this.mergeByOt(this._ots.value, item));
+    });
   }
 
   private mergeByOt(source: Partial<OT>[], item: Partial<OT>) {
@@ -663,5 +676,9 @@ export class OrdersService {
       && parsed.getUTCDate() === day
       ? parsed
       : undefined;
+  }
+
+  private commitState(callback: () => void) {
+    this.zone.run(callback);
   }
 }

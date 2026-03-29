@@ -36,7 +36,7 @@ export interface Machine {
   name: string;
   type: string;
   area: string;
-  status: 'Operativa' | 'Mantenimiento' | 'Detenida' | 'Sin Operador';
+  status: 'Activo' | 'Inactivo' | 'Mantenimiento' | 'Detenida' | 'Sin Operario';
   active: boolean;
   areaId?: string;
   rawType?: string;
@@ -292,6 +292,23 @@ export class StateService {
     );
   }
 
+  canCreateProcessReport(process: string): boolean {
+    const normalized = this.toRoleToken(process);
+    if (normalized.includes('PRINT') || normalized.includes('IMPRES')) {
+      return this.hasPermission('reports.print.create');
+    }
+    if (normalized.includes('DIECUT') || normalized.includes('TROQ')) {
+      return this.hasPermission('reports.diecut.create');
+    }
+    if (normalized.includes('REWIND') || normalized.includes('REBOB')) {
+      return this.hasPermission('reports.rewind.create');
+    }
+    if (normalized.includes('PACK') || normalized.includes('EMPAQ')) {
+      return this.hasPermission('reports.packaging.create');
+    }
+    return false;
+  }
+
   hasPermission(permission: string | null | undefined): boolean {
     const code = String(permission || '').trim();
     if (!code) return false;
@@ -344,20 +361,53 @@ export class StateService {
     return raw;
   }
 
-  toUiMachineType(value: string): string {
+  toUiMachineType(value: string, areaName?: string, areaCode?: string): string {
     const normalized = String(value || '').toUpperCase();
+    const normalizedAreaName = String(areaName || '').toUpperCase();
+    const normalizedAreaCode = String(areaCode || '').toUpperCase();
     if (normalized.includes('PRINT') || normalized.includes('IMP')) return 'Impresión';
     if (normalized.includes('DIECUT') || normalized.includes('TROQ')) return 'Troquelado';
-    if (normalized.includes('REWIND') || normalized.includes('PACK') || normalized.includes('ACAB')) return 'Acabado';
+    if (
+      normalized.includes('PACK') ||
+      normalized.includes('EMPAQ') ||
+      normalizedAreaName.includes('EMPAQ') ||
+      normalizedAreaCode.includes('EMPAQ')
+    ) {
+      return 'Empaquetado';
+    }
+    if (
+      normalized.includes('REWIND') ||
+      normalized.includes('REBOB') ||
+      normalized.includes('ACAB') ||
+      normalizedAreaName.includes('REBOB') ||
+      normalizedAreaCode.includes('REBOB')
+    ) {
+      return 'Rebobinado';
+    }
     return value || 'Impresión';
   }
 
   toUiMachineStatus(value: string): Machine['status'] {
     const normalized = String(value || '').toUpperCase();
+    if (normalized.includes('INACT')) return 'Inactivo';
     if (normalized.includes('MAINT')) return 'Mantenimiento';
     if (normalized.includes('STOP') || normalized.includes('DETEN')) return 'Detenida';
-    if (normalized.includes('NO_OPERATOR') || normalized.includes('SIN')) return 'Sin Operador';
-    return 'Operativa';
+    if (normalized.includes('NO_OPERATOR') || normalized.includes('SIN')) return 'Sin Operario';
+    return 'Activo';
+  }
+
+  toUiAreaName(value: string, code?: string): string {
+    const normalized = `${value || ''} ${code || ''}`
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+
+    if (normalized.includes('TROQ')) return 'Troquelado';
+    if (normalized.includes('REBOB')) return 'Rebobinado';
+    if (normalized.includes('EMPAQ')) return 'Empaquetado';
+    if (normalized.includes('IMP')) return 'Impresión';
+    return value || '';
   }
 
   private restoreSession() {
@@ -580,8 +630,15 @@ export class StateService {
       id: machine.id,
       code: machine.code,
       name: machine.name,
-      type: this.toUiMachineType(machine.uiType || machine.type),
-      area: machine.area?.name || machine.area_name || '',
+      type: this.toUiMachineType(
+        machine.type,
+        machine.area?.name || machine.area_name,
+        machine.area?.code || machine.area_code,
+      ),
+      area: this.toUiAreaName(
+        machine.area?.name || machine.area_name || '',
+        machine.area?.code || machine.area_code || '',
+      ),
       areaId: machine.area_id,
       status: this.toUiMachineStatus(machine.uiStatus || machine.status),
       active: machine.active !== false,

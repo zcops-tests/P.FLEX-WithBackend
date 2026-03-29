@@ -28,6 +28,8 @@ import { StockModule } from './modules/inventory/stock/stock.module';
 import { QualityModule } from './modules/quality/quality.module';
 import { PrintingModule } from './modules/production/printing/printing.module';
 import { DiecuttingModule } from './modules/production/diecutting/diecutting.module';
+import { RewindingModule } from './modules/production/rewinding/rewinding.module';
+import { PackagingModule } from './modules/production/packaging/packaging.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { FilesModule } from './modules/files/files.module';
@@ -47,10 +49,12 @@ import { UserStatusGuard } from './modules/auth/guards/user-status.guard';
       cache: true,
       validate: validateEnv,
     }),
-    ThrottlerModule.forRoot([{
-      ttl: 60000, // 1 minute
-      limit: 100,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minute
+        limit: 100,
+      },
+    ]),
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -66,9 +70,10 @@ import { UserStatusGuard } from './modules/auth/guards/user-status.guard';
         customProps: (req, res) => ({
           context: 'HTTP',
         }),
-        transport: process.env.NODE_ENV !== 'production'
-          ? { target: 'pino-pretty', options: { colorize: true } }
-          : undefined,
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? { target: 'pino-pretty', options: { colorize: true } }
+            : undefined,
       },
     }),
     CommonModule,
@@ -93,6 +98,8 @@ import { UserStatusGuard } from './modules/auth/guards/user-status.guard';
     QualityModule,
     PrintingModule,
     DiecuttingModule,
+    RewindingModule,
+    PackagingModule,
     SyncModule,
     AnalyticsModule,
     FilesModule,

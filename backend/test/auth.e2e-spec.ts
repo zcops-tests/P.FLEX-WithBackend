@@ -28,21 +28,15 @@ describe('AuthController (e2e)', () => {
   });
 
   it('/auth/me (GET) - Fail without token', () => {
-    return request(app.getHttpServer())
-      .get('/auth/me')
-      .expect(401);
+    return request(app.getHttpServer()).get('/auth/me').expect(401);
   });
 
   it('/areas (GET) - Success with public/no token if allowed or 401 if restricted', () => {
     // Depending on RolesGuard settings, normally 401 without token
-    return request(app.getHttpServer())
-      .get('/areas')
-      .expect(401);
+    return request(app.getHttpServer()).get('/areas').expect(401);
   });
 
   it('/machines (GET) - Success with public/no token if allowed or 401 if restricted', () => {
-    return request(app.getHttpServer())
-      .get('/machines')
-      .expect(401);
+    return request(app.getHttpServer()).get('/machines').expect(401);
   });
 });

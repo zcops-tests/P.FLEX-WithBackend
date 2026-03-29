@@ -1,5 +1,14 @@
 import { Transform, Type } from 'class-transformer';
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsArray, IsObject, Matches, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsArray,
+  IsObject,
+  Matches,
+  ValidateNested,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { normalizeOptionalDateStringInput } from '../../../../common/utils/date-input.util';
 
@@ -81,7 +90,9 @@ export class CreateCliseBaseDto {
 
   @ApiProperty({ example: '2026-03-22' })
   @Transform(({ value }) => normalizeOptionalDateStringInput(value))
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'fecha_ingreso must be a valid YYYY-MM-DD date' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'fecha_ingreso must be a valid YYYY-MM-DD date',
+  })
   @IsOptional()
   fecha_ingreso?: string;
 

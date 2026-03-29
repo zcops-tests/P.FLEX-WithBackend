@@ -11,7 +11,13 @@ import {
   Patch,
   Request,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { WorkOrdersService } from './work-orders.service';
 import {
   BulkUpsertWorkOrdersDto,
@@ -53,7 +59,12 @@ export class WorkOrdersController {
   @Permissions('workorders.view')
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false, enum: WorkOrderStatus })
-  @ApiQuery({ name: 'q', required: false, type: String, description: 'Search by OT, description, client, or material' })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    type: String,
+    description: 'Search by OT, description, client, or material',
+  })
   async findAll(@Query() query: WorkOrderQueryDto) {
     return this.workOrdersService.findAll(query);
   }
@@ -75,14 +86,20 @@ export class WorkOrdersController {
   @Put(':id')
   @Permissions('workorders.manage')
   @ApiOperation({ summary: 'Update an existing work order' })
-  async update(@Param('id') id: string, @Body() dto: Partial<CreateWorkOrderDto>) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateWorkOrderDto>,
+  ) {
     return this.workOrdersService.update(id, dto);
   }
 
   @Patch(':id/status')
   @Permissions('workorders.status.update')
   @ApiOperation({ summary: 'Update work order status (state machine)' })
-  async updateStatus(@Param('id') id: string, @Body() dto: UpdateWorkOrderStatusDto) {
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkOrderStatusDto,
+  ) {
     return this.workOrdersService.updateStatus(id, dto.status);
   }
 
@@ -96,8 +113,16 @@ export class WorkOrdersController {
   @Post(':id/management/exit')
   @Permissions('workorders.management.manage')
   @ApiOperation({ summary: 'Exit a work order from management' })
-  async exitManagement(@Param('id') id: string, @Body() dto: ExitWorkOrderManagementDto, @Request() req) {
-    return this.workOrdersService.exitManagement(id, dto.exit_action, req.user.sub);
+  async exitManagement(
+    @Param('id') id: string,
+    @Body() dto: ExitWorkOrderManagementDto,
+    @Request() req,
+  ) {
+    return this.workOrdersService.exitManagement(
+      id,
+      dto.exit_action,
+      req.user.sub,
+    );
   }
 
   @Delete(':id')

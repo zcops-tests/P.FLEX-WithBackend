@@ -12,7 +12,11 @@ export class PaginationQueryDto {
   @IsOptional()
   page?: number = 1;
 
-  @ApiPropertyOptional({ example: 20, minimum: 1, maximum: PaginationQueryDto.MAX_PAGE_SIZE })
+  @ApiPropertyOptional({
+    example: 20,
+    minimum: 1,
+    maximum: PaginationQueryDto.MAX_PAGE_SIZE,
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)

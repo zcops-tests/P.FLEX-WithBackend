@@ -29,7 +29,7 @@ export class ImportsService {
       fileId: dto.file_id,
       options: {
         tolerantMode: true, // Collect errors per row instead of stopping
-      }
+      },
     });
 
     return job;
@@ -40,9 +40,9 @@ export class ImportsService {
       where: { id },
       include: {
         user: {
-          select: { username: true }
-        }
-      }
+          select: { username: true },
+        },
+      },
     });
 
     if (!job) throw new NotFoundException('Import job not found');
@@ -66,9 +66,10 @@ export class ImportsService {
 
   async validateRow(entityName: string, row: any) {
     const errors: string[] = [];
-    
+
     if (entityName === 'work_orders') {
-      if (!row.ot_number) errors.push('OT_REQUIRED: Número de OT es obligatorio');
+      if (!row.ot_number)
+        errors.push('OT_REQUIRED: Número de OT es obligatorio');
       if (row.cantidad_pedida && isNaN(Number(row.cantidad_pedida))) {
         errors.push('INVALID_QUANTITY: Cantidad pedida debe ser un número');
       }
@@ -76,12 +77,13 @@ export class ImportsService {
         errors.push('INVALID_DATE: Formato de fecha de entrega inválido');
       }
     } else if (entityName === 'clises') {
-      if (!row.item_code) errors.push('CODE_REQUIRED: Código de clisé es obligatorio');
+      if (!row.item_code)
+        errors.push('CODE_REQUIRED: Código de clisé es obligatorio');
       if (row.ancho_mm && isNaN(Number(row.ancho_mm))) {
         errors.push('INVALID_DIMENSION: El ancho debe ser numérico');
       }
     }
-    
+
     return errors;
   }
 
@@ -100,7 +102,7 @@ export class ImportsService {
 
   async applyImport(jobId: string) {
     const job = await this.getJob(jobId);
-    
+
     // Process in batches
     if (job.entity_name === 'work_orders') {
       const rows = await this.prisma.workOrderImportRow.findMany({
@@ -119,7 +121,7 @@ export class ImportsService {
 
     await this.prisma.importJob.update({
       where: { id: jobId },
-      data: { 
+      data: {
         status: ImportStatus.COMPLETED,
         finished_at: new Date(),
         applied_rows: { increment: 100 }, // Mock progress

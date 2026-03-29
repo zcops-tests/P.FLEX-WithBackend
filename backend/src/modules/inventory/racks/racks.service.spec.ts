@@ -42,7 +42,9 @@ describe('RacksService', () => {
   describe('create', () => {
     it('should throw ConflictException if rack name exists', async () => {
       mockPrisma.rackConfig.findFirst.mockResolvedValue({ id: '1' });
-      await expect(service.create({ name: 'R1' } as any)).rejects.toThrow(ConflictException);
+      await expect(service.create({ name: 'R1' } as any)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -51,7 +53,7 @@ describe('RacksService', () => {
       mockPrisma.rackConfig.findUnique.mockResolvedValue({ id: '1' });
       mockPrisma.clise.count.mockResolvedValue(1);
       mockPrisma.die.count.mockResolvedValue(0);
-      
+
       await expect(service.remove('1')).rejects.toThrow(ConflictException);
     });
   });

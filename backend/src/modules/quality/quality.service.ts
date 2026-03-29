@@ -1,11 +1,25 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { CreateIncidentDto, IncidentStatus, CreateCapaActionDto } from './dto/incident.dto';
+import {
+  CreateIncidentDto,
+  IncidentStatus,
+  CreateCapaActionDto,
+} from './dto/incident.dto';
 import { IncidentsQueryDto } from './dto/incidents-query.dto';
-import { buildPaginatedResult, resolvePagination } from '../../common/utils/pagination.util';
+import {
+  buildPaginatedResult,
+  resolvePagination,
+} from '../../common/utils/pagination.util';
 import { assertAllowedTransition } from '../../common/utils/state-transition.util';
-import { toFrontendCapaAction, toFrontendIncident } from '../../common/utils/frontend-entity.util';
+import {
+  toFrontendCapaAction,
+  toFrontendIncident,
+} from '../../common/utils/frontend-entity.util';
 
 @Injectable()
 export class QualityService {
@@ -69,7 +83,11 @@ export class QualityService {
       }),
     ]);
 
-    return buildPaginatedResult(items.map((item) => toFrontendIncident(item)), total, pagination);
+    return buildPaginatedResult(
+      items.map((item) => toFrontendIncident(item)),
+      total,
+      pagination,
+    );
   }
 
   async findOneIncident(id: string) {
@@ -92,22 +110,34 @@ export class QualityService {
     return toFrontendIncident(incident);
   }
 
-  async updateIncidentStatus(id: string, status: IncidentStatus, rootCause?: string) {
+  async updateIncidentStatus(
+    id: string,
+    status: IncidentStatus,
+    rootCause?: string,
+  ) {
     const incident = await this.findOneIncident(id);
-    
+
     // Basic state machine validation
     const allowedTransitions: Record<string, string[]> = {
       [IncidentStatus.OPEN]: [IncidentStatus.ANALYSIS, IncidentStatus.CLOSED],
-      [IncidentStatus.ANALYSIS]: [IncidentStatus.CORRECTIVE_ACTION, IncidentStatus.CLOSED],
+      [IncidentStatus.ANALYSIS]: [
+        IncidentStatus.CORRECTIVE_ACTION,
+        IncidentStatus.CLOSED,
+      ],
       [IncidentStatus.CORRECTIVE_ACTION]: [IncidentStatus.CLOSED],
       [IncidentStatus.CLOSED]: [IncidentStatus.OPEN], // Allow re-opening
     };
 
-    assertAllowedTransition(incident.status, status, allowedTransitions, 'Transition');
+    assertAllowedTransition(
+      incident.status,
+      status,
+      allowedTransitions,
+      'Transition',
+    );
 
     const updated = await this.prisma.incident.update({
       where: { id },
-      data: { 
+      data: {
         status,
         root_cause: rootCause || incident.root_cause,
       },
@@ -163,14 +193,16 @@ export class QualityService {
   }
 
   async completeCapaAction(actionId: string) {
-    const existingAction = await this.prisma.capaAction.findUnique({ where: { id: actionId } });
+    const existingAction = await this.prisma.capaAction.findUnique({
+      where: { id: actionId },
+    });
     if (!existingAction || existingAction.deleted_at) {
       throw new NotFoundException(`CAPA Action with ID ${actionId} not found`);
     }
 
     const action = await this.prisma.capaAction.update({
       where: { id: actionId },
-      data: { 
+      data: {
         completed: true,
         completed_at: new Date(),
       },

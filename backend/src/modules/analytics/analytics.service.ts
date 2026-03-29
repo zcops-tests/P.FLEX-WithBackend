@@ -34,18 +34,31 @@ export class AnalyticsService {
     if (kpis.length === 0) {
       const fallback = await this.buildRuntimeSnapshot(query);
       if (
-        fallback.runtimeMinutes === 0
-        && fallback.downtimeMinutes === 0
-        && fallback.setupMinutes === 0
-        && fallback.goodOutput === 0
-        && fallback.wasteOutput === 0
+        fallback.runtimeMinutes === 0 &&
+        fallback.downtimeMinutes === 0 &&
+        fallback.setupMinutes === 0 &&
+        fallback.goodOutput === 0 &&
+        fallback.wasteOutput === 0
       ) {
-        return { oee: 0, availability: 0, performance: 0, quality: 0, items: [] };
+        return {
+          oee: 0,
+          availability: 0,
+          performance: 0,
+          quality: 0,
+          items: [],
+        };
       }
 
-      const availability = fallback.runtimeMinutes / (fallback.runtimeMinutes + fallback.downtimeMinutes) || 0;
-      const performance = fallback.runtimeMinutes / (fallback.runtimeMinutes + fallback.downtimeMinutes + fallback.setupMinutes) || 0;
-      const quality = fallback.goodOutput / (fallback.goodOutput + fallback.wasteOutput) || 0;
+      const availability =
+        fallback.runtimeMinutes /
+          (fallback.runtimeMinutes + fallback.downtimeMinutes) || 0;
+      const performance =
+        fallback.runtimeMinutes /
+          (fallback.runtimeMinutes +
+            fallback.downtimeMinutes +
+            fallback.setupMinutes) || 0;
+      const quality =
+        fallback.goodOutput / (fallback.goodOutput + fallback.wasteOutput) || 0;
       const oee = availability * performance * quality;
 
       return {
@@ -125,8 +138,14 @@ export class AnalyticsService {
       .filter(Boolean)
       .sort((a: any, b: any) => b.percentage - a.percentage);
 
-    const totalMeters = items.reduce((acc: number, item: any) => acc + item.total, 0);
-    const totalWaste = items.reduce((acc: number, item: any) => acc + item.waste, 0);
+    const totalMeters = items.reduce(
+      (acc: number, item: any) => acc + item.total,
+      0,
+    );
+    const totalWaste = items.reduce(
+      (acc: number, item: any) => acc + item.waste,
+      0,
+    );
     const wasteRate = totalMeters > 0 ? (totalWaste / totalMeters) * 100 : 0;
 
     return {
@@ -159,13 +178,23 @@ export class AnalyticsService {
       }),
     ]);
 
-    const grouped = new Map<string, { machine: string; process: string; totalMinutes: number; events: number }>();
+    const grouped = new Map<
+      string,
+      { machine: string; process: string; totalMinutes: number; events: number }
+    >();
 
-    const accumulate = (items: Array<{ machine?: { code?: string | null; name?: string | null } | null; activities: Array<{ duration_minutes: number }> }>, process: string) => {
+    const accumulate = (
+      items: Array<{
+        machine?: { code?: string | null; name?: string | null } | null;
+        activities: Array<{ duration_minutes: number }>;
+      }>,
+      process: string,
+    ) => {
       items.forEach((report) => {
         const key = `${process}:${report.machine?.code || report.machine?.name || 'SIN_MAQUINA'}`;
         const current = grouped.get(key) || {
-          machine: report.machine?.name || report.machine?.code || 'Sin máquina',
+          machine:
+            report.machine?.name || report.machine?.code || 'Sin máquina',
           process,
           totalMinutes: 0,
           events: 0,
@@ -187,7 +216,10 @@ export class AnalyticsService {
       .filter((item) => item.totalMinutes > 0)
       .sort((a, b) => b.totalMinutes - a.totalMinutes);
 
-    const totalMinutes = items.reduce((acc, item) => acc + item.totalMinutes, 0);
+    const totalMinutes = items.reduce(
+      (acc, item) => acc + item.totalMinutes,
+      0,
+    );
     const totalEvents = items.reduce((acc, item) => acc + item.events, 0);
 
     return {
@@ -205,11 +237,17 @@ export class AnalyticsService {
     return { message: 'Consolidation triggered' };
   }
 
-  private calculateOEE(availability: number, performance: number, quality: number): number {
+  private calculateOEE(
+    availability: number,
+    performance: number,
+    quality: number,
+  ): number {
     return availability * performance * quality;
   }
 
-  private async buildRuntimeSnapshot(query: KpiQueryDto): Promise<RuntimeSnapshot> {
+  private async buildRuntimeSnapshot(
+    query: KpiQueryDto,
+  ): Promise<RuntimeSnapshot> {
     const [printReports, diecutReports] = await Promise.all([
       this.prisma.printReport.findMany({
         where: this.buildPrintReportWhere(query),
@@ -247,7 +285,11 @@ export class AnalyticsService {
       snapshot.goodOutput += this.toNumber(report.total_meters);
       snapshot.wasteOutput += this.toNumber(report.waste_meters);
       report.activities.forEach((activity) => {
-        this.assignActivityMinutes(snapshot, activity.activity_type, activity.duration_minutes);
+        this.assignActivityMinutes(
+          snapshot,
+          activity.activity_type,
+          activity.duration_minutes,
+        );
       });
     });
 
@@ -255,14 +297,22 @@ export class AnalyticsService {
       snapshot.goodOutput += this.toNumber(report.good_units);
       snapshot.wasteOutput += this.toNumber(report.waste_units);
       report.activities.forEach((activity) => {
-        this.assignActivityMinutes(snapshot, activity.activity_type, activity.duration_minutes);
+        this.assignActivityMinutes(
+          snapshot,
+          activity.activity_type,
+          activity.duration_minutes,
+        );
       });
     });
 
     return snapshot;
   }
 
-  private assignActivityMinutes(snapshot: RuntimeSnapshot, activityType: string, durationMinutes: number) {
+  private assignActivityMinutes(
+    snapshot: RuntimeSnapshot,
+    activityType: string,
+    durationMinutes: number,
+  ) {
     const normalizedType = String(activityType || '').toUpperCase();
     const duration = Number(durationMinutes || 0);
 
@@ -281,7 +331,9 @@ export class AnalyticsService {
     }
   }
 
-  private buildPrintReportWhere(query: KpiQueryDto): Prisma.PrintReportWhereInput {
+  private buildPrintReportWhere(
+    query: KpiQueryDto,
+  ): Prisma.PrintReportWhereInput {
     const where: Prisma.PrintReportWhereInput = {
       deleted_at: null,
       reported_at: {
@@ -301,7 +353,9 @@ export class AnalyticsService {
     return where;
   }
 
-  private buildDiecutReportWhere(query: KpiQueryDto): Prisma.DiecutReportWhereInput {
+  private buildDiecutReportWhere(
+    query: KpiQueryDto,
+  ): Prisma.DiecutReportWhereInput {
     const where: Prisma.DiecutReportWhereInput = {
       deleted_at: null,
       reported_at: {

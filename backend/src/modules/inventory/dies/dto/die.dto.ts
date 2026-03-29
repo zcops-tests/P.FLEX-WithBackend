@@ -1,5 +1,14 @@
 import { Transform, Type } from 'class-transformer';
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsDateString, IsArray, IsObject, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsDateString,
+  IsArray,
+  IsObject,
+  ValidateNested,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateDieBaseDto {
@@ -108,7 +117,9 @@ export class CreateDieBaseDto {
   @IsOptional()
   tipo_troquel?: string;
 
-  @ApiProperty({ example: { cliente_original: 'ACME', medida_original: '100 x 50' } })
+  @ApiProperty({
+    example: { cliente_original: 'ACME', medida_original: '100 x 50' },
+  })
   @IsObject()
   @IsOptional()
   raw_payload?: Record<string, unknown>;

@@ -1,12 +1,13 @@
 
-import { Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Router } from '@angular/router';
 import { StateService } from '../../../services/state.service';
-import { OrdersService } from '../../orders/services/orders.service';
-import { OT } from '../../orders/models/orders.models';
-
-import { DiecutActivity, DiecutReport } from '../models/reports.models';
+import { NotificationService } from '../../../services/notification.service';
+import { DiecutReport } from '../models/reports.models';
+import { ProductionService } from '../services/production.service';
 
 @Component({
   selector: 'app-reports-diecut',
@@ -35,7 +36,7 @@ import { DiecutActivity, DiecutReport } from '../models/reports.models';
            <button class="bg-[#1e293b]/80 border border-white/10 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-white/10 text-slate-300 transition-all backdrop-blur-sm">
               <span class="material-icons text-sm">filter_list</span> Filtros
            </button>
-           <button class="bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-purple-900/20 transition-all active:scale-95 border border-purple-500/50">
+           <button type="button" (click)="startNewReport()" [disabled]="!canCreateReport" class="bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-purple-900/20 transition-all active:scale-95 border border-purple-500/50 disabled:opacity-50 disabled:cursor-not-allowed">
               <span class="material-icons text-sm">add</span> Nuevo Reporte
            </button>
         </div>
@@ -263,6 +264,7 @@ import { DiecutActivity, DiecutReport } from '../models/reports.models';
                                   <th class="px-5 py-3 text-center">Horario</th>
                                   <th class="px-5 py-3 text-center">Duración</th>
                                   <th class="px-5 py-3 text-right">Cant. Prod.</th>
+                                  <th class="px-5 py-3">Observación</th>
                               </tr>
                           </thead>
                           <tbody class="divide-y divide-white/5 text-slate-300">
@@ -277,6 +279,9 @@ import { DiecutActivity, DiecutReport } from '../models/reports.models';
                                   <td class="px-5 py-3 text-center font-mono text-xs text-slate-500">{{ calculateDuration(act.startTime, act.endTime) }}</td>
                                   <td class="px-5 py-3 text-right font-mono font-bold" [class.text-purple-400]="act.qty > 0">
                                       {{ act.qty > 0 ? (act.qty | number) : '-' }}
+                                  </td>
+                                  <td class="px-5 py-3 text-xs text-slate-400 italic max-w-xs">
+                                      {{ act.observations || '-' }}
                                   </td>
                               </tr>
                           </tbody>
@@ -331,56 +336,27 @@ import { DiecutActivity, DiecutReport } from '../models/reports.models';
 })
 export class ReportsDiecutComponent implements OnInit {
   state = inject(StateService);
-  ordersService = inject(OrdersService);
+  router = inject(Router);
+  notifications = inject(NotificationService);
+  production = inject(ProductionService);
+  destroyRef = inject(DestroyRef);
+  cdr = inject(ChangeDetectorRef);
 
   reports: DiecutReport[] = [];
   searchTerm = '';
   selectedReport: DiecutReport | null = null;
+  isLoading = true;
+  isDetailLoading = false;
 
   ngOnInit() {
-    this.generateReports();
-  }
+    this.production.diecutReports$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((reports) => {
+        this.reports = reports;
+        queueMicrotask(() => this.cdr.detectChanges());
+      });
 
-  generateReports() {
-    const ots = this.ordersService.ots.slice(0, 25);
-    const machines = this.state.adminMachines().filter(m => m.type === 'Troquelado');
-    const operators = ['Luis Diaz', 'Pedro Gomez', 'Sofia Herrera'];
-
-    this.reports = ots.map((ot, index) => {
-        const date = new Date();
-        date.setDate(date.getDate() - (index % 10));
-        date.setHours(8 + (index % 8), 0);
-
-        const goodUnits = Math.floor(Math.random() * 50000) + 5000;
-        const waste = Math.floor(goodUnits * (0.01 + Math.random() * 0.04));
-        const dieStatus = index % 5 === 0 ? 'Desgaste' : (index % 20 === 0 ? 'Dañado' : 'OK');
-
-        // Activities
-        const activities: DiecutActivity[] = [
-            { type: 'SETUP', startTime: '08:00', endTime: '09:00', qty: 0 },
-            { type: 'TROQUELADO', startTime: '09:00', endTime: '12:00', qty: Math.floor(goodUnits * 0.4) },
-            { type: 'REPUJADO', startTime: '12:00', endTime: '14:00', qty: Math.floor(goodUnits * 0.3) },
-            { type: 'TROQUELADO', startTime: '14:00', endTime: '16:00', qty: Math.floor(goodUnits * 0.3) }
-        ];
-
-        return {
-            id: `REP-TRQ-${1000 + index}`,
-            date: date,
-            ot: ot.OT,
-            client: ot['Razon Social'],
-            product: ot.descripcion || 'Etiqueta Troquelada',
-            machine: machines[index % machines.length]?.name || 'Plana 1',
-            operator: operators[index % operators.length],
-            shift: index % 2 === 0 ? 'Día - A' : 'Noche - B',
-            dieSeries: ot.troquel || `TR-${ot.OT.slice(-4)}`,
-            goodUnits,
-            waste,
-            dieStatus: dieStatus as any,
-            activities: activities,
-            productionStatus: index % 3 !== 0 ? 'TOTAL' : 'PARCIAL',
-            observations: dieStatus !== 'OK' ? 'Troquel presenta rebabas en bordes derechos.' : ''
-        };
-    });
+    void this.loadReports();
   }
 
   get filteredReports() {
@@ -397,7 +373,11 @@ export class ReportsDiecutComponent implements OnInit {
       const totalUnits = this.reports.reduce((acc, r) => acc + r.goodUnits, 0);
       const totalWaste = this.reports.reduce((acc, r) => acc + r.waste, 0);
       const wasteRate = totalUnits > 0 ? (totalWaste / totalUnits) * 100 : 0;
-      const totalHours = this.reports.length * 8; // Estimado
+      const totalMinutes = this.reports.reduce((acc, report) => acc + report.activities.reduce((activityAcc, activity) => {
+          if ((activity.qty || 0) <= 0) return activityAcc;
+          return activityAcc + this.calculateDurationMinutes(activity.startTime, activity.endTime);
+      }, 0), 0);
+      const totalHours = totalMinutes / 60;
 
       return {
           totalUnits,
@@ -407,12 +387,40 @@ export class ReportsDiecutComponent implements OnInit {
       };
   }
 
-  openDetail(report: DiecutReport) {
-      this.selectedReport = report;
+  get canCreateReport() {
+      return this.state.hasPermission('operator.host') && this.state.canCreateProcessReport('diecut');
+  }
+
+  async openDetail(report: DiecutReport) {
+      try {
+          this.isDetailLoading = true;
+          this.selectedReport = await this.production.getDiecutReport(report.id);
+      } catch (error: any) {
+          this.selectedReport = report;
+          this.notifications.showError(error?.message || 'No fue posible cargar el detalle del reporte.');
+      } finally {
+          this.isDetailLoading = false;
+          queueMicrotask(() => this.cdr.detectChanges());
+      }
   }
 
   closeDetail() {
       this.selectedReport = null;
+      queueMicrotask(() => this.cdr.detectChanges());
+  }
+
+  startNewReport() {
+      if (!this.canCreateReport) {
+          this.notifications.showWarning('Tu sesión no tiene permisos para registrar reportes de troquelado.');
+          return;
+      }
+
+      if (this.state.hasActiveOperator() && this.state.isProcessAllowedForActiveOperator('diecut')) {
+          this.router.navigate(['/operator/select-machine', 'diecut']);
+          return;
+      }
+
+      this.router.navigate(['/operator']);
   }
 
   getStatusClass(status: string) {
@@ -433,5 +441,24 @@ export class ReportsDiecutComponent implements OnInit {
       const hours = Math.floor(diff / 60);
       const mins = diff % 60;
       return `${hours}h ${mins}m`;
+  }
+
+  private calculateDurationMinutes(start: string, end: string) {
+      const [h1, m1] = start.split(':').map(Number);
+      const [h2, m2] = end.split(':').map(Number);
+      let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+      if (diff < 0) diff += 24 * 60;
+      return Math.max(0, diff);
+  }
+
+  private async loadReports() {
+      try {
+          this.isLoading = true;
+          await this.production.reload();
+      } catch {
+          this.notifications.showError('No fue posible cargar los reportes de troquelado.');
+      } finally {
+          this.isLoading = false;
+      }
   }
 }

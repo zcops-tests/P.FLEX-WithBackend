@@ -1,6 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { CreateImportJobDto, ImportStatus, ImportType } from './dto/import-job.dto';
+import {
+  CreateImportJobDto,
+  ImportStatus,
+  ImportType,
+} from './dto/import-job.dto';
 import * as XLSX from 'xlsx';
 
 @Injectable()
@@ -37,10 +46,10 @@ export class StagingService {
 
   async processFile(jobId: string, file: Express.Multer.File) {
     const job = await this.getJob(jobId);
-    
+
     await this.prisma.importJob.update({
       where: { id: jobId },
-      data: { 
+      data: {
         status: 'PROCESSING',
         file_name: file.originalname,
       },
@@ -64,22 +73,24 @@ export class StagingService {
 
       await this.prisma.importJob.update({
         where: { id: jobId },
-        data: { 
+        data: {
           status: 'COMPLETED',
           total_rows: rows.length,
-          summary: { 
+          summary: {
             message: 'Parsing completed',
-            processed_at: new Date().toISOString()
+            processed_at: new Date().toISOString(),
           },
         },
       });
 
       return { success: true, total_rows: rows.length };
     } catch (error) {
-      this.logger.error(`Error processing import job ${jobId}: ${error.message}`);
+      this.logger.error(
+        `Error processing import job ${jobId}: ${error.message}`,
+      );
       await this.prisma.importJob.update({
         where: { id: jobId },
-        data: { 
+        data: {
           status: 'FAILED',
           summary: { error: error.message },
         },
@@ -92,7 +103,8 @@ export class StagingService {
     const data = rows.map((row, index) => ({
       import_job_id: jobId,
       row_number: index + 1,
-      business_key: row['ot_number']?.toString() || row['OT Number']?.toString(),
+      business_key:
+        row['ot_number']?.toString() || row['OT Number']?.toString(),
       raw_row: row,
       row_status: 'PENDING',
     }));
@@ -104,7 +116,8 @@ export class StagingService {
     const data = rows.map((row, index) => ({
       import_job_id: jobId,
       row_number: index + 1,
-      business_key: row['item_code']?.toString() || row['Item Code']?.toString(),
+      business_key:
+        row['item_code']?.toString() || row['Item Code']?.toString(),
       raw_row: row,
       row_status: 'PENDING',
     }));

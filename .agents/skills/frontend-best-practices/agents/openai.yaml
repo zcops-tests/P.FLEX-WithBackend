@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Best Practices"
+  short_description: "Guide for scalable, accessible frontend work"
+  default_prompt: "Use $frontend-best-practices to design, review, or refactor this frontend change."

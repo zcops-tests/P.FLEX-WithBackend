@@ -105,7 +105,7 @@ function stringifyWorkOrderValue(value: unknown): string {
 
 function readWorkOrderRawValue(
   payload: Record<string, unknown>,
-  key: typeof WORK_ORDER_IMPORT_HEADERS[number],
+  key: (typeof WORK_ORDER_IMPORT_HEADERS)[number],
   fallback: unknown,
 ) {
   const rawValue = payload[key];
@@ -114,23 +114,52 @@ function readWorkOrderRawValue(
     : stringifyWorkOrderValue(fallback);
 }
 
-function normalizeMachineType(value: string | null | undefined): string {
+function normalizeMachineType(
+  value: string | null | undefined,
+  areaName?: string | null,
+  areaCode?: string | null,
+): string {
   const normalized = String(value || '').toUpperCase();
-  if (normalized.includes('PRINT') || normalized.includes('IMP')) return 'Impresion';
-  if (normalized.includes('DIECUT') || normalized.includes('TROQ')) return 'Troquelado';
-  if (normalized.includes('REWIND') || normalized.includes('PACK') || normalized.includes('ACAB')) return 'Acabado';
+  const normalizedAreaName = String(areaName || '').toUpperCase();
+  const normalizedAreaCode = String(areaCode || '').toUpperCase();
+  if (normalized.includes('PRINT') || normalized.includes('IMP'))
+    return 'Impresion';
+  if (normalized.includes('DIECUT') || normalized.includes('TROQ'))
+    return 'Troquelado';
+  if (
+    normalized.includes('PACK') ||
+    normalized.includes('EMPAQ') ||
+    normalizedAreaName.includes('EMPAQ') ||
+    normalizedAreaCode.includes('EMPAQ')
+  )
+    return 'Empaquetado';
+  if (
+    normalized.includes('REWIND') ||
+    normalized.includes('REBOB') ||
+    normalized.includes('ACAB') ||
+    normalizedAreaName.includes('REBOB') ||
+    normalizedAreaCode.includes('REBOB')
+  )
+    return 'Rebobinado';
   return value || 'Impresion';
 }
 
-function normalizeMachineStatus(value: string | null | undefined): 'Operativa' | 'Mantenimiento' | 'Detenida' | 'Sin Operador' {
+function normalizeMachineStatus(
+  value: string | null | undefined,
+): 'Activo' | 'Inactivo' | 'Mantenimiento' | 'Detenida' | 'Sin Operario' {
   const normalized = String(value || '').toUpperCase();
+  if (normalized.includes('INACT')) return 'Inactivo';
   if (normalized.includes('MAINT')) return 'Mantenimiento';
-  if (normalized.includes('STOP') || normalized.includes('DETEN')) return 'Detenida';
-  if (normalized.includes('NO_OPERATOR') || normalized.includes('SIN')) return 'Sin Operador';
-  return 'Operativa';
+  if (normalized.includes('STOP') || normalized.includes('DETEN'))
+    return 'Detenida';
+  if (normalized.includes('NO_OPERATOR') || normalized.includes('SIN'))
+    return 'Sin Operario';
+  return 'Activo';
 }
 
-function normalizeStockStatus(value: string | null | undefined): 'Liberado' | 'Cuarentena' | 'Retenido' | 'Despachado' {
+function normalizeStockStatus(
+  value: string | null | undefined,
+): 'Liberado' | 'Cuarentena' | 'Retenido' | 'Despachado' {
   const normalized = String(value || '').toUpperCase();
   if (normalized.includes('QUAR')) return 'Cuarentena';
   if (normalized.includes('RETAIN')) return 'Retenido';
@@ -138,53 +167,87 @@ function normalizeStockStatus(value: string | null | undefined): 'Liberado' | 'C
   return 'Liberado';
 }
 
-function normalizeIncidentPriority(value: string | null | undefined): 'Alta' | 'Media' | 'Baja' {
+function normalizeIncidentPriority(
+  value: string | null | undefined,
+): 'Alta' | 'Media' | 'Baja' {
   const normalized = String(value || '').toUpperCase();
   if (normalized.includes('HIGH') || normalized.includes('ALTA')) return 'Alta';
   if (normalized.includes('LOW') || normalized.includes('BAJA')) return 'Baja';
   return 'Media';
 }
 
-function normalizeIncidentType(value: string | null | undefined): 'Calidad' | 'Seguridad' | 'Maquinaria' | 'Material' | 'Otro' {
+function normalizeIncidentType(
+  value: string | null | undefined,
+): 'Calidad' | 'Seguridad' | 'Maquinaria' | 'Material' | 'Otro' {
   const normalized = String(value || '').toUpperCase();
   if (normalized.includes('SAFE')) return 'Seguridad';
   if (normalized.includes('MACH')) return 'Maquinaria';
   if (normalized.includes('MATER')) return 'Material';
-  if (normalized.includes('OTRO') || normalized.includes('OTHER')) return 'Otro';
+  if (normalized.includes('OTRO') || normalized.includes('OTHER'))
+    return 'Otro';
   return 'Calidad';
 }
 
-function normalizeIncidentStatus(value: string | null | undefined): 'Abierta' | 'En Análisis' | 'Acción Correctiva' | 'Cerrada' {
+function normalizeIncidentStatus(
+  value: string | null | undefined,
+): 'Abierta' | 'En Análisis' | 'Acción Correctiva' | 'Cerrada' {
   const normalized = String(value || '').toUpperCase();
   if (normalized.includes('ANAL')) return 'En Análisis';
   if (normalized.includes('CORRECT')) return 'Acción Correctiva';
-  if (normalized.includes('CLOSE') || normalized.includes('CERR')) return 'Cerrada';
+  if (normalized.includes('CLOSE') || normalized.includes('CERR'))
+    return 'Cerrada';
   return 'Abierta';
 }
 
-function normalizeCapaType(value: string | null | undefined): 'Correctiva' | 'Preventiva' {
+function normalizeCapaType(
+  value: string | null | undefined,
+): 'Correctiva' | 'Preventiva' {
   const normalized = String(value || '').toUpperCase();
   return normalized.includes('PREV') ? 'Preventiva' : 'Correctiva';
 }
 
-function normalizeProductionStatus(value: string | null | undefined): 'PARCIAL' | 'TOTAL' {
-  return String(value || '').toUpperCase().includes('PAR') ? 'PARCIAL' : 'TOTAL';
+function normalizeProductionStatus(
+  value: string | null | undefined,
+): 'PARCIAL' | 'TOTAL' {
+  return String(value || '')
+    .toUpperCase()
+    .includes('PAR')
+    ? 'PARCIAL'
+    : 'TOTAL';
 }
 
-function normalizeDieStatus(value: string | null | undefined): 'OK' | 'Desgaste' | 'Dañado' {
+function normalizeDieStatus(
+  value: string | null | undefined,
+): 'OK' | 'Desgaste' | 'Dañado' {
   const normalized = String(value || '').toUpperCase();
-  if (normalized.includes('WEAR') || normalized.includes('DESG')) return 'Desgaste';
-  if (normalized.includes('DAM') || normalized.includes('DAÑ') || normalized.includes('DAN')) return 'Dañado';
+  if (normalized.includes('WEAR') || normalized.includes('DESG'))
+    return 'Desgaste';
+  if (
+    normalized.includes('DAM') ||
+    normalized.includes('DAÑ') ||
+    normalized.includes('DAN')
+  )
+    return 'Dañado';
   return 'OK';
 }
 
-function normalizeHistoryType(value: string | null | undefined): 'Producción' | 'Mantenimiento' | 'Reparación' | 'Cambio Versión' | 'Creación' | 'Baja' | 'Otro' {
+function normalizeHistoryType(
+  value: string | null | undefined,
+):
+  | 'Producción'
+  | 'Mantenimiento'
+  | 'Reparación'
+  | 'Cambio Versión'
+  | 'Creación'
+  | 'Baja'
+  | 'Otro' {
   const normalized = String(value || '').toUpperCase();
   if (normalized.includes('MAINT')) return 'Mantenimiento';
   if (normalized.includes('REPAIR')) return 'Reparación';
   if (normalized.includes('VERSION')) return 'Cambio Versión';
   if (normalized.includes('CREAT')) return 'Creación';
-  if (normalized.includes('DEACT') || normalized.includes('BAJA')) return 'Baja';
+  if (normalized.includes('DEACT') || normalized.includes('BAJA'))
+    return 'Baja';
   if (normalized.includes('PROD')) return 'Producción';
   return 'Otro';
 }
@@ -208,8 +271,12 @@ export function toFrontendRole(role: any) {
       name: permission.name,
       description: permission.description,
     })),
-    permissionCodes: permissionEntries.map((permission: any) => permission.code).filter(Boolean),
-    assignedUserCount: Array.isArray(role.users) ? role.users.filter((user: any) => !user?.deleted_at).length : undefined,
+    permissionCodes: permissionEntries
+      .map((permission: any) => permission.code)
+      .filter(Boolean),
+    assignedUserCount: Array.isArray(role.users)
+      ? role.users.filter((user: any) => !user?.deleted_at).length
+      : undefined,
   };
 }
 
@@ -223,7 +290,9 @@ export function toFrontendUser(user: any) {
     role: {
       id: user.role?.id || user.role_id || null,
       code: user.role?.code || user.role_code || null,
-      name: user.role?.name || normalizeRoleName(user.role?.name || user.role?.code || user.role_code),
+      name:
+        user.role?.name ||
+        normalizeRoleName(user.role?.name || user.role?.code || user.role_code),
       permissions: (user.role?.permissions || [])
         .filter((entry: any) => !entry?.deleted_at)
         .map((entry: any) => entry.permission)
@@ -243,7 +312,11 @@ export function toFrontendMachine(machine: any) {
   return {
     ...machine,
     type: machine.type,
-    uiType: normalizeMachineType(machine.type),
+    uiType: normalizeMachineType(
+      machine.type,
+      machine.area?.name || machine.area_name,
+      machine.area?.code || machine.area_code,
+    ),
     uiStatus: normalizeMachineStatus(machine.status),
     area_name: machine.area?.name || machine.area_name || '',
   };
@@ -277,54 +350,143 @@ export function toFrontendWorkOrder(workOrder: any) {
 
   return {
     ...workOrder,
-    ...Object.fromEntries(WORK_ORDER_IMPORT_HEADERS.map((header) => [header, rawPayload[header] ?? ''])),
+    ...Object.fromEntries(
+      WORK_ORDER_IMPORT_HEADERS.map((header) => [
+        header,
+        rawPayload[header] ?? '',
+      ]),
+    ),
     OT: readWorkOrderRawValue(rawPayload, 'OT', workOrder.ot_number),
-    descripcion: readWorkOrderRawValue(rawPayload, 'descripcion', workOrder.descripcion),
-    'Nro. Cotizacion': readWorkOrderRawValue(rawPayload, 'Nro. Cotizacion', workOrder.nro_cotizacion),
-    'Nro. Ficha': readWorkOrderRawValue(rawPayload, 'Nro. Ficha', workOrder.nro_ficha),
+    descripcion: readWorkOrderRawValue(
+      rawPayload,
+      'descripcion',
+      workOrder.descripcion,
+    ),
+    'Nro. Cotizacion': readWorkOrderRawValue(
+      rawPayload,
+      'Nro. Cotizacion',
+      workOrder.nro_cotizacion,
+    ),
+    'Nro. Ficha': readWorkOrderRawValue(
+      rawPayload,
+      'Nro. Ficha',
+      workOrder.nro_ficha,
+    ),
     Pedido: readWorkOrderRawValue(rawPayload, 'Pedido', workOrder.pedido),
-    'ORDEN COMPRA': readWorkOrderRawValue(rawPayload, 'ORDEN COMPRA', workOrder.orden_compra),
-    'Razon Social': readWorkOrderRawValue(rawPayload, 'Razon Social', workOrder.cliente_razon_social),
+    'ORDEN COMPRA': readWorkOrderRawValue(
+      rawPayload,
+      'ORDEN COMPRA',
+      workOrder.orden_compra,
+    ),
+    'Razon Social': readWorkOrderRawValue(
+      rawPayload,
+      'Razon Social',
+      workOrder.cliente_razon_social,
+    ),
     Vendedor: readWorkOrderRawValue(rawPayload, 'Vendedor', workOrder.vendedor),
     Glosa: readWorkOrderRawValue(rawPayload, 'Glosa', workOrder.descripcion),
-    'MLL Pedido': readWorkOrderRawValue(rawPayload, 'MLL Pedido', toNumber(workOrder.cantidad_pedida) ?? ''),
-    'FECHA PED': readWorkOrderRawValue(rawPayload, 'FECHA PED', toDateString(workOrder.fecha_pedido)),
-    'FECHA ENT': readWorkOrderRawValue(rawPayload, 'FECHA ENT', toDateString(workOrder.fecha_entrega)),
-    'FECHA INGRESO PLANTA': readWorkOrderRawValue(rawPayload, 'FECHA INGRESO PLANTA', toDateString(workOrder.fecha_ingreso_planta)),
-    'CANT PED': readWorkOrderRawValue(rawPayload, 'CANT PED', toNumber(workOrder.cantidad_pedida) ?? ''),
+    'MLL Pedido': readWorkOrderRawValue(
+      rawPayload,
+      'MLL Pedido',
+      toNumber(workOrder.cantidad_pedida) ?? '',
+    ),
+    'FECHA PED': readWorkOrderRawValue(
+      rawPayload,
+      'FECHA PED',
+      toDateString(workOrder.fecha_pedido),
+    ),
+    'FECHA ENT': readWorkOrderRawValue(
+      rawPayload,
+      'FECHA ENT',
+      toDateString(workOrder.fecha_entrega),
+    ),
+    'FECHA INGRESO PLANTA': readWorkOrderRawValue(
+      rawPayload,
+      'FECHA INGRESO PLANTA',
+      toDateString(workOrder.fecha_ingreso_planta),
+    ),
+    'CANT PED': readWorkOrderRawValue(
+      rawPayload,
+      'CANT PED',
+      toNumber(workOrder.cantidad_pedida) ?? '',
+    ),
     Und: readWorkOrderRawValue(rawPayload, 'Und', workOrder.unidad),
     Material: readWorkOrderRawValue(rawPayload, 'Material', workOrder.material),
-    Ancho: readWorkOrderRawValue(rawPayload, 'Ancho', toNumber(workOrder.ancho_mm) ?? ''),
+    Ancho: readWorkOrderRawValue(
+      rawPayload,
+      'Ancho',
+      toNumber(workOrder.ancho_mm) ?? '',
+    ),
     Drawback: readWorkOrderRawValue(rawPayload, 'Drawback', ''),
     impresion: readWorkOrderRawValue(rawPayload, 'impresion', ''),
     merma: readWorkOrderRawValue(rawPayload, 'merma', ''),
     Medida: readWorkOrderRawValue(rawPayload, 'Medida', ''),
-    Avance: readWorkOrderRawValue(rawPayload, 'Avance', toNumber(workOrder.avance_mm) ?? ''),
-    desarrollo: readWorkOrderRawValue(rawPayload, 'desarrollo', toNumber(workOrder.desarrollo_mm) ?? ''),
+    Avance: readWorkOrderRawValue(
+      rawPayload,
+      'Avance',
+      toNumber(workOrder.avance_mm) ?? '',
+    ),
+    desarrollo: readWorkOrderRawValue(
+      rawPayload,
+      'desarrollo',
+      toNumber(workOrder.desarrollo_mm) ?? '',
+    ),
     sep_avance: readWorkOrderRawValue(rawPayload, 'sep_avance', ''),
     calibre: readWorkOrderRawValue(rawPayload, 'calibre', ''),
-    num_colum: readWorkOrderRawValue(rawPayload, 'num_colum', workOrder.columnas ?? ''),
+    num_colum: readWorkOrderRawValue(
+      rawPayload,
+      'num_colum',
+      workOrder.columnas ?? '',
+    ),
     adhesivo: readWorkOrderRawValue(rawPayload, 'adhesivo', workOrder.adhesivo),
     acabado: readWorkOrderRawValue(rawPayload, 'acabado', workOrder.acabado),
     troquel: readWorkOrderRawValue(rawPayload, 'troquel', workOrder.troquel),
     SentidoFinal: readWorkOrderRawValue(rawPayload, 'SentidoFinal', ''),
     diametuco: readWorkOrderRawValue(rawPayload, 'diametuco', ''),
-    ObsDes: readWorkOrderRawValue(rawPayload, 'ObsDes', workOrder.observaciones_diseno),
-    ObsCot: readWorkOrderRawValue(rawPayload, 'ObsCot', workOrder.observaciones_cotizacion),
+    ObsDes: readWorkOrderRawValue(
+      rawPayload,
+      'ObsDes',
+      workOrder.observaciones_diseno,
+    ),
+    ObsCot: readWorkOrderRawValue(
+      rawPayload,
+      'ObsCot',
+      workOrder.observaciones_cotizacion,
+    ),
     medidavend: readWorkOrderRawValue(rawPayload, 'medidavend', ''),
-    maquina: readWorkOrderRawValue(rawPayload, 'maquina', workOrder.maquina_texto),
+    maquina: readWorkOrderRawValue(
+      rawPayload,
+      'maquina',
+      workOrder.maquina_texto,
+    ),
     anchoEtiq: readWorkOrderRawValue(rawPayload, 'anchoEtiq', ''),
     ancho_mate: readWorkOrderRawValue(rawPayload, 'ancho_mate', ''),
     forma: readWorkOrderRawValue(rawPayload, 'forma', ''),
     tipoimpre1: readWorkOrderRawValue(rawPayload, 'tipoimpre1', ''),
     dispensado: readWorkOrderRawValue(rawPayload, 'dispensado', ''),
-    cant_etq_xrollohojas: readWorkOrderRawValue(rawPayload, 'cant_etq_xrollohojas', ''),
-    fechaPrd: readWorkOrderRawValue(rawPayload, 'fechaPrd', toDateString(workOrder.fecha_programada_produccion)),
+    cant_etq_xrollohojas: readWorkOrderRawValue(
+      rawPayload,
+      'cant_etq_xrollohojas',
+      '',
+    ),
+    fechaPrd: readWorkOrderRawValue(
+      rawPayload,
+      'fechaPrd',
+      toDateString(workOrder.fecha_programada_produccion),
+    ),
     codmaquina: readWorkOrderRawValue(rawPayload, 'codmaquina', ''),
     s_merma: readWorkOrderRawValue(rawPayload, 's_merma', ''),
     mtl_sin_merma: readWorkOrderRawValue(rawPayload, 'mtl_sin_merma', ''),
-    total_mtl: readWorkOrderRawValue(rawPayload, 'total_mtl', toNumber(workOrder.total_metros) ?? ''),
-    total_M2: readWorkOrderRawValue(rawPayload, 'total_M2', toNumber(workOrder.total_m2) ?? ''),
+    total_mtl: readWorkOrderRawValue(
+      rawPayload,
+      'total_mtl',
+      toNumber(workOrder.total_metros) ?? '',
+    ),
+    total_M2: readWorkOrderRawValue(
+      rawPayload,
+      'total_M2',
+      toNumber(workOrder.total_m2) ?? '',
+    ),
     LARGO: readWorkOrderRawValue(rawPayload, 'LARGO', ''),
     col_ficha: readWorkOrderRawValue(rawPayload, 'col_ficha', ''),
     prepicado_h: readWorkOrderRawValue(rawPayload, 'prepicado_h', ''),
@@ -334,8 +496,16 @@ export function toFrontendWorkOrder(workOrder: any) {
     forma_emb: readWorkOrderRawValue(rawPayload, 'forma_emb', ''),
     und_negocio: readWorkOrderRawValue(rawPayload, 'und_negocio', ''),
     Linea_produccion: readWorkOrderRawValue(rawPayload, 'Linea_produccion', ''),
-    p_cant_rollo_ficha: readWorkOrderRawValue(rawPayload, 'p_cant_rollo_ficha', ''),
-    Estado_pedido: readWorkOrderRawValue(rawPayload, 'Estado_pedido', workOrder.status),
+    p_cant_rollo_ficha: readWorkOrderRawValue(
+      rawPayload,
+      'p_cant_rollo_ficha',
+      '',
+    ),
+    Estado_pedido: readWorkOrderRawValue(
+      rawPayload,
+      'Estado_pedido',
+      workOrder.status,
+    ),
     r_ref_ot: readWorkOrderRawValue(rawPayload, 'r_ref_ot', ''),
     logo_tuco: readWorkOrderRawValue(rawPayload, 'logo_tuco', ''),
     troquel_ficha: readWorkOrderRawValue(rawPayload, 'troquel_ficha', ''),
@@ -347,19 +517,25 @@ export function toFrontendWorkOrder(workOrder: any) {
 }
 
 export function toFrontendClise(clise: any) {
-  const activeDieLinks = (clise.die_links || []).filter((link: any) => !link.deleted_at);
+  const activeDieLinks = (clise.die_links || []).filter(
+    (link: any) => !link.deleted_at,
+  );
   const fallbackColors = Array.isArray(clise.colores_json)
     ? clise.colores_json
     : typeof clise.raw_payload?.colores === 'string'
-      ? String(clise.raw_payload.colores).split(',').map((entry: string) => entry.trim()).filter(Boolean)
+      ? String(clise.raw_payload.colores)
+          .split(',')
+          .map((entry: string) => entry.trim())
+          .filter(Boolean)
       : [];
-  const displayItemCode = typeof clise.raw_payload?.display_item_code === 'string'
-    ? String(clise.raw_payload.display_item_code).trim()
-    : String(clise.item_code || '').trim();
+  const displayItemCode =
+    typeof clise.raw_payload?.display_item_code === 'string'
+      ? String(clise.raw_payload.display_item_code).trim()
+      : String(clise.item_code || '').trim();
   const hasConflict = Boolean(
-    clise.raw_payload?.import_conflict
-    || !displayItemCode
-    || !String(clise.cliente || '').trim(),
+    clise.raw_payload?.import_conflict ||
+    !displayItemCode ||
+    !String(clise.cliente || '').trim(),
   );
 
   return {
@@ -368,9 +544,19 @@ export function toFrontendClise(clise: any) {
     backend_item_code: clise.item_code,
     hasConflict,
     z: clise.z_value || '',
-    medidas: clise.raw_payload?.medidas || [clise.ancho_mm, clise.avance_mm].filter((value) => value !== null && value !== undefined).join(' x '),
-    troquel: activeDieLinks[0]?.die?.raw_payload?.display_serie || activeDieLinks[0]?.die?.serie || clise.raw_payload?.troquel || '',
-    linkedDies: activeDieLinks.map((link: any) => link.die?.id || link.die_id).filter(Boolean),
+    medidas:
+      clise.raw_payload?.medidas ||
+      [clise.ancho_mm, clise.avance_mm]
+        .filter((value) => value !== null && value !== undefined)
+        .join(' x '),
+    troquel:
+      activeDieLinks[0]?.die?.raw_payload?.display_serie ||
+      activeDieLinks[0]?.die?.serie ||
+      clise.raw_payload?.troquel ||
+      '',
+    linkedDies: activeDieLinks
+      .map((link: any) => link.die?.id || link.die_id)
+      .filter(Boolean),
     ancho: toNumber(clise.ancho_mm),
     avance: toNumber(clise.avance_mm),
     col: clise.columnas ?? null,
@@ -381,17 +567,19 @@ export function toFrontendClise(clise: any) {
     obs: clise.observaciones || '',
     maq: clise.maquina_texto || '',
     colores: (clise.color_usage || []).length
-      ? (clise.color_usage || []).map((usage: any) => usage.color_name).join(', ')
+      ? (clise.color_usage || [])
+          .map((usage: any) => usage.color_name)
+          .join(', ')
       : fallbackColors.join(', '),
     colorUsage: (clise.color_usage || []).length
       ? (clise.color_usage || []).map((usage: any) => ({
-        name: usage.color_name,
-        meters: toNumber(usage.meters) || 0,
-      }))
+          name: usage.color_name,
+          meters: toNumber(usage.meters) || 0,
+        }))
       : fallbackColors.map((name: string) => ({
-        name,
-        meters: 0,
-      })),
+          name,
+          meters: 0,
+        })),
     n_ficha_fler: clise.ficha_fler || '',
     mtl_acum: toNumber(clise.metros_acumulados),
     imagen: clise.imagen_url || '',
@@ -407,13 +595,14 @@ export function toFrontendClise(clise: any) {
 }
 
 export function toFrontendDie(die: any) {
-  const displaySerie = typeof die.raw_payload?.display_serie === 'string'
-    ? String(die.raw_payload.display_serie).trim()
-    : String(die.serie || '').trim();
+  const displaySerie =
+    typeof die.raw_payload?.display_serie === 'string'
+      ? String(die.raw_payload.display_serie).trim()
+      : String(die.serie || '').trim();
   const hasConflict = Boolean(
-    die.raw_payload?.import_conflict
-    || !displaySerie
-    || !String(die.cliente || '').trim(),
+    die.raw_payload?.import_conflict ||
+    !displaySerie ||
+    !String(die.cliente || '').trim(),
   );
 
   return {
@@ -421,7 +610,12 @@ export function toFrontendDie(die: any) {
     serie: displaySerie,
     backend_serie: die.serie,
     hasConflict,
-    linkedClises: (die.clise_links || []).map((link: any) => link.clise?.raw_payload?.display_item_code || link.clise?.item_code).filter(Boolean),
+    linkedClises: (die.clise_links || [])
+      .map(
+        (link: any) =>
+          link.clise?.raw_payload?.display_item_code || link.clise?.item_code,
+      )
+      .filter(Boolean),
     z: die.z_value || '',
     ingreso: toDateString(die.fecha_ingreso),
     sep_ava: die.separacion_avance || '',
@@ -459,8 +653,12 @@ export function toFrontendIncident(incident: any) {
     uiPriority: normalizeIncidentPriority(incident.priority),
     uiType: normalizeIncidentType(incident.type),
     uiStatus: normalizeIncidentStatus(incident.status),
-    otRef: incident.ot_number_snapshot || incident.work_order?.ot_number || undefined,
-    machineRef: incident.machine_code_snapshot || incident.machine?.code || undefined,
+    otRef:
+      incident.ot_number_snapshot ||
+      incident.work_order?.ot_number ||
+      undefined,
+    machineRef:
+      incident.machine_code_snapshot || incident.machine?.code || undefined,
     reportedBy: incident.reportedBy?.name || incident.reportedBy || '',
     reportedAt: toDate(incident.reported_at),
     assignedTo: incident.assignedTo?.name || incident.assignedTo || '',
@@ -503,11 +701,21 @@ export function toFrontendPrintReport(report: any) {
       startTime: activity.start_time,
       endTime: activity.end_time,
       meters: toNumber(activity.meters) || 0,
-      duration: activity.duration_minutes ? `${activity.duration_minutes} min` : undefined,
+      duration: activity.duration_minutes
+        ? `${activity.duration_minutes} min`
+        : undefined,
     })),
     totalMeters: toNumber(report.total_meters) || 0,
-    clise: { code: report.clise?.item_code || '', status: report.clise_status || '' },
-    die: { status: report.die_status || '' },
+    clise: {
+      code: report.clise?.item_code || '',
+      status: report.clise_status || '',
+    },
+    die: {
+      status: report.die_status || '',
+      type: report.die_type_snapshot || '',
+      series: report.die?.serie || report.die_series_snapshot || '',
+      location: report.die?.ubicacion || report.die_location_snapshot || '',
+    },
     productionStatus: normalizeProductionStatus(report.production_status),
   };
 }
@@ -533,7 +741,55 @@ export function toFrontendDiecutReport(report: any) {
       startTime: activity.start_time,
       endTime: activity.end_time,
       qty: toNumber(activity.quantity) || 0,
+      observations: activity.observations || '',
     })),
     productionStatus: normalizeProductionStatus(report.production_status),
+  };
+}
+
+export function toFrontendRewindReport(report: any) {
+  if (!report) return report;
+  return {
+    ...report,
+    date: toDate(report.reported_at),
+    ot: report.work_order_number_snapshot || report.work_order?.ot_number || '',
+    client: report.client_snapshot || '',
+    description: report.product_snapshot || '',
+    machine: report.machine?.name || '',
+    operator: report.operator?.name || report.operator_name_snapshot || '',
+    shift: report.shift?.name || '',
+    rolls: Number(report.rolls_finished || 0),
+    labelsPerRoll: Number(report.labels_per_roll || 0),
+    totalLabels: toNumber(report.total_labels) || 0,
+    meters: toNumber(report.total_meters) || 0,
+    waste: Number(report.waste_rolls || 0),
+    qualityCheck: Boolean(report.quality_check),
+    observations: report.observations || '',
+    productionStatus: normalizeProductionStatus(report.production_status),
+    workOrderId: report.work_order_id || null,
+  };
+}
+
+export function toFrontendPackagingReport(report: any) {
+  if (!report) return report;
+  return {
+    ...report,
+    date: toDate(report.reported_at),
+    ot: report.work_order_number_snapshot || report.work_order?.ot_number || '',
+    client: report.client_snapshot || '',
+    description: report.product_snapshot || '',
+    operator: report.operator_name_snapshot || report.operator?.name || '',
+    shift: report.shift_name_snapshot || report.shift?.name || '',
+    status: String(report.lot_status || 'COMPLETE')
+      .toUpperCase()
+      .includes('PART')
+      ? 'Parcial'
+      : 'Completo',
+    rolls: Number(report.rolls || 0),
+    meters: toNumber(report.total_meters) || 0,
+    demasiaRolls: Number(report.demasia_rolls || 0),
+    demasiaMeters: toNumber(report.demasia_meters) || 0,
+    notes: report.notes || '',
+    workOrderId: report.work_order_id || null,
   };
 }

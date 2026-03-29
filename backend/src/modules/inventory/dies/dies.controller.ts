@@ -9,7 +9,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { DiesService } from './dies.service';
 import { BulkUpsertDiesDto, CreateDieDto, UpdateDieDto } from './dto/die.dto';
 import { DieQueryDto } from './dto/die-query.dto';
@@ -43,7 +48,12 @@ export class DiesController {
   @ApiOperation({ summary: 'Get all dies with filters' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
-  @ApiQuery({ name: 'q', required: false, type: String, description: 'Search by serie, misura, client, or material' })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    type: String,
+    description: 'Search by serie, misura, client, or material',
+  })
   async findAll(@Query() query: DieQueryDto) {
     return this.diesService.findAll(query);
   }

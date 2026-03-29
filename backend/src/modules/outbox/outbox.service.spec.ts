@@ -32,9 +32,17 @@ describe('OutboxService', () => {
 
   describe('createEvent', () => {
     it('should create a pending event', async () => {
-      mockPrisma.outboxEvent.create.mockResolvedValue({ id: 'ev-1', status: 'PENDING' });
-      
-      const result = await service.createEvent('WORK_ORDER_CREATED', 'WORK_ORDER', '1', { key: 'val' });
+      mockPrisma.outboxEvent.create.mockResolvedValue({
+        id: 'ev-1',
+        status: 'PENDING',
+      });
+
+      const result = await service.createEvent(
+        'WORK_ORDER_CREATED',
+        'WORK_ORDER',
+        '1',
+        { key: 'val' },
+      );
       expect(result.status).toBe('PENDING');
       expect(prisma.outboxEvent.create).toHaveBeenCalled();
     });
@@ -43,9 +51,19 @@ describe('OutboxService', () => {
   describe('processPendingEvents', () => {
     it('should process events and mark as published', async () => {
       mockPrisma.outboxEvent.findMany.mockResolvedValue([
-        { id: 'ev-1', event_name: 'TEST', aggregate_type: 'T', aggregate_id: '1', status: 'PENDING', attempts: 0 }
+        {
+          id: 'ev-1',
+          event_name: 'TEST',
+          aggregate_type: 'T',
+          aggregate_id: '1',
+          status: 'PENDING',
+          attempts: 0,
+        },
       ]);
-      mockPrisma.outboxEvent.update.mockResolvedValue({ id: 'ev-1', status: 'PUBLISHED' });
+      mockPrisma.outboxEvent.update.mockResolvedValue({
+        id: 'ev-1',
+        status: 'PUBLISHED',
+      });
 
       await service.processPendingEvents();
 

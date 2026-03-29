@@ -10,9 +10,19 @@ import {
   UseGuards,
   Patch,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { StockService } from './stock.service';
-import { CreateStockItemDto, UpdateStockItemDto, StockStatus, UpdateStockStatusDto } from './dto/stock.dto';
+import {
+  CreateStockItemDto,
+  UpdateStockItemDto,
+  StockStatus,
+  UpdateStockStatusDto,
+} from './dto/stock.dto';
 import { StockQueryDto } from './dto/stock-query.dto';
 import { JwtAuthGuard } from '../../../modules/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../modules/auth/guards/permissions.guard';
@@ -38,7 +48,12 @@ export class StockController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false, enum: StockStatus })
-  @ApiQuery({ name: 'q', required: false, type: String, description: 'Search by OT, client, product, pallet, or location' })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    type: String,
+    description: 'Search by OT, client, product, pallet, or location',
+  })
   async findAll(@Query() query: StockQueryDto) {
     return this.stockService.findAll(query);
   }
@@ -60,7 +75,10 @@ export class StockController {
   @Patch(':id/status')
   @Permissions('inventory.stock.manage')
   @ApiOperation({ summary: 'Update stock item status' })
-  async updateStatus(@Param('id') id: string, @Body() dto: UpdateStockStatusDto) {
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateStockStatusDto,
+  ) {
     return this.stockService.updateStatus(id, dto.status);
   }
 

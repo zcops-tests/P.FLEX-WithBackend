@@ -1,10 +1,21 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
-import { BulkUpsertDieItemDto, CreateDieDto, UpdateDieDto } from './dto/die.dto';
+import {
+  BulkUpsertDieItemDto,
+  CreateDieDto,
+  UpdateDieDto,
+} from './dto/die.dto';
 import { DieQueryDto } from './dto/die-query.dto';
-import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import {
+  buildPaginatedResult,
+  resolvePagination,
+} from '../../../common/utils/pagination.util';
 import { toFrontendDie } from '../../../common/utils/frontend-entity.util';
 import { normalizeOptionalDateInput } from '../../../common/utils/date-input.util';
 
@@ -20,9 +31,10 @@ export class DiesService {
     if (!displaySerie) conflictReasons.push('SERIE_REQUIRED');
     if (!cliente) conflictReasons.push('CLIENT_REQUIRED');
 
-    const rawPayload = dto.raw_payload && typeof dto.raw_payload === 'object'
-      ? { ...dto.raw_payload }
-      : {};
+    const rawPayload =
+      dto.raw_payload && typeof dto.raw_payload === 'object'
+        ? { ...dto.raw_payload }
+        : {};
 
     return {
       ...dto,
@@ -37,11 +49,15 @@ export class DiesService {
     };
   }
 
-  private buildPersistenceData(dto: CreateDieDto | UpdateDieDto | BulkUpsertDieItemDto) {
+  private buildPersistenceData(
+    dto: CreateDieDto | UpdateDieDto | BulkUpsertDieItemDto,
+  ) {
     return {
       ...dto,
       fecha_ingreso: normalizeOptionalDateInput(dto.fecha_ingreso),
-      raw_payload: dto.raw_payload ? (dto.raw_payload as Prisma.InputJsonValue) : undefined,
+      raw_payload: dto.raw_payload
+        ? (dto.raw_payload as Prisma.InputJsonValue)
+        : undefined,
     };
   }
 
@@ -67,7 +83,9 @@ export class DiesService {
   async bulkUpsert(dtos: BulkUpsertDieItemDto[]) {
     const normalizedItems = dtos.map((dto) => this.prepareBulkUpsertItem(dto));
 
-    const uniqueItems = Array.from(new Map(normalizedItems.map((dto) => [dto.serie, dto])).values());
+    const uniqueItems = Array.from(
+      new Map(normalizedItems.map((dto) => [dto.serie, dto])).values(),
+    );
 
     if (uniqueItems.length === 0) {
       return { processed: 0, created: 0, updated: 0 };
@@ -83,7 +101,9 @@ export class DiesService {
       },
     });
 
-    const existingBySerie = new Map(existing.map((item) => [item.serie, item.id]));
+    const existingBySerie = new Map(
+      existing.map((item) => [item.serie, item.id]),
+    );
     let created = 0;
     let updated = 0;
 
@@ -162,7 +182,11 @@ export class DiesService {
       }),
     ]);
 
-    return buildPaginatedResult(items.map((item) => toFrontendDie(item)), total, pagination);
+    return buildPaginatedResult(
+      items.map((item) => toFrontendDie(item)),
+      total,
+      pagination,
+    );
   }
 
   async findOne(id: string) {
@@ -221,7 +245,9 @@ export class DiesService {
     });
 
     if (activeRefs > 0) {
-      throw new ConflictException(`Cannot delete Die with ID ${id} because it is referenced by active production reports`);
+      throw new ConflictException(
+        `Cannot delete Die with ID ${id} because it is referenced by active production reports`,
+      );
     }
 
     return this.prisma.die.update({

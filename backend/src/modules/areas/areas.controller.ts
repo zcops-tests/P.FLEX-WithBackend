@@ -8,7 +8,12 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { AreasService } from './areas.service';
 import { CreateAreaDto, UpdateAreaDto } from './dto/area.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';

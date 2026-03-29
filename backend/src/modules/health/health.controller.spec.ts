@@ -47,7 +47,7 @@ describe('HealthController', () => {
   describe('ready', () => {
     it('should return UP if all components are ready', async () => {
       mockPrisma.$queryRaw.mockResolvedValue([1]);
-      
+
       const result = await controller.ready();
       expect(result.status).toBe('UP');
       expect(result.components.database).toBe('UP');

@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import * as bcrypt from 'bcrypt';
@@ -10,16 +17,31 @@ export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateUserDto) {
-    const normalizedUsername = assertValidDni(dto.username, 'El username principal');
+    const normalizedUsername = assertValidDni(
+      dto.username,
+      'El username principal',
+    );
+    const role = await this.getRoleOrThrow(dto.role_id);
+    const passwordHash = await this.resolvePasswordHashForCreate(
+      role.code,
+      dto.password,
+      normalizedUsername,
+    );
     const existing = await this.prisma.user.findUnique({
       where: { username: normalizedUsername },
     });
     if (existing) {
-      throw new ConflictException(`Username ${normalizedUsername} already exists`);
+      if (existing.deleted_at) {
+        await this.hardDeleteUser(
+          existing.id,
+          `No se pudo reutilizar el DNI ${normalizedUsername} porque el usuario eliminado aún tiene historial asociado. Inactívelo en lugar de eliminarlo.`,
+        );
+      } else {
+        throw new ConflictException(
+          `Username ${normalizedUsername} already exists`,
+        );
+      }
     }
-
-    const role = await this.getRoleOrThrow(dto.role_id);
-    const passwordHash = await this.resolvePasswordHashForCreate(role.code, dto.password, normalizedUsername);
 
     const created = await this.prisma.user.create({
       data: {
@@ -100,8 +122,12 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto) {
     const user = await this.findOne(id);
     const existingUser = await this.getUserEntityOrThrow(id);
-    const nextUsername = dto.username ? assertValidDni(dto.username, 'El username principal') : undefined;
-    const nextRole = dto.role_id ? await this.getRoleOrThrow(dto.role_id) : existingUser.role;
+    const nextUsername = dto.username
+      ? assertValidDni(dto.username, 'El username principal')
+      : undefined;
+    const nextRole = dto.role_id
+      ? await this.getRoleOrThrow(dto.role_id)
+      : existingUser.role;
 
     if (nextUsername && nextUsername !== user.username) {
       const existing = await this.prisma.user.findUnique({
@@ -122,12 +148,16 @@ export class UsersService {
 
     if (this.isOperatorRole(nextRole.code)) {
       if (!this.isOperatorRole(existingUser.role?.code) || dto.password) {
-        data.password_hash = await this.buildDisabledOperatorPasswordHash(nextUsername || existingUser.username);
+        data.password_hash = await this.buildDisabledOperatorPasswordHash(
+          nextUsername || existingUser.username,
+        );
       }
     } else if (dto.password) {
       data.password_hash = await bcrypt.hash(dto.password, 10);
     } else if (this.isOperatorRole(existingUser.role?.code)) {
-      throw new BadRequestException('Debe definir una contraseña al convertir un operario en un usuario con acceso de inicio de sesion.');
+      throw new BadRequestException(
+        'Debe definir una contraseña al convertir un operario en un usuario con acceso de inicio de sesion.',
+      );
     }
 
     const updated = await this.prisma.user.update({
@@ -157,13 +187,10 @@ export class UsersService {
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.user.update({
-      where: { id },
-      data: {
-        deleted_at: new Date(),
-        active: false,
-      },
-    });
+    return this.hardDeleteUser(
+      id,
+      'No se puede eliminar el usuario porque tiene historial asociado. Inactívelo en lugar de eliminarlo.',
+    );
   }
 
   async assignArea(userId: string, areaId: string) {
@@ -238,15 +265,20 @@ export class UsersService {
     });
 
     if (!operator) {
-      throw new NotFoundException(`No se encontro un operario activo para el DNI ${normalizedDni}`);
+      throw new NotFoundException(
+        `No se encontro un operario activo para el DNI ${normalizedDni}`,
+      );
     }
 
     const assignedAreas = (operator.assignedAreas || []).filter(
-      (item: any) => item.area && item.area.active !== false && !item.area.deleted_at,
+      (item: any) =>
+        item.area && item.area.active !== false && !item.area.deleted_at,
     );
 
     if (!assignedAreas.length) {
-      throw new ForbiddenException('El operario no tiene areas asignadas y no puede usar el terminal.');
+      throw new ForbiddenException(
+        'El operario no tiene areas asignadas y no puede usar el terminal.',
+      );
     }
 
     return toFrontendUser({
@@ -283,13 +315,19 @@ export class UsersService {
     return user;
   }
 
-  private async resolvePasswordHashForCreate(roleCode: string | null | undefined, password: string | undefined, username: string) {
+  private async resolvePasswordHashForCreate(
+    roleCode: string | null | undefined,
+    password: string | undefined,
+    username: string,
+  ) {
     if (this.isOperatorRole(roleCode)) {
       return this.buildDisabledOperatorPasswordHash(username);
     }
 
     if (!String(password || '').trim()) {
-      throw new BadRequestException('Los usuarios con acceso de inicio de sesion requieren una contraseña.');
+      throw new BadRequestException(
+        'Los usuarios con acceso de inicio de sesion requieren una contraseña.',
+      );
     }
 
     return bcrypt.hash(password as string, 10);
@@ -301,5 +339,37 @@ export class UsersService {
 
   private isOperatorRole(roleCode: string | null | undefined) {
     return String(roleCode || '').toUpperCase() === 'OPERATOR';
+  }
+
+  private async hardDeleteUser(
+    userId: string,
+    conflictMessage: string,
+  ) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.refreshToken.deleteMany({
+          where: { user_id: userId },
+        });
+        await tx.userAssignedArea.deleteMany({
+          where: { user_id: userId },
+        });
+        await tx.userSession.deleteMany({
+          where: { user_id: userId },
+        });
+
+        return tx.user.delete({
+          where: { id: userId },
+        });
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2003' || error.code === 'P2014')
+      ) {
+        throw new ConflictException(conflictMessage);
+      }
+
+      throw error;
+    }
   }
 }

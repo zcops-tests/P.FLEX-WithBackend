@@ -5,6 +5,10 @@ import { FormsModule } from '@angular/forms';
 import { AdminService } from '../services/admin.service';
 import { AppUser } from '../models/admin.models';
 import { NotificationService } from '../../../services/notification.service';
+import {
+  OPERATOR_PRODUCTION_AREAS,
+  resolveCanonicalOperatorAreas,
+} from '../utils/operator-area.util';
 
 @Component({
   selector: 'app-admin-users',
@@ -310,7 +314,7 @@ export class AdminUsersComponent {
   
   tempUser: any = {};
 
-  productionAreas = ['Impresión', 'Troquelado', 'Rebobinado', 'Empaquetado'];
+  productionAreas = [...OPERATOR_PRODUCTION_AREAS];
 
   get filteredUsers() {
     const term = this.userSearch.toLowerCase();
@@ -416,14 +420,30 @@ export class AdminUsersComponent {
       }
       this.showUserModal = false;
       this.notifications.showSuccess('Usuario guardado correctamente.');
-    } catch (error: any) {
-      this.formError = error?.message || 'No fue posible guardar el usuario.';
+    } catch (error: unknown) {
+      const message = this.resolveErrorMessage(
+        error,
+        'No fue posible guardar el usuario.',
+      );
+      this.formError = message;
+      this.notifications.showError(message);
     }
   }
 
-  deleteUser(user: AppUser) {
-    if(confirm(`¿Eliminar usuario ${user.name}?`)) {
-        this.adminService.deleteAdminUser(user.id);
+  async deleteUser(user: AppUser) {
+    if (!confirm(`¿Eliminar usuario ${user.name}?`)) {
+      return;
+    }
+
+    try {
+      await this.adminService.deleteAdminUser(user.id);
+      this.notifications.showSuccess('Usuario eliminado correctamente.');
+    } catch (error: unknown) {
+      const message = this.resolveErrorMessage(
+        error,
+        'No fue posible eliminar el usuario.',
+      );
+      this.notifications.showError(message);
     }
   }
 
@@ -476,50 +496,25 @@ export class AdminUsersComponent {
   }
 
   private normalizeOperatorAreas(areas: unknown): string[] {
-    if (!Array.isArray(areas)) {
-      return [];
-    }
-
-    const normalizedAreas = new Set<string>();
-
-    for (const area of areas) {
-      const token = this.toAreaToken(area);
-      if (!token) continue;
-
-      if (token.includes('IMPRES')) {
-        normalizedAreas.add('Impresión');
-        continue;
-      }
-
-      if (token.includes('TROQ')) {
-        normalizedAreas.add('Troquelado');
-        continue;
-      }
-
-      if (token.includes('REBOB')) {
-        normalizedAreas.add('Rebobinado');
-        continue;
-      }
-
-      if (token.includes('EMPAQ')) {
-        normalizedAreas.add('Empaquetado');
-        continue;
-      }
-
-      if (token.includes('ACABADO') || token.includes('FINISH')) {
-        normalizedAreas.add('Rebobinado');
-        normalizedAreas.add('Empaquetado');
-      }
-    }
-
-    return this.productionAreas.filter((area) => normalizedAreas.has(area));
+    return resolveCanonicalOperatorAreas(areas);
   }
 
-  private toAreaToken(value: unknown) {
-    return String(value || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase()
-      .trim();
+  private resolveErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error && String(error.message || '').trim()) {
+      return error.message;
+    }
+
+    if (typeof error === 'string' && error.trim()) {
+      return error;
+    }
+
+    if (error && typeof error === 'object' && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) {
+        return message;
+      }
+    }
+
+    return fallback;
   }
 }

@@ -41,16 +41,30 @@ describe('QualityService', () => {
 
   describe('updateIncidentStatus', () => {
     it('should allow valid transitions', async () => {
-      mockPrisma.incident.findUnique.mockResolvedValue({ id: '1', status: IncidentStatus.OPEN });
-      mockPrisma.incident.update.mockResolvedValue({ id: '1', status: IncidentStatus.ANALYSIS });
-      
-      const result = await service.updateIncidentStatus('1', IncidentStatus.ANALYSIS);
+      mockPrisma.incident.findUnique.mockResolvedValue({
+        id: '1',
+        status: IncidentStatus.OPEN,
+      });
+      mockPrisma.incident.update.mockResolvedValue({
+        id: '1',
+        status: IncidentStatus.ANALYSIS,
+      });
+
+      const result = await service.updateIncidentStatus(
+        '1',
+        IncidentStatus.ANALYSIS,
+      );
       expect(result.status).toBe(IncidentStatus.ANALYSIS);
     });
 
     it('should throw ConflictException for invalid transitions', async () => {
-      mockPrisma.incident.findUnique.mockResolvedValue({ id: '1', status: IncidentStatus.OPEN });
-      await expect(service.updateIncidentStatus('1', IncidentStatus.CORRECTIVE_ACTION)).rejects.toThrow(ConflictException);
+      mockPrisma.incident.findUnique.mockResolvedValue({
+        id: '1',
+        status: IncidentStatus.OPEN,
+      });
+      await expect(
+        service.updateIncidentStatus('1', IncidentStatus.CORRECTIVE_ACTION),
+      ).rejects.toThrow(ConflictException);
     });
   });
 });

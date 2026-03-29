@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateShiftDto, UpdateShiftDto } from './dto/shift.dto';
 import { toFrontendShift } from '../../common/utils/frontend-entity.util';
@@ -64,7 +68,7 @@ export class ShiftsService {
 
   async getCurrentShift(targetTime: Date = new Date()) {
     const shifts = await this.findAll();
-    
+
     // Get time in HH:mm:ss format for comparison
     const hours = targetTime.getUTCHours().toString().padStart(2, '0');
     const minutes = targetTime.getUTCMinutes().toString().padStart(2, '0');

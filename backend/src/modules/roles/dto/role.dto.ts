@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateRoleDto {
   @ApiProperty({ example: 'Supervisor de Planta' })
@@ -7,12 +13,17 @@ export class CreateRoleDto {
   @MaxLength(100)
   name: string;
 
-  @ApiPropertyOptional({ example: 'Acceso operativo a supervision y control de reportes.' })
+  @ApiPropertyOptional({
+    example: 'Acceso operativo a supervision y control de reportes.',
+  })
   @IsOptional()
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ type: [String], example: ['dashboard.view', 'reports.print.view'] })
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['dashboard.view', 'reports.print.view'],
+  })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -31,12 +42,17 @@ export class UpdateRoleDto {
   @MaxLength(100)
   name?: string;
 
-  @ApiPropertyOptional({ example: 'Acceso operativo a supervision y control de reportes.' })
+  @ApiPropertyOptional({
+    example: 'Acceso operativo a supervision y control de reportes.',
+  })
   @IsOptional()
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ type: [String], example: ['dashboard.view', 'reports.print.view'] })
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['dashboard.view', 'reports.print.view'],
+  })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

@@ -1,10 +1,23 @@
-import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
-import { BulkUpsertCliseItemDto, CreateCliseDto, UpdateCliseDto } from './dto/clise.dto';
+import {
+  BulkUpsertCliseItemDto,
+  CreateCliseDto,
+  UpdateCliseDto,
+} from './dto/clise.dto';
 import { CliseQueryDto } from './dto/clise-query.dto';
-import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import {
+  buildPaginatedResult,
+  resolvePagination,
+} from '../../../common/utils/pagination.util';
 import { toFrontendClise } from '../../../common/utils/frontend-entity.util';
 import { normalizeOptionalDateInput } from '../../../common/utils/date-input.util';
 
@@ -39,7 +52,9 @@ export class ClisesService {
     });
 
     if (existing) {
-      throw new ConflictException(`Clisé with item code ${normalizedDto.item_code} already exists`);
+      throw new ConflictException(
+        `Clisé with item code ${normalizedDto.item_code} already exists`,
+      );
     }
 
     const created = await this.prisma.clise.create({
@@ -52,7 +67,9 @@ export class ClisesService {
 
   async bulkUpsert(dtos: BulkUpsertCliseItemDto[]) {
     const normalizedItems = dtos.map((dto) => this.prepareBulkUpsertItem(dto));
-    const uniqueItems = Array.from(new Map(normalizedItems.map((dto) => [dto.item_code, dto])).values());
+    const uniqueItems = Array.from(
+      new Map(normalizedItems.map((dto) => [dto.item_code, dto])).values(),
+    );
 
     if (uniqueItems.length === 0) {
       return { processed: 0, created: 0, updated: 0 };
@@ -61,7 +78,11 @@ export class ClisesService {
     let created = 0;
     let updated = 0;
 
-    for (let index = 0; index < uniqueItems.length; index += CLISE_BULK_CHUNK_SIZE) {
+    for (
+      let index = 0;
+      index < uniqueItems.length;
+      index += CLISE_BULK_CHUNK_SIZE
+    ) {
       const chunk = uniqueItems.slice(index, index + CLISE_BULK_CHUNK_SIZE);
       const chunkNumber = Math.floor(index / CLISE_BULK_CHUNK_SIZE) + 1;
       const existing = await this.prisma.clise.findMany({
@@ -74,7 +95,9 @@ export class ClisesService {
       });
 
       const existingSet = new Set(existing.map((item) => item.item_code));
-      created += chunk.filter((item) => !existingSet.has(item.item_code)).length;
+      created += chunk.filter(
+        (item) => !existingSet.has(item.item_code),
+      ).length;
       updated += chunk.filter((item) => existingSet.has(item.item_code)).length;
 
       try {
@@ -93,9 +116,9 @@ export class ClisesService {
         });
       } catch (error) {
         if (
-          error instanceof BadRequestException
-          || error instanceof ConflictException
-          || error instanceof InternalServerErrorException
+          error instanceof BadRequestException ||
+          error instanceof ConflictException ||
+          error instanceof InternalServerErrorException
         ) {
           throw error;
         }
@@ -140,7 +163,11 @@ export class ClisesService {
       }),
     ]);
 
-    return buildPaginatedResult(items.map((item) => toFrontendClise(item)), total, pagination);
+    return buildPaginatedResult(
+      items.map((item) => toFrontendClise(item)),
+      total,
+      pagination,
+    );
   }
 
   async findOne(id: string) {
@@ -170,7 +197,9 @@ export class ClisesService {
     });
 
     if (duplicate) {
-      throw new ConflictException(`Clisé with item code ${normalizedDto.item_code} already exists`);
+      throw new ConflictException(
+        `Clisé with item code ${normalizedDto.item_code} already exists`,
+      );
     }
 
     const updated = await this.prisma.clise.update({
@@ -190,7 +219,9 @@ export class ClisesService {
     });
 
     if (activeRefs > 0) {
-      throw new ConflictException(`Cannot delete Clisé with ID ${id} because it is referenced by active production reports`);
+      throw new ConflictException(
+        `Cannot delete Clisé with ID ${id} because it is referenced by active production reports`,
+      );
     }
 
     return this.prisma.clise.update({
@@ -256,8 +287,12 @@ export class ClisesService {
       maquina_texto: dto.maquina_texto ?? undefined,
       ficha_fler: dto.ficha_fler ?? undefined,
       metros_acumulados: dto.metros_acumulados ?? undefined,
-      colores_json: dto.colores_json?.length ? (dto.colores_json as Prisma.InputJsonValue) : undefined,
-      raw_payload: Object.keys(dto.raw_payload || {}).length ? (dto.raw_payload as Prisma.InputJsonValue) : undefined,
+      colores_json: dto.colores_json?.length
+        ? (dto.colores_json as Prisma.InputJsonValue)
+        : undefined,
+      raw_payload: Object.keys(dto.raw_payload || {}).length
+        ? (dto.raw_payload as Prisma.InputJsonValue)
+        : undefined,
     };
   }
 
@@ -268,13 +303,21 @@ export class ClisesService {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       switch (error.code) {
         case 'P2000':
-          return new BadRequestException(`${baseMessage}: uno de los campos excede el tamaño permitido. ${detail}`);
+          return new BadRequestException(
+            `${baseMessage}: uno de los campos excede el tamaño permitido. ${detail}`,
+          );
         case 'P2002':
-          return new ConflictException(`${baseMessage}: conflicto por valor único duplicado. ${detail}`);
+          return new ConflictException(
+            `${baseMessage}: conflicto por valor único duplicado. ${detail}`,
+          );
         case 'P2003':
-          return new BadRequestException(`${baseMessage}: referencia relacionada inválida. ${detail}`);
+          return new BadRequestException(
+            `${baseMessage}: referencia relacionada inválida. ${detail}`,
+          );
         case 'P2020':
-          return new BadRequestException(`${baseMessage}: uno de los valores numéricos está fuera de rango. ${detail}`);
+          return new BadRequestException(
+            `${baseMessage}: uno de los valores numéricos está fuera de rango. ${detail}`,
+          );
         default:
           return new BadRequestException(`${baseMessage}: ${detail}`);
       }
@@ -296,7 +339,9 @@ export class ClisesService {
     return String(error);
   }
 
-  private normalizeCliseInput(dto: Partial<CreateCliseDto | UpdateCliseDto | BulkUpsertCliseItemDto>): NormalizedCliseInput {
+  private normalizeCliseInput(
+    dto: Partial<CreateCliseDto | UpdateCliseDto | BulkUpsertCliseItemDto>,
+  ): NormalizedCliseInput {
     return {
       item_code: this.trimToLength(dto.item_code, 100),
       ubicacion: this.trimToLength(dto.ubicacion, 100),
@@ -317,8 +362,8 @@ export class ClisesService {
       metros_acumulados: this.toFiniteNumber(dto.metros_acumulados),
       colores_json: Array.isArray(dto.colores_json)
         ? dto.colores_json
-          .map((entry) => this.trimToLength(entry, 100))
-          .filter(Boolean)
+            .map((entry) => this.trimToLength(entry, 100))
+            .filter(Boolean)
         : undefined,
       raw_payload: this.pickSafeRawPayload(dto.raw_payload),
     };
@@ -333,7 +378,10 @@ export class ClisesService {
     const safePayload: Record<string, unknown> = {};
 
     if (typeof source.display_item_code === 'string') {
-      safePayload.display_item_code = this.trimToLength(source.display_item_code, 100);
+      safePayload.display_item_code = this.trimToLength(
+        source.display_item_code,
+        100,
+      );
     }
 
     if (typeof source.import_conflict === 'boolean') {
@@ -362,7 +410,9 @@ export class ClisesService {
   }
 
   private trimToLength(value: unknown, maxLength: number) {
-    return String(value ?? '').trim().slice(0, maxLength);
+    return String(value ?? '')
+      .trim()
+      .slice(0, maxLength);
   }
 
   private trimLongText(value: unknown) {

@@ -1,5 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { DNI_REGEX, normalizeDni } from '../../../common/utils/dni.util';
 
@@ -8,7 +15,9 @@ export class CreateUserDto {
   @IsString()
   @IsNotEmpty()
   @Transform(({ value }) => normalizeDni(value))
-  @Matches(DNI_REGEX, { message: 'El DNI debe contener al menos 8 digitos numericos.' })
+  @Matches(DNI_REGEX, {
+    message: 'El DNI debe contener al menos 8 digitos numericos.',
+  })
   username: string;
 
   @ApiProperty({ example: 'password123', required: false })
@@ -37,7 +46,9 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   @Transform(({ value }) => normalizeDni(value))
-  @Matches(DNI_REGEX, { message: 'El DNI debe contener al menos 8 digitos numericos.' })
+  @Matches(DNI_REGEX, {
+    message: 'El DNI debe contener al menos 8 digitos numericos.',
+  })
   username?: string;
 
   @ApiProperty({ example: 'password123' })
@@ -66,6 +77,8 @@ export class IdentifyOperatorDto {
   @IsString()
   @IsNotEmpty()
   @Transform(({ value }) => normalizeDni(value))
-  @Matches(DNI_REGEX, { message: 'El DNI debe contener al menos 8 digitos numericos.' })
+  @Matches(DNI_REGEX, {
+    message: 'El DNI debe contener al menos 8 digitos numericos.',
+  })
   dni: string;
 }

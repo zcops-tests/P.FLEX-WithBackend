@@ -21,7 +21,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
-    
+
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
@@ -32,7 +32,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         ? exception.getResponse()
         : 'Internal server error';
 
-    const correlationId = (request.headers['x-correlation-id'] as string) || request['id'] || 'N/A';
+    const correlationId =
+      (request.headers['x-correlation-id'] as string) || request['id'] || 'N/A';
     const normalizedMessage = this.extractMessage(message);
     const details = this.extractDetails(message);
 

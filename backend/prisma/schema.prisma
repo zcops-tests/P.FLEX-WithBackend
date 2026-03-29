@@ -93,6 +93,8 @@ model Shift {
 
   print_reports   PrintReport[]
   diecut_reports  DiecutReport[]
+  rewind_reports  RewindReport[]
+  packaging_reports PackagingReport[]
   kpis            ProductionKpiDaily[]
 
   @@map("shifts")
@@ -105,6 +107,9 @@ model User {
   username            String    @unique @db.VarChar(50)
   password_hash       String    @db.VarChar(255)
   active              Boolean   @default(true)
+  failed_login_attempts Int     @default(0)
+  last_failed_login_at DateTime? @db.DateTime(3)
+  locked_until        DateTime? @db.DateTime(3)
   last_login_at       DateTime? @db.DateTime(3)
   password_changed_at DateTime? @db.DateTime(3)
   row_version         BigInt    @default(1)
@@ -125,6 +130,8 @@ model User {
   capa_actions    CapaAction[]
   print_reports   PrintReport[]
   diecut_reports  DiecutReport[]
+  rewind_reports  RewindReport[]
+  packaging_reports PackagingReport[]
   file_objects    FileObject[]
   audit_logs      AuditLog[]         @relation("UserAudit")
   change_log      ChangeLog[]
@@ -184,6 +191,7 @@ model Machine {
   incidents      Incident[]
   print_reports  PrintReport[]
   diecut_reports DiecutReport[]
+  rewind_reports RewindReport[]
   kpis           ProductionKpiDaily[]
 
   @@map("machines")
@@ -383,6 +391,8 @@ model WorkOrder {
   incidents      Incident[]
   print_reports  PrintReport[]
   diecut_reports DiecutReport[]
+  rewind_reports RewindReport[]
+  packaging_reports PackagingReport[]
   management_entries WorkOrderManagementEntry[]
 
   @@index([updated_at])
@@ -756,6 +766,9 @@ model PrintReport {
   run_minutes                Int       @default(0)
   clise_id                   String?   @db.VarChar(36)
   die_id                     String?   @db.VarChar(36)
+  die_type_snapshot          String?   @db.VarChar(50)
+  die_series_snapshot        String?   @db.VarChar(100)
+  die_location_snapshot      String?   @db.VarChar(100)
   clise_status               String?   @db.VarChar(50)
   die_status                 String?   @db.VarChar(50)
   observations               String?   @db.Text
@@ -853,6 +866,7 @@ model DiecutActivity {
   end_time         String    @db.VarChar(8)
   duration_minutes Int       @default(0)
   quantity         Decimal   @default(0) @db.Decimal(14, 3)
+  observations     String?   @db.Text
   row_version      BigInt    @default(1)
   created_at       DateTime  @default(now()) @db.DateTime(3)
   updated_at       DateTime  @updatedAt @db.DateTime(3)
@@ -862,6 +876,81 @@ model DiecutActivity {
 
   @@index([report_id])
   @@map("diecut_activities")
+}
+
+model RewindReport {
+  id                         String    @id @default(uuid()) @db.VarChar(36)
+  reported_at                DateTime  @db.DateTime(3)
+  work_order_id              String?   @db.VarChar(36)
+  machine_id                 String    @db.VarChar(36)
+  operator_id                String    @db.VarChar(36)
+  shift_id                   String?   @db.VarChar(36)
+  status                     String    @default("SUBMITTED") @db.VarChar(50)
+  work_order_number_snapshot String?   @db.VarChar(50)
+  client_snapshot            String?   @db.VarChar(150)
+  product_snapshot           String?   @db.VarChar(255)
+  operator_name_snapshot     String?   @db.VarChar(100)
+  rolls_finished             Int       @default(0)
+  labels_per_roll            Int       @default(0)
+  total_labels               Decimal   @default(0) @db.Decimal(14, 3)
+  total_meters               Decimal   @default(0) @db.Decimal(14, 3)
+  waste_rolls                Int       @default(0)
+  quality_check              Boolean   @default(true)
+  observations               String?   @db.Text
+  production_status          String    @db.VarChar(50) // PARTIAL, TOTAL
+  row_version                BigInt    @default(1)
+  created_at                 DateTime  @default(now()) @db.DateTime(3)
+  updated_at                 DateTime  @updatedAt @db.DateTime(3)
+  deleted_at                 DateTime? @db.DateTime(3)
+
+  work_order WorkOrder? @relation(fields: [work_order_id], references: [id])
+  machine    Machine    @relation(fields: [machine_id], references: [id])
+  operator   User       @relation(fields: [operator_id], references: [id])
+  shift      Shift?     @relation(fields: [shift_id], references: [id])
+
+  @@index([reported_at])
+  @@index([machine_id])
+  @@index([operator_id])
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@index([status])
+  @@map("rewind_reports")
+}
+
+model PackagingReport {
+  id                         String    @id @default(uuid()) @db.VarChar(36)
+  reported_at                DateTime  @db.DateTime(3)
+  work_order_id              String?   @db.VarChar(36)
+  operator_id                String    @db.VarChar(36)
+  shift_id                   String?   @db.VarChar(36)
+  status                     String    @default("SUBMITTED") @db.VarChar(50)
+  lot_status                 String    @db.VarChar(50) // COMPLETE, PARTIAL
+  work_order_number_snapshot String?   @db.VarChar(50)
+  client_snapshot            String?   @db.VarChar(150)
+  product_snapshot           String?   @db.VarChar(255)
+  operator_name_snapshot     String?   @db.VarChar(100)
+  shift_name_snapshot        String?   @db.VarChar(100)
+  rolls                      Int       @default(0)
+  total_meters               Decimal   @default(0) @db.Decimal(14, 3)
+  demasia_rolls              Int       @default(0)
+  demasia_meters             Decimal   @default(0) @db.Decimal(14, 3)
+  notes                      String?   @db.Text
+  row_version                BigInt    @default(1)
+  created_at                 DateTime  @default(now()) @db.DateTime(3)
+  updated_at                 DateTime  @updatedAt @db.DateTime(3)
+  deleted_at                 DateTime? @db.DateTime(3)
+
+  work_order WorkOrder? @relation(fields: [work_order_id], references: [id])
+  operator   User       @relation(fields: [operator_id], references: [id])
+  shift      Shift?     @relation(fields: [shift_id], references: [id])
+
+  @@index([reported_at])
+  @@index([operator_id])
+  @@index([updated_at])
+  @@index([deleted_at])
+  @@index([status])
+  @@index([lot_status])
+  @@map("packaging_reports")
 }
 
 model ProductionKpiDaily {

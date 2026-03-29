@@ -360,6 +360,11 @@ export class OperatorSelectorComponent {
         return;
     }
 
+    if (!this.state.canCreateProcessReport(type)) {
+        this.notifications.showError('La sesión anfitriona no tiene permiso para registrar reportes en esta área.');
+        return;
+    }
+
     if (!this.isProcessAllowed(type)) {
         this.notifications.showError('El operario no tiene permisos para acceder a esta área.');
         return;
@@ -377,7 +382,7 @@ export class OperatorSelectorComponent {
   }
 
   canAccessProcess(type: string) {
-    return this.state.hasActiveOperator() && this.isProcessAllowed(type);
+    return this.state.hasActiveOperator() && this.state.canCreateProcessReport(type) && this.isProcessAllowed(type);
   }
 
   isProcessAllowed(type: string) {

@@ -1,26 +1,53 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
-import { CreatePrintReportDto, PrintReportStatus, UpdatePrintReportDto } from './dto/print-report.dto';
+import {
+  CreatePrintReportDto,
+  PrintDieType,
+  PrintReportStatus,
+  UpdatePrintReportDto,
+} from './dto/print-report.dto';
 import { PrintReportQueryDto } from './dto/print-report-query.dto';
-import { buildPaginatedResult, resolvePagination } from '../../../common/utils/pagination.util';
+import {
+  buildPaginatedResult,
+  resolvePagination,
+} from '../../../common/utils/pagination.util';
 import { assertAllowedTransition } from '../../../common/utils/state-transition.util';
 import { assertReportLockAvailable } from '../../../common/utils/report-lock.util';
 import { toFrontendPrintReport } from '../../../common/utils/frontend-entity.util';
+import { machineSupportsProcess } from '../../../common/utils/production-machine.util';
 
 @Injectable()
 export class PrintingService {
   constructor(private prisma: PrismaService) {}
 
-  async createReport(dto: CreatePrintReportDto, operatorId: string) {
+  async createReport(dto: CreatePrintReportDto, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
+      const effectiveOperatorId = dto.operator_id || actorUserId;
+      const normalizedDieType = this.normalizePrintDieType(dto.die_type);
+      const dieSeriesSnapshot = this.normalizeOptionalText(dto.die_series);
+      const dieLocationSnapshot = this.normalizeOptionalText(dto.die_location);
+
+      this.assertPrintDiePayload(
+        normalizedDieType,
+        dieSeriesSnapshot,
+        dieLocationSnapshot,
+      );
+
       // 1. Get snapshots if WO exists
       let woNumber: string | null = null;
       let client: string | null = null;
       let product: string | null = null;
 
       if (dto.work_order_id) {
-        const wo = await tx.workOrder.findUnique({ where: { id: dto.work_order_id } });
+        const wo = await tx.workOrder.findUnique({
+          where: { id: dto.work_order_id },
+        });
         if (wo) {
           woNumber = wo.ot_number;
           client = wo.cliente_razon_social;
@@ -28,7 +55,68 @@ export class PrintingService {
         }
       }
 
-      const operator = await tx.user.findUnique({ where: { id: operatorId } });
+      const operator = await tx.user.findUnique({
+        where: { id: effectiveOperatorId },
+        include: { role: true },
+      });
+
+      if (!operator || operator.deleted_at || operator.active === false) {
+        throw new NotFoundException(
+          `Operator with ID ${effectiveOperatorId} not found`,
+        );
+      }
+
+      const machine = await tx.machine.findUnique({
+        where: { id: dto.machine_id },
+        include: { area: true },
+      });
+
+      if (!machine || machine.deleted_at || machine.active === false) {
+        throw new NotFoundException(
+          `Machine with ID ${dto.machine_id} not found`,
+        );
+      }
+
+      if (!machineSupportsProcess(machine, 'PRINT')) {
+        throw new BadRequestException(
+          'La máquina seleccionada no pertenece al área de impresión.',
+        );
+      }
+
+      const clise = dto.clise_id
+        ? await tx.clise.findUnique({ where: { id: dto.clise_id } })
+        : dto.clise_item_code
+          ? await tx.clise.findUnique({
+              where: { item_code: dto.clise_item_code.trim() },
+            })
+          : null;
+
+      const die = dto.die_id
+        ? await tx.die.findUnique({ where: { id: dto.die_id } })
+        : dieSeriesSnapshot
+          ? await tx.die.findUnique({ where: { serie: dieSeriesSnapshot } })
+          : dieLocationSnapshot
+            ? await tx.die.findFirst({
+                where: {
+                  ubicacion: dieLocationSnapshot,
+                  deleted_at: null,
+                },
+              })
+            : null;
+
+      if (dto.clise_id && !clise) {
+        throw new NotFoundException(`Clise with ID ${dto.clise_id} not found`);
+      }
+
+      if (!dto.clise_id && dto.clise_item_code && !clise) {
+        throw new NotFoundException(
+          `Clise with item code ${dto.clise_item_code} not found`,
+        );
+      }
+
+      if (dto.die_id && !die) {
+        throw new NotFoundException(`Die with ID ${dto.die_id} not found`);
+      }
 
       // 2. Check for time overlaps on the same machine
       for (const activity of dto.activities) {
@@ -52,9 +140,37 @@ export class PrintingService {
         });
 
         if (overlaps) {
-          throw new ConflictException(`Activity overlaps with existing record on machine ${dto.machine_id} at ${startTime}`);
+          throw new ConflictException(
+            `Activity overlaps with existing record on machine ${dto.machine_id} at ${startTime}`,
+          );
         }
       }
+
+      const runMinutes = dto.activities.reduce((acc, activity) => {
+        if (String(activity.activity_type || '').toUpperCase() !== 'RUN')
+          return acc;
+        return (
+          acc +
+          this.resolveActivityDuration(
+            activity.start_time,
+            activity.end_time,
+            activity.duration_minutes,
+          )
+        );
+      }, 0);
+
+      const setupMinutes = dto.activities.reduce((acc, activity) => {
+        if (String(activity.activity_type || '').toUpperCase() !== 'SETUP')
+          return acc;
+        return (
+          acc +
+          this.resolveActivityDuration(
+            activity.start_time,
+            activity.end_time,
+            activity.duration_minutes,
+          )
+        );
+      }, 0);
 
       // 3. Create the report
       const report = await tx.printReport.create({
@@ -62,10 +178,13 @@ export class PrintingService {
           reported_at: new Date(dto.reported_at),
           work_order_id: dto.work_order_id,
           machine_id: dto.machine_id,
-          operator_id: operatorId,
+          operator_id: effectiveOperatorId,
           shift_id: dto.shift_id,
-          clise_id: dto.clise_id,
-          die_id: dto.die_id,
+          clise_id: clise?.id || dto.clise_id,
+          die_id: die?.id || dto.die_id,
+          die_type_snapshot: normalizedDieType,
+          die_series_snapshot: dieSeriesSnapshot,
+          die_location_snapshot: dieLocationSnapshot,
           status: PrintReportStatus.SUBMITTED,
           work_order_number_snapshot: woNumber,
           client_snapshot: client,
@@ -73,9 +192,16 @@ export class PrintingService {
           operator_name_snapshot: operator?.name || 'Unknown',
           observations: dto.observations,
           production_status: dto.production_status || 'TOTAL',
+          clise_status: dto.clise_status || 'OK',
+          die_status: dto.die_status || 'OK',
           // Aggregates
-          total_meters: dto.activities.reduce((acc, a) => acc + (a.meters || 0), 0),
+          total_meters: dto.activities.reduce(
+            (acc, a) => acc + (a.meters || 0),
+            0,
+          ),
           waste_meters: 0, // Not in schema for report aggregate currently or moved to activities
+          run_minutes: runMinutes,
+          setup_minutes: setupMinutes,
         },
       });
 
@@ -134,12 +260,28 @@ export class PrintingService {
         include: {
           machine: { select: { name: true, code: true } },
           operator: { select: { name: true } },
+          shift: { select: { name: true } },
           work_order: { select: { ot_number: true } },
+          clise: { select: { item_code: true } },
+          die: { select: { serie: true } },
+          activities: {
+            select: {
+              activity_type: true,
+              start_time: true,
+              end_time: true,
+              duration_minutes: true,
+              meters: true,
+            },
+          },
         },
       }),
     ]);
 
-    return buildPaginatedResult(items.map((item) => toFrontendPrintReport(item)), total, pagination);
+    return buildPaginatedResult(
+      items.map((item) => toFrontendPrintReport(item)),
+      total,
+      pagination,
+    );
   }
 
   async findOneReport(id: string) {
@@ -149,6 +291,7 @@ export class PrintingService {
         activities: true,
         machine: true,
         operator: true,
+        shift: true,
         work_order: true,
         clise: true,
         die: true,
@@ -168,7 +311,10 @@ export class PrintingService {
     // APPROVED can be CORRECTED
     const allowed: Record<string, string[]> = {
       [PrintReportStatus.DRAFT]: [PrintReportStatus.SUBMITTED],
-      [PrintReportStatus.SUBMITTED]: [PrintReportStatus.APPROVED, PrintReportStatus.DRAFT],
+      [PrintReportStatus.SUBMITTED]: [
+        PrintReportStatus.APPROVED,
+        PrintReportStatus.DRAFT,
+      ],
       [PrintReportStatus.APPROVED]: [PrintReportStatus.CORRECTED],
       [PrintReportStatus.CORRECTED]: [PrintReportStatus.APPROVED],
     };
@@ -194,7 +340,11 @@ export class PrintingService {
 
   async lockReport(id: string, userId: string) {
     const report = await this.findOneReport(id);
-    assertReportLockAvailable(report.locked_by_user_id, report.locked_at, userId);
+    assertReportLockAvailable(
+      report.locked_by_user_id,
+      report.locked_at,
+      userId,
+    );
 
     const updated = await this.prisma.printReport.update({
       where: { id },
@@ -235,5 +385,94 @@ export class PrintingService {
     });
 
     return toFrontendPrintReport(updated);
+  }
+
+  private resolveActivityDuration(
+    startTime: string,
+    endTime?: string,
+    providedDuration?: number,
+  ) {
+    if (
+      typeof providedDuration === 'number' &&
+      Number.isFinite(providedDuration) &&
+      providedDuration >= 0
+    ) {
+      return Math.trunc(providedDuration);
+    }
+
+    if (!startTime || !endTime) {
+      return 0;
+    }
+
+    const start = this.toMinutes(startTime);
+    const end = this.toMinutes(endTime);
+    if (start === null || end === null) {
+      return 0;
+    }
+
+    const diff = end >= start ? end - start : 24 * 60 - start + end;
+    return Math.max(0, diff);
+  }
+
+  private toMinutes(value: string) {
+    const [hour, minute] = String(value || '')
+      .split(':')
+      .map((part) => Number(part));
+
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+      return null;
+    }
+
+    return hour * 60 + minute;
+  }
+
+  private normalizeOptionalText(value: string | null | undefined) {
+    const normalized = String(value || '').trim();
+    return normalized || null;
+  }
+
+  private normalizePrintDieType(value: PrintDieType | string | undefined) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized.includes('FLAT') || normalized.includes('PLANO')) {
+      return PrintDieType.FLATBED;
+    }
+    if (normalized.includes('MAG') || normalized.includes('IMAN')) {
+      return PrintDieType.MAGNETIC;
+    }
+    if (normalized.includes('SOLID') || normalized.includes('SOLIDO')) {
+      return PrintDieType.SOLID;
+    }
+
+    throw new BadRequestException('Selecciona un tipo de troquel válido.');
+  }
+
+  private assertPrintDiePayload(
+    dieType: PrintDieType | null,
+    dieSeries: string | null,
+    dieLocation: string | null,
+  ) {
+    if (!dieType) {
+      return;
+    }
+
+    if (dieType === PrintDieType.MAGNETIC && !dieSeries) {
+      throw new BadRequestException(
+        'Ingresa la serie del troquel magnético para registrar el reporte.',
+      );
+    }
+
+    if (
+      (dieType === PrintDieType.FLATBED || dieType === PrintDieType.SOLID) &&
+      !dieSeries &&
+      !dieLocation
+    ) {
+      throw new BadRequestException(
+        'Ingresa la serie o la ubicación del troquel para registrar el reporte.',
+      );
+    }
   }
 }

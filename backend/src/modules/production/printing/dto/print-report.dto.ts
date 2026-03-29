@@ -1,4 +1,14 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsUUID, IsDateString, IsNumber, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  IsUUID,
+  IsDateString,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -13,6 +23,12 @@ export enum PrintActivityType {
   SETUP = 'SETUP',
   RUN = 'RUN',
   STOP = 'STOP',
+}
+
+export enum PrintDieType {
+  FLATBED = 'FLATBED',
+  MAGNETIC = 'MAGNETIC',
+  SOLID = 'SOLID',
 }
 
 export class CreatePrintActivityDto {
@@ -58,6 +74,11 @@ export class CreatePrintReportDto {
   @IsNotEmpty()
   machine_id: string;
 
+  @ApiProperty({ example: 'uuid-operator', required: false })
+  @IsUUID()
+  @IsOptional()
+  operator_id?: string;
+
   @ApiProperty({ example: 'uuid-shift' })
   @IsUUID()
   @IsOptional()
@@ -72,6 +93,40 @@ export class CreatePrintReportDto {
   @IsUUID()
   @IsOptional()
   die_id?: string;
+
+  @ApiProperty({ example: 'CL-12345', required: false })
+  @IsString()
+  @IsOptional()
+  clise_item_code?: string;
+
+  @ApiProperty({ example: 'TR-12345', required: false })
+  @IsString()
+  @IsOptional()
+  die_series?: string;
+
+  @ApiProperty({
+    enum: PrintDieType,
+    example: PrintDieType.MAGNETIC,
+    required: false,
+  })
+  @IsEnum(PrintDieType)
+  @IsOptional()
+  die_type?: PrintDieType;
+
+  @ApiProperty({ example: 'RACK-A1', required: false })
+  @IsString()
+  @IsOptional()
+  die_location?: string;
+
+  @ApiProperty({ example: 'OK', required: false })
+  @IsString()
+  @IsOptional()
+  clise_status?: string;
+
+  @ApiProperty({ example: 'OK', required: false })
+  @IsString()
+  @IsOptional()
+  die_status?: string;
 
   @ApiProperty({ example: 'METROS_PRODUCIDOS' })
   @IsString()

@@ -14,7 +14,7 @@ export class OutboxService {
         event_name: name,
         aggregate_type: type,
         aggregate_id: id,
-        payload: payload as any,
+        payload: payload,
         status: 'PENDING',
       },
     });
@@ -39,7 +39,9 @@ export class OutboxService {
           },
         });
       } catch (error) {
-        this.logger.error(`Failed to process outbox event ${event.id}: ${error.message}`);
+        this.logger.error(
+          `Failed to process outbox event ${event.id}: ${error.message}`,
+        );
         await this.prisma.outboxEvent.update({
           where: { id: event.id },
           data: {
@@ -53,7 +55,9 @@ export class OutboxService {
 
   private async handleEvent(event: any) {
     // In a real system, this would publish to AWS SNS, RabbitMQ, Kafka, etc.
-    this.logger.log(`Publishing event ${event.event_name} for ${event.aggregate_type}:${event.aggregate_id}`);
+    this.logger.log(
+      `Publishing event ${event.event_name} for ${event.aggregate_type}:${event.aggregate_id}`,
+    );
     // Simulated publication
   }
 }

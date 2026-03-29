@@ -10,7 +10,12 @@ import {
   Patch,
   Request,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { PrintingService } from './printing.service';
 import {
   CreatePrintReportDto,
@@ -61,7 +66,10 @@ export class PrintingController {
   @Patch('reports/:id/status')
   @Permissions('reports.print.status.manage')
   @ApiOperation({ summary: 'Update report status (state machine)' })
-  async updateStatus(@Param('id') id: string, @Body() dto: UpdatePrintReportStatusDto) {
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdatePrintReportStatusDto,
+  ) {
     return this.printingService.updateStatus(id, dto.status);
   }
 

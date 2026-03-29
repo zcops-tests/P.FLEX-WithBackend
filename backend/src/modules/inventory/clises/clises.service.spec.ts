@@ -39,7 +39,9 @@ describe('ClisesService', () => {
   describe('create', () => {
     it('should throw ConflictException if item_code exists', async () => {
       mockPrisma.clise.findUnique.mockResolvedValue({ id: '1' });
-      await expect(service.create({ item_code: 'EX' } as any)).rejects.toThrow(ConflictException);
+      await expect(service.create({ item_code: 'EX' } as any)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -53,8 +55,11 @@ describe('ClisesService', () => {
     it('should soft delete if not used', async () => {
       mockPrisma.clise.findUnique.mockResolvedValue({ id: '1' });
       mockPrisma.printReport.count.mockResolvedValue(0);
-      mockPrisma.clise.update.mockResolvedValue({ id: '1', deleted_at: new Date() });
-      
+      mockPrisma.clise.update.mockResolvedValue({
+        id: '1',
+        deleted_at: new Date(),
+      });
+
       const result = await service.remove('1');
       expect(result.deleted_at).toBeDefined();
     });

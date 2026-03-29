@@ -48,8 +48,11 @@ describe('AuditInterceptor', () => {
   });
 
   it('should call prisma.auditLog.create on successful operation', async () => {
-    const result$ = interceptor.intercept(mockExecutionContext, mockCallHandler);
-    
+    const result$ = interceptor.intercept(
+      mockExecutionContext,
+      mockCallHandler,
+    );
+
     // We must subscribe and wait for the observable to complete
     await result$.toPromise();
     await new Promise((resolve) => setImmediate(resolve));

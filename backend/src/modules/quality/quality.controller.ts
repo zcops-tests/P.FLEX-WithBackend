@@ -11,7 +11,12 @@ import {
   Patch,
   Request,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { QualityService } from './quality.service';
 import {
   CreateIncidentDto,
@@ -62,21 +67,34 @@ export class QualityController {
   @Patch('incidents/:id/status')
   @Permissions('quality.incidents.manage')
   @ApiOperation({ summary: 'Update incident status (state machine)' })
-  async updateIncidentStatus(@Param('id') id: string, @Body() dto: UpdateIncidentStatusDto) {
-    return this.qualityService.updateIncidentStatus(id, dto.status, dto.root_cause);
+  async updateIncidentStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateIncidentStatusDto,
+  ) {
+    return this.qualityService.updateIncidentStatus(
+      id,
+      dto.status,
+      dto.root_cause,
+    );
   }
 
   @Patch('incidents/:id/root-cause')
   @Permissions('quality.incidents.manage')
   @ApiOperation({ summary: 'Update root cause analysis for an incident' })
-  async updateIncidentRootCause(@Param('id') id: string, @Body() dto: UpdateIncidentRootCauseDto) {
+  async updateIncidentRootCause(
+    @Param('id') id: string,
+    @Body() dto: UpdateIncidentRootCauseDto,
+  ) {
     return this.qualityService.updateIncidentRootCause(id, dto.root_cause);
   }
 
   @Post('incidents/:id/capa')
   @Permissions('quality.incidents.manage')
   @ApiOperation({ summary: 'Add a CAPA action to an incident' })
-  async addCapaAction(@Param('id') id: string, @Body() dto: CreateCapaActionDto) {
+  async addCapaAction(
+    @Param('id') id: string,
+    @Body() dto: CreateCapaActionDto,
+  ) {
     return this.qualityService.addCapaAction(id, dto);
   }
 

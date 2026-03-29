@@ -8,7 +8,12 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { ShiftsService } from './shifts.service';
 import { CreateShiftDto, UpdateShiftDto } from './dto/shift.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -47,7 +52,10 @@ export class ShiftsController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('admin.shifts.manage')
   @ApiOperation({ summary: 'Update an existing shift' })
-  async update(@Param('id') id: string, @Body() updateShiftDto: UpdateShiftDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateShiftDto: UpdateShiftDto,
+  ) {
     return this.shiftsService.update(id, updateShiftDto);
   }
 

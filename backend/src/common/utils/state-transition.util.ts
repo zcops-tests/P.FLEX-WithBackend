@@ -10,5 +10,7 @@ export function assertAllowedTransition(
     return;
   }
 
-  throw new ConflictException(`${entityLabel} from ${currentStatus} to ${nextStatus} is not allowed`);
+  throw new ConflictException(
+    `${entityLabel} from ${currentStatus} to ${nextStatus} is not allowed`,
+  );
 }

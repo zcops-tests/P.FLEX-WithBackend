@@ -6,7 +6,9 @@ export class LoginDto {
   @IsNotEmpty()
   @IsString()
   @Transform(({ value }) => normalizeDni(value))
-  @Matches(DNI_REGEX, { message: 'El DNI debe contener al menos 8 digitos numericos.' })
+  @Matches(DNI_REGEX, {
+    message: 'El DNI debe contener al menos 8 digitos numericos.',
+  })
   username: string;
 
   @IsNotEmpty()

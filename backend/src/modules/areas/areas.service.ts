@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateAreaDto, UpdateAreaDto } from './dto/area.dto';
 import { toFrontendArea } from '../../common/utils/frontend-entity.util';
+import { DEFAULT_PRODUCTION_AREAS } from './default-production-areas';
 
 @Injectable()
 export class AreasService {
@@ -23,8 +28,11 @@ export class AreasService {
   }
 
   async findAll() {
+    await this.ensureDefaultProductionAreas();
+
     const areas = await this.prisma.area.findMany({
       where: { deleted_at: null },
+      orderBy: { name: 'asc' },
     });
 
     return areas.map((area) => toFrontendArea(area));
@@ -52,11 +60,31 @@ export class AreasService {
 
   async remove(id: string) {
     const area = await this.findOne(id);
-    // Soft delete is handled by the Prisma extension if we use delete(), 
+    // Soft delete is handled by the Prisma extension if we use delete(),
     // but we can also do it explicitly
     return this.prisma.area.update({
       where: { id },
       data: { deleted_at: new Date(), active: false },
     });
+  }
+
+  private async ensureDefaultProductionAreas() {
+    await Promise.all(
+      DEFAULT_PRODUCTION_AREAS.map((area) =>
+        this.prisma.area.upsert({
+          where: { code: area.code },
+          update: {
+            name: area.name,
+            active: true,
+            deleted_at: null,
+          },
+          create: {
+            code: area.code,
+            name: area.name,
+            active: true,
+          },
+        }),
+      ),
+    );
   }
 }

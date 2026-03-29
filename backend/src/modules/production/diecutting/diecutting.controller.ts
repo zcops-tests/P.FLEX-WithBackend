@@ -10,7 +10,12 @@ import {
   Patch,
   Request,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { DiecuttingService } from './diecutting.service';
 import {
   CreateDiecutReportDto,
@@ -34,7 +39,10 @@ export class DiecuttingController {
   @Permissions('reports.diecut.create')
   @ApiOperation({ summary: 'Submit a new die-cutting report' })
   async createReport(@Body() dto: CreateDiecutReportDto, @Request() req) {
-    return this.diecuttingService.createReport(dto, req.user.sub || req.user.id);
+    return this.diecuttingService.createReport(
+      dto,
+      req.user.sub || req.user.id,
+    );
   }
 
   @Get('reports')
@@ -59,7 +67,10 @@ export class DiecuttingController {
   @Patch('reports/:id/status')
   @Permissions('reports.diecut.status.manage')
   @ApiOperation({ summary: 'Update report status (state machine)' })
-  async updateStatus(@Param('id') id: string, @Body() dto: UpdateDiecutReportStatusDto) {
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateDiecutReportStatusDto,
+  ) {
     return this.diecuttingService.updateStatus(id, dto.status);
   }
 

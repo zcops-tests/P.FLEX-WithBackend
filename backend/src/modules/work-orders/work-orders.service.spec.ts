@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { WorkOrdersService } from './work-orders.service';
 import { PrismaService } from '../../database/prisma.service';
-import { WorkOrderManagementExitAction, WorkOrderStatus } from './dto/work-order.dto';
+import {
+  WorkOrderManagementExitAction,
+  WorkOrderStatus,
+} from './dto/work-order.dto';
 
 describe('WorkOrdersService', () => {
   let service: WorkOrdersService;
@@ -65,7 +68,9 @@ describe('WorkOrdersService', () => {
     it('should throw NotFoundException if it does not exist', async () => {
       mockPrisma.workOrder.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('invalid')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('invalid')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -112,9 +117,13 @@ describe('WorkOrdersService', () => {
         raw_payload: {},
         deleted_at: null,
       });
-      mockPrisma.workOrderManagementEntry.findFirst.mockResolvedValue({ id: 'entry-1' });
+      mockPrisma.workOrderManagementEntry.findFirst.mockResolvedValue({
+        id: 'entry-1',
+      });
 
-      await expect(service.enterManagement('ot-1', 'user-1')).rejects.toThrow(ConflictException);
+      await expect(service.enterManagement('ot-1', 'user-1')).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -130,7 +139,10 @@ describe('WorkOrdersService', () => {
         deleted_at: null,
       });
 
-      const result = await service.updateStatus('ot-1', WorkOrderStatus.IN_PRODUCTION);
+      const result = await service.updateStatus(
+        'ot-1',
+        WorkOrderStatus.IN_PRODUCTION,
+      );
 
       expect(mockPrisma.workOrder.update).not.toHaveBeenCalled();
       expect(result.Estado_pedido).toBe('EN PROCESO');
@@ -156,7 +168,10 @@ describe('WorkOrdersService', () => {
         deleted_at: null,
       });
 
-      const result = await service.updateStatus('ot-1', WorkOrderStatus.COMPLETED);
+      const result = await service.updateStatus(
+        'ot-1',
+        WorkOrderStatus.COMPLETED,
+      );
 
       expect(mockPrisma.workOrder.update).toHaveBeenCalledWith({
         where: { id: 'ot-1' },
@@ -187,7 +202,11 @@ describe('WorkOrdersService', () => {
       });
 
       await expect(
-        service.exitManagement('ot-1', WorkOrderManagementExitAction.REVERT_TO_IMPORTED, 'user-1'),
+        service.exitManagement(
+          'ot-1',
+          WorkOrderManagementExitAction.REVERT_TO_IMPORTED,
+          'user-1',
+        ),
       ).rejects.toThrow(ConflictException);
     });
   });

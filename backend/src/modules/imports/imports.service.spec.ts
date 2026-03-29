@@ -43,11 +43,14 @@ describe('ImportsService', () => {
 
   describe('createJob', () => {
     it('should create a job and add to queue', async () => {
-      mockPrisma.importJob.create.mockResolvedValue({ id: 'test-id', status: ImportStatus.PENDING });
-      
+      mockPrisma.importJob.create.mockResolvedValue({
+        id: 'test-id',
+        status: ImportStatus.PENDING,
+      });
+
       const result = await service.createJob(
         { entity_name: 'WORK_ORDER', file_id: 'file-1' },
-        'user-1'
+        'user-1',
       );
 
       expect(prisma.importJob.create).toHaveBeenCalled();

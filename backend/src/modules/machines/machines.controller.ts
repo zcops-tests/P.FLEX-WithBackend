@@ -8,7 +8,12 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { MachinesService } from './machines.service';
 import { CreateMachineDto, UpdateMachineDto } from './dto/machine.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -47,7 +52,10 @@ export class MachinesController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('admin.machines.manage')
   @ApiOperation({ summary: 'Update an existing machine' })
-  async update(@Param('id') id: string, @Body() updateMachineDto: UpdateMachineDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateMachineDto: UpdateMachineDto,
+  ) {
     return this.machinesService.update(id, updateMachineDto);
   }
 

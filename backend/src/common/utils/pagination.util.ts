@@ -12,7 +12,11 @@ interface PaginationInput {
 
 export function resolvePagination(
   params: PaginationInput,
-  options: { defaultPage?: number; defaultPageSize?: number; maxPageSize?: number } = {},
+  options: {
+    defaultPage?: number;
+    defaultPageSize?: number;
+    maxPageSize?: number;
+  } = {},
 ): ResolvedPagination {
   const defaultPage = options.defaultPage ?? 1;
   const defaultPageSize = options.defaultPageSize ?? 20;

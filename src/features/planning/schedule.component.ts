@@ -135,18 +135,18 @@ import { NotificationService } from '../../services/notification.service';
            
            <div *ngFor="let machine of filteredMachines; trackBy: trackByMachine" 
                 class="flex border-b border-white/5 hover:bg-white/5 transition-colors h-16 group relative"
-                [class.bg-red-500-5]="machine.status === 'Mantenimiento' || machine.status === 'Detenida' || machine.status === 'Sin Operador'">
+                [class.bg-red-500-5]="machine.status === 'Mantenimiento' || machine.status === 'Detenida' || machine.status === 'Sin Operario' || machine.status === 'Inactivo'">
               
               <!-- Machine Info Column -->
               <div class="w-64 flex-shrink-0 px-4 py-2 border-r border-white/10 flex flex-col justify-center bg-inherit z-20 backdrop-blur-sm">
                  <div class="flex justify-between items-center mb-1">
-                    <span class="font-bold text-sm truncate" [class.text-red-400]="machine.status !== 'Operativa'" [class.text-white]="machine.status === 'Operativa'">{{ machine.name }}</span>
+                    <span class="font-bold text-sm truncate" [class.text-red-400]="machine.status !== 'Activo'" [class.text-white]="machine.status === 'Activo'">{{ machine.name }}</span>
                     <span class="w-2 h-2 rounded-full" 
                           [ngClass]="{
-                            'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]': machine.status === 'Operativa',
+                            'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]': machine.status === 'Activo',
                             'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]': machine.status === 'Mantenimiento',
                             'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]': machine.status === 'Detenida',
-                            'bg-slate-500': machine.status === 'Sin Operador'
+                            'bg-slate-500': machine.status === 'Sin Operario' || machine.status === 'Inactivo'
                           }"></span>
                  </div>
                  
@@ -160,14 +160,15 @@ import { NotificationService } from '../../services/notification.service';
                                (ngModelChange)="updateMachineStatus(machine, $event)"
                                class="appearance-none bg-black/40 border border-white/10 rounded-lg px-2 py-0.5 text-[9px] font-bold uppercase focus:ring-1 focus:ring-primary outline-none cursor-pointer hover:border-white/30 pr-4 transition-colors"
                                [ngClass]="{
-                                  'text-emerald-400 border-emerald-500/30': machine.status === 'Operativa',
+                                  'text-emerald-400 border-emerald-500/30': machine.status === 'Activo',
+                                  'text-slate-400 border-white/10': machine.status === 'Inactivo' || machine.status === 'Sin Operario',
                                   'text-amber-400 border-amber-500/30': machine.status === 'Mantenimiento',
-                                  'text-red-400 border-red-500/30': machine.status === 'Detenida',
-                                  'text-slate-400 border-white/10': machine.status === 'Sin Operador'
+                                  'text-red-400 border-red-500/30': machine.status === 'Detenida'
                                }">
-                          <option value="Operativa" class="bg-slate-900 text-emerald-400">OPERATIVA</option>
+                          <option value="Activo" class="bg-slate-900 text-emerald-400">ACTIVO</option>
+                          <option value="Inactivo" class="bg-slate-900 text-slate-400">INACTIVO</option>
                           <option value="Mantenimiento" class="bg-slate-900 text-amber-400">MANTENIMIENTO</option>
-                          <option value="Sin Operador" class="bg-slate-900 text-slate-400">SIN OPERADOR</option>
+                          <option value="Sin Operario" class="bg-slate-900 text-slate-400">SIN OPERARIO</option>
                           <option value="Detenida" class="bg-slate-900 text-red-400">DETENIDA</option>
                        </select>
                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1 text-slate-500">
@@ -186,20 +187,20 @@ import { NotificationService } from '../../services/notification.service';
                  </div>
 
                  <!-- Special Maintenance Background Pattern -->
-                 <div *ngIf="machine.status !== 'Operativa'" 
+                 <div *ngIf="machine.status !== 'Activo'" 
                       class="absolute inset-0 maintenance-pattern z-0 flex items-center justify-center">
                       <div class="bg-black/60 px-3 py-0.5 rounded-full border backdrop-blur-sm shadow-lg"
                            [ngClass]="{
+                              'border-white/10 text-slate-400': machine.status === 'Inactivo' || machine.status === 'Sin Operario',
                               'border-amber-500/30 text-amber-500': machine.status === 'Mantenimiento',
-                              'border-red-500/30 text-red-500': machine.status === 'Detenida',
-                              'border-white/10 text-slate-400': machine.status === 'Sin Operador'
+                              'border-red-500/30 text-red-500': machine.status === 'Detenida'
                            }">
                         <span class="text-[10px] font-bold uppercase tracking-tighter">{{ machine.status }}</span>
                       </div>
                  </div>
 
                  <!-- Jobs -->
-                 <ng-container *ngIf="machine.status === 'Operativa'">
+                 <ng-container *ngIf="machine.status === 'Activo'">
                     <div *ngFor="let job of getJobsForMachine(machine.id)"
                          class="absolute top-2 bottom-2 rounded-lg border shadow-lg flex items-center z-10 cursor-pointer hover:z-20 transition-all group/job hover:brightness-110 px-2"
                          [style.left.%]="calculateLeft(job)"
@@ -436,7 +437,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   get kpiEfficiency() {
     const machines = this.state.adminMachines();
     if (machines.length === 0) return 0;
-    const active = machines.filter(m => m.status === 'Operativa').length;
+    const active = machines.filter(m => m.status === 'Activo').length;
     return Math.round((active / machines.length) * 100);
   }
 
@@ -448,7 +449,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   get filteredMachines() {
      let typeFilter = 'Impresión';
      if (this.selectedArea === 'TROQUELADO') typeFilter = 'Troquelado';
-     if (this.selectedArea === 'REBOBINADO') typeFilter = 'Acabado';
+     if (this.selectedArea === 'REBOBINADO') typeFilter = 'Rebobinado';
      return this.state.adminMachines().filter(m => m.type === typeFilter);
   }
   get timeSlots() { return this.selectedShift === 'DIA' ? ['07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'] : ['19:00', '20:00', '21:00', '22:00', '23:00', '00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00']; }
@@ -524,7 +525,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   }
   openValidationWizard() { this.showJobModal = false; this.validationStep = 1; this.showValidationModal = true; }
   nextValidationStep() { if (this.validationStep < 4) this.validationStep++; }
-  finishValidationWizard() { this.showValidationModal = false; this.updateMachineStatus(this.filteredMachines.find(m => m.id === this.currentJob.machineId), 'Operativa'); }
+  finishValidationWizard() { this.showValidationModal = false; this.updateMachineStatus(this.filteredMachines.find(m => m.id === this.currentJob.machineId), 'Activo'); }
   closeValidationWizard() { this.showValidationModal = false; }
   getStepClass(step: number): string {
       if (this.validationStep === step) return 'bg-[#3B82F6] text-white border-[#3B82F6]/50 shadow-[0_0_15px_rgba(59,130,246,0.6)]';

@@ -3,6 +3,12 @@ import { StateService, Machine } from '../../../services/state.service';
 import { AuditService } from '../../../services/audit.service';
 import { BackendApiService } from '../../../services/backend-api.service';
 import { AppUser, PermissionDefinition, RoleDefinition, SystemConfig } from '../models/admin.models';
+import {
+  isOperatorAreaMatch,
+  OPERATOR_PRODUCTION_AREAS,
+  OperatorProductionArea,
+  resolveCanonicalOperatorAreas,
+} from '../utils/operator-area.util';
 
 @Injectable({
   providedIn: 'root'
@@ -30,17 +36,26 @@ export class AdminService {
 
   async refresh() {
     try {
-      const [users, roles, machines, permissions] = await Promise.all([
+      const [users, roles, machines, permissions, areas] = await Promise.all([
         this.backend.getUsers(),
         this.backend.getRoles(),
         this.backend.getMachines(),
         this.backend.getPermissions(),
+        this.backend.getAreas(),
       ]);
 
       this.state.setAdminUsers(users.map((user: any) => this.mapUser(user)));
       this.state.setAdminRoles(roles.map((role: any) => this.mapRole(role)));
       this.state.setAdminMachines(machines.map((machine: any) => this.mapMachine(machine)));
       this.state.setPermissions(permissions.map((permission: any) => this.mapPermission(permission)));
+      this.state.setPlantAreas(
+        areas.map((area: any) => ({
+          id: area.id,
+          code: area.code,
+          name: area.name,
+          active: area.active !== false,
+        })),
+      );
     } catch {
       // Preserve current local state as fallback.
     }
@@ -57,13 +72,11 @@ export class AdminService {
     });
 
     const newUser = this.mapUser(created);
-    const targetAreas = user.assignedAreas || [];
+    const targetAreas = this.normalizeAssignedAreas(user.assignedAreas);
 
     for (const areaName of targetAreas) {
-      const area = this.state.plantAreas().find((item) => item.name === areaName);
-      if (area) {
-        await this.backend.assignUserArea(newUser.id, { area_id: area.id });
-      }
+      const area = this.resolveRequiredOperatorPlantArea(areaName);
+      await this.backend.assignUserArea(newUser.id, { area_id: area.id });
     }
 
     await this.refresh();
@@ -82,24 +95,24 @@ export class AdminService {
 
     try {
       const detail = await this.backend.getUser(updatedUser.id);
-      const currentAreas = detail.assignedAreas?.map((item: any) => item.area?.name).filter(Boolean) || [];
-      const desiredAreas = updatedUser.assignedAreas || [];
+      const currentAreaAssignments = this.buildAssignedAreaMap(detail.assignedAreas);
+      const currentAreas = Array.from(currentAreaAssignments.keys());
+      const desiredAreas = this.normalizeAssignedAreas(updatedUser.assignedAreas);
 
-      for (const areaName of currentAreas.filter((name: string) => !desiredAreas.includes(name))) {
-        const area = this.state.plantAreas().find((item) => item.name === areaName);
-        if (area) {
-          await this.backend.unassignUserArea(updatedUser.id, area.id);
+      for (const areaName of currentAreas.filter((name) => !desiredAreas.includes(name))) {
+        const areaId = currentAreaAssignments.get(areaName);
+        if (areaId) {
+          await this.backend.unassignUserArea(updatedUser.id, areaId);
         }
       }
 
       for (const areaName of desiredAreas.filter((name) => !currentAreas.includes(name))) {
-        const area = this.state.plantAreas().find((item) => item.name === areaName);
-        if (area) {
-          await this.backend.assignUserArea(updatedUser.id, { area_id: area.id });
-        }
+        const area = this.resolveRequiredOperatorPlantArea(areaName);
+        await this.backend.assignUserArea(updatedUser.id, { area_id: area.id });
       }
-    } catch {
-      // Non-blocking area sync.
+    } catch (error) {
+      await this.refresh();
+      throw error;
     }
 
     await this.refresh();
@@ -149,13 +162,21 @@ export class AdminService {
   }
 
   async addMachine(machine: Partial<Machine>) {
-    const area = this.resolveArea(machine.area);
+    const area = this.resolveRequiredArea(machine.area, machine.areaId);
+    const normalizedName = this.normalizeRequiredText(
+      machine.name,
+      'El nombre de la máquina es obligatorio.',
+    );
+    const normalizedCode = this.normalizeRequiredText(
+      machine.code,
+      'El código de la máquina es obligatorio.',
+    );
     const created = await this.backend.createMachine({
-      code: machine.code || '',
-      name: machine.name || '',
-      type: this.mapMachineTypeToApi(machine.type || 'Impresión'),
+      code: normalizedCode,
+      name: normalizedName,
+      type: this.resolveMachineTypeForArea(area.name, area.code),
       area_id: area?.id,
-      active: machine.active ?? true,
+      status: this.mapMachineStatusToApi(machine.status),
     });
 
     await this.refresh();
@@ -165,12 +186,21 @@ export class AdminService {
   }
 
   async updateMachine(updatedMachine: Machine) {
-    const area = this.resolveArea(updatedMachine.area);
+    const area = this.resolveRequiredArea(updatedMachine.area, updatedMachine.areaId);
+    const normalizedName = this.normalizeRequiredText(
+      updatedMachine.name,
+      'El nombre de la máquina es obligatorio.',
+    );
+    const normalizedCode = this.normalizeRequiredText(
+      updatedMachine.code,
+      'El código de la máquina es obligatorio.',
+    );
     await this.backend.updateMachine(updatedMachine.id, {
-      name: updatedMachine.name,
-      type: this.mapMachineTypeToApi(updatedMachine.type),
+      code: normalizedCode,
+      name: normalizedName,
+      type: this.resolveMachineTypeForArea(area.name, area.code),
       area_id: area?.id || updatedMachine.areaId,
-      active: updatedMachine.active,
+      status: this.mapMachineStatusToApi(updatedMachine.status),
     });
 
     await this.refresh();
@@ -203,13 +233,39 @@ export class AdminService {
     return this.state.adminRoles().find((role) => role.name === roleName) || this.state.adminRoles()[0];
   }
 
-  private resolveArea(areaName?: string) {
-    return this.state.plantAreas().find((area) => area.name === areaName) || this.state.plantAreas()[0];
+  private resolveArea(areaName?: string, areaId?: string) {
+    const normalized = String(areaName || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+
+    if (areaId) {
+      const byId = this.state.plantAreas().find((area) => area.id === areaId);
+      if (byId) return byId;
+    }
+
+    return this.state.plantAreas().find((area) => {
+      const nameToken = String(area.name || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+      const codeToken = String(area.code || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+
+      return normalized === nameToken || normalized === codeToken;
+    });
   }
 
   private mapMachineTypeToApi(type: string) {
     const normalized = String(type || '').toUpperCase();
     if (normalized.includes('TROQ') || normalized.includes('DIECUT')) return 'DIECUT';
+    if (normalized.includes('REBOB') || normalized.includes('REWIND')) return 'REWIND';
+    if (normalized.includes('EMPAQ') || normalized.includes('PACK')) return 'PACKAGING';
     return 'PRINT';
   }
 
@@ -239,7 +295,7 @@ export class AdminService {
       permissionCodes: this.normalizePermissionCodes(permissionCodes),
       active: user.active !== false,
       lastLoginAt: user.last_login_at || user.lastLoginAt || null,
-      assignedAreas: user.assignedAreas?.map((item: any) => item.area?.name || item.name).filter(Boolean) || [],
+      assignedAreas: this.normalizeAssignedAreas(user.assignedAreas),
     };
   }
 
@@ -268,8 +324,15 @@ export class AdminService {
       id: machine.id,
       code: machine.code,
       name: machine.name,
-      type: this.state.toUiMachineType(machine.uiType || machine.type),
-      area: machine.area?.name || machine.area_name || '',
+      type: this.state.toUiMachineType(
+        machine.type,
+        machine.area?.name || machine.area_name,
+        machine.area?.code || machine.area_code,
+      ),
+      area: this.toDisplayAreaName(
+        machine.area?.name || machine.area_name || '',
+        machine.area?.code || machine.area_code || '',
+      ),
       status: this.state.toUiMachineStatus(machine.uiStatus || machine.status),
       active: machine.active !== false,
       areaId: machine.area_id,
@@ -277,8 +340,123 @@ export class AdminService {
     };
   }
 
+  private resolveRequiredArea(areaName?: string, areaId?: string) {
+    const area = this.resolveArea(areaName, areaId);
+    if (area) {
+      return area;
+    }
+
+    throw new Error('Selecciona un área de producción válida para registrar la máquina.');
+  }
+
+  private resolveMachineTypeForArea(areaName?: string, areaCode?: string) {
+    return this.mapMachineTypeToApi(`${areaName || ''} ${areaCode || ''}`);
+  }
+
+  private mapMachineStatusToApi(status: string | undefined) {
+    const normalized = String(status || '').toUpperCase();
+    if (normalized.includes('INACT')) return 'INACTIVE';
+    if (normalized.includes('MAINT') || normalized.includes('MANTEN'))
+      return 'MAINTENANCE';
+    if (normalized.includes('SIN')) return 'NO_OPERATOR';
+    if (normalized.includes('DETEN')) return 'STOPPED';
+    return 'ACTIVE';
+  }
+
+  private toDisplayAreaName(areaName?: string, areaCode?: string) {
+    const normalized = `${areaName || ''} ${areaCode || ''}`
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+
+    if (normalized.includes('TROQ')) return 'Troquelado';
+    if (normalized.includes('REBOB')) return 'Rebobinado';
+    if (normalized.includes('EMPAQ')) return 'Empaquetado';
+    if (normalized.includes('IMP')) return 'Impresión';
+    return areaName || '';
+  }
+
   private normalizePermissionCodes(values: unknown): string[] {
     if (!Array.isArray(values)) return [];
     return [...new Set(values.map((code) => String(code || '').trim()).filter((code) => Boolean(code)))];
+  }
+
+  private normalizeAssignedAreas(values: unknown): string[] {
+    return resolveCanonicalOperatorAreas(values);
+  }
+
+  private buildAssignedAreaMap(values: unknown): Map<string, string> {
+    const assignments = new Map<string, string>();
+
+    if (!Array.isArray(values)) {
+      return assignments;
+    }
+
+    for (const value of values) {
+      const areaId = this.extractAreaId(value);
+      if (!areaId) continue;
+
+      for (const areaName of this.normalizeAssignedAreas([value])) {
+        assignments.set(areaName, areaId);
+      }
+    }
+
+    return assignments;
+  }
+
+  private resolveOperatorPlantArea(areaName: string) {
+    const desiredArea = this.normalizeAssignedAreas([
+      areaName,
+    ])[0] as OperatorProductionArea | undefined;
+    if (!desiredArea) {
+      return undefined;
+    }
+
+    return this.state.plantAreas().find((area) =>
+      isOperatorAreaMatch(desiredArea, area.name) ||
+      isOperatorAreaMatch(desiredArea, area.code),
+    );
+  }
+
+  private resolveRequiredOperatorPlantArea(areaName: string) {
+    const area = this.resolveOperatorPlantArea(areaName);
+    if (area) {
+      return area;
+    }
+
+    throw new Error(
+      `No existe el área de producción configurada para ${areaName}. Recargue la sesión o verifique la configuración de áreas.`,
+    );
+  }
+
+  private extractAreaId(value: unknown): string | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+
+    const record = value as {
+      id?: unknown;
+      area_id?: unknown;
+      area?: {
+        id?: unknown;
+      };
+    };
+
+    const rawId = record.area?.id || record.area_id || record.id;
+    return rawId ? String(rawId) : null;
+  }
+
+  private getOperatorAreaOrder() {
+    return [...OPERATOR_PRODUCTION_AREAS];
+  }
+
+  private normalizeRequiredText(value: unknown, errorMessage: string) {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) {
+      throw new Error(errorMessage);
+    }
+
+    return normalized;
   }
 }

@@ -13,7 +13,13 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { FilesService } from './files.service';
 import { FileUploadDto } from './dto/file.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -57,7 +63,10 @@ export class FilesController {
 
   @Get(':id/download')
   @ApiOperation({ summary: 'Download/Stream file' })
-  async download(@Param('id') id: string, @Res({ passthrough: true }) res: Response) {
+  async download(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const metadata = await this.filesService.getFileMetadata(id);
     const stream = await this.filesService.getFileStream(id);
 

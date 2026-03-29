@@ -5,68 +5,275 @@ export interface PermissionDefinition {
 }
 
 export const PERMISSION_DEFINITIONS: readonly PermissionDefinition[] = [
-  { code: 'dashboard.view', name: 'Ver Dashboard', description: 'Acceso al tablero principal y KPIs operativos.' },
-  { code: 'planning.view', name: 'Ver Programacion', description: 'Consulta la programacion de produccion.' },
-  { code: 'operator.host', name: 'Hospedar Terminal de Operador', description: 'Permite abrir el panel del operador e identificar operarios por DNI desde una sesion anfitriona.' },
+  {
+    code: 'dashboard.view',
+    name: 'Ver Dashboard',
+    description: 'Acceso al tablero principal y KPIs operativos.',
+  },
+  {
+    code: 'planning.view',
+    name: 'Ver Programacion',
+    description: 'Consulta la programacion de produccion.',
+  },
+  {
+    code: 'operator.host',
+    name: 'Hospedar Terminal de Operador',
+    description:
+      'Permite abrir el panel del operador e identificar operarios por DNI desde una sesion anfitriona.',
+  },
 
-  { code: 'workorders.view', name: 'Ver OTs', description: 'Consulta las ordenes de trabajo y su historial.' },
-  { code: 'workorders.manage', name: 'Gestionar OTs', description: 'Crear, editar e importar ordenes de trabajo.' },
-  { code: 'workorders.status.update', name: 'Actualizar Estado OT', description: 'Cambiar el estado operativo de una OT.' },
-  { code: 'workorders.management.manage', name: 'Gestionar OT en Gestion', description: 'Ingresar y retirar OTs del tablero de gestion.' },
-  { code: 'workorders.delete', name: 'Eliminar OTs', description: 'Eliminar ordenes de trabajo del sistema.' },
+  {
+    code: 'workorders.view',
+    name: 'Ver OTs',
+    description: 'Consulta las ordenes de trabajo y su historial.',
+  },
+  {
+    code: 'workorders.manage',
+    name: 'Gestionar OTs',
+    description: 'Crear, editar e importar ordenes de trabajo.',
+  },
+  {
+    code: 'workorders.status.update',
+    name: 'Actualizar Estado OT',
+    description: 'Cambiar el estado operativo de una OT.',
+  },
+  {
+    code: 'workorders.management.manage',
+    name: 'Gestionar OT en Gestion',
+    description: 'Ingresar y retirar OTs del tablero de gestion.',
+  },
+  {
+    code: 'workorders.delete',
+    name: 'Eliminar OTs',
+    description: 'Eliminar ordenes de trabajo del sistema.',
+  },
 
-  { code: 'reports.print.view', name: 'Ver Reportes de Impresion', description: 'Consultar reportes de impresion.' },
-  { code: 'reports.print.create', name: 'Registrar Reportes de Impresion', description: 'Registrar reportes de impresion.' },
-  { code: 'reports.print.status.manage', name: 'Gestionar Estado Reportes de Impresion', description: 'Bloquear y actualizar estado de reportes de impresion.' },
+  {
+    code: 'reports.print.view',
+    name: 'Ver Reportes de Impresion',
+    description: 'Consultar reportes de impresion.',
+  },
+  {
+    code: 'reports.print.create',
+    name: 'Registrar Reportes de Impresion',
+    description: 'Registrar reportes de impresion.',
+  },
+  {
+    code: 'reports.print.status.manage',
+    name: 'Gestionar Estado Reportes de Impresion',
+    description: 'Bloquear y actualizar estado de reportes de impresion.',
+  },
 
-  { code: 'reports.diecut.view', name: 'Ver Reportes de Troquelado', description: 'Consultar reportes de troquelado.' },
-  { code: 'reports.diecut.create', name: 'Registrar Reportes de Troquelado', description: 'Registrar reportes de troquelado.' },
-  { code: 'reports.diecut.status.manage', name: 'Gestionar Estado Reportes de Troquelado', description: 'Bloquear y actualizar estado de reportes de troquelado.' },
+  {
+    code: 'reports.diecut.view',
+    name: 'Ver Reportes de Troquelado',
+    description: 'Consultar reportes de troquelado.',
+  },
+  {
+    code: 'reports.diecut.create',
+    name: 'Registrar Reportes de Troquelado',
+    description: 'Registrar reportes de troquelado.',
+  },
+  {
+    code: 'reports.diecut.status.manage',
+    name: 'Gestionar Estado Reportes de Troquelado',
+    description: 'Bloquear y actualizar estado de reportes de troquelado.',
+  },
 
-  { code: 'reports.rewind.view', name: 'Ver Reportes de Rebobinado', description: 'Consultar reportes de rebobinado.' },
-  { code: 'reports.rewind.create', name: 'Registrar Reportes de Rebobinado', description: 'Registrar reportes de rebobinado.' },
-  { code: 'reports.packaging.view', name: 'Ver Reportes de Empaquetado', description: 'Consultar reportes de empaquetado.' },
-  { code: 'reports.packaging.create', name: 'Registrar Reportes de Empaquetado', description: 'Registrar reportes de empaquetado.' },
+  {
+    code: 'reports.rewind.view',
+    name: 'Ver Reportes de Rebobinado',
+    description: 'Consultar reportes de rebobinado.',
+  },
+  {
+    code: 'reports.rewind.create',
+    name: 'Registrar Reportes de Rebobinado',
+    description: 'Registrar reportes de rebobinado.',
+  },
+  {
+    code: 'reports.packaging.view',
+    name: 'Ver Reportes de Empaquetado',
+    description: 'Consultar reportes de empaquetado.',
+  },
+  {
+    code: 'reports.packaging.create',
+    name: 'Registrar Reportes de Empaquetado',
+    description: 'Registrar reportes de empaquetado.',
+  },
 
-  { code: 'inventory.layout.view', name: 'Ver Layout de Inventario', description: 'Consultar el mapa y layout de planta.' },
-  { code: 'inventory.clises.view', name: 'Ver Clises', description: 'Consultar el inventario de clises.' },
-  { code: 'inventory.clises.manage', name: 'Gestionar Clises', description: 'Crear, editar e importar clises.' },
-  { code: 'inventory.clises.delete', name: 'Eliminar Clises', description: 'Eliminar clises del inventario.' },
-  { code: 'inventory.dies.view', name: 'Ver Troqueles', description: 'Consultar el inventario de troqueles.' },
-  { code: 'inventory.dies.manage', name: 'Gestionar Troqueles', description: 'Crear, editar e importar troqueles.' },
-  { code: 'inventory.dies.delete', name: 'Eliminar Troqueles', description: 'Eliminar troqueles del inventario.' },
-  { code: 'inventory.stock.view', name: 'Ver Stock PT', description: 'Consultar stock de producto terminado.' },
-  { code: 'inventory.stock.manage', name: 'Gestionar Stock PT', description: 'Registrar, ajustar e importar stock de producto terminado.' },
-  { code: 'inventory.stock.delete', name: 'Eliminar Stock PT', description: 'Eliminar registros de stock de producto terminado.' },
-  { code: 'inventory.ink.view', name: 'Ver Tintas', description: 'Consultar el modulo de tintas.' },
-  { code: 'inventory.ink.manage', name: 'Gestionar Tintas', description: 'Administrar formulas y configuraciones de tintas.' },
-  { code: 'inventory.racks.manage', name: 'Gestionar Racks', description: 'Administrar configuracion de racks y ubicaciones.' },
-  { code: 'inventory.relations.manage', name: 'Gestionar Relaciones Tecnicas', description: 'Vincular clises con troqueles.' },
+  {
+    code: 'inventory.layout.view',
+    name: 'Ver Layout de Inventario',
+    description: 'Consultar el mapa y layout de planta.',
+  },
+  {
+    code: 'inventory.clises.view',
+    name: 'Ver Clises',
+    description: 'Consultar el inventario de clises.',
+  },
+  {
+    code: 'inventory.clises.manage',
+    name: 'Gestionar Clises',
+    description: 'Crear, editar e importar clises.',
+  },
+  {
+    code: 'inventory.clises.delete',
+    name: 'Eliminar Clises',
+    description: 'Eliminar clises del inventario.',
+  },
+  {
+    code: 'inventory.dies.view',
+    name: 'Ver Troqueles',
+    description: 'Consultar el inventario de troqueles.',
+  },
+  {
+    code: 'inventory.dies.manage',
+    name: 'Gestionar Troqueles',
+    description: 'Crear, editar e importar troqueles.',
+  },
+  {
+    code: 'inventory.dies.delete',
+    name: 'Eliminar Troqueles',
+    description: 'Eliminar troqueles del inventario.',
+  },
+  {
+    code: 'inventory.stock.view',
+    name: 'Ver Stock PT',
+    description: 'Consultar stock de producto terminado.',
+  },
+  {
+    code: 'inventory.stock.manage',
+    name: 'Gestionar Stock PT',
+    description: 'Registrar, ajustar e importar stock de producto terminado.',
+  },
+  {
+    code: 'inventory.stock.delete',
+    name: 'Eliminar Stock PT',
+    description: 'Eliminar registros de stock de producto terminado.',
+  },
+  {
+    code: 'inventory.ink.view',
+    name: 'Ver Tintas',
+    description: 'Consultar el modulo de tintas.',
+  },
+  {
+    code: 'inventory.ink.manage',
+    name: 'Gestionar Tintas',
+    description: 'Administrar formulas y configuraciones de tintas.',
+  },
+  {
+    code: 'inventory.racks.manage',
+    name: 'Gestionar Racks',
+    description: 'Administrar configuracion de racks y ubicaciones.',
+  },
+  {
+    code: 'inventory.relations.manage',
+    name: 'Gestionar Relaciones Tecnicas',
+    description: 'Vincular clises con troqueles.',
+  },
 
-  { code: 'quality.incidents.view', name: 'Ver Incidencias', description: 'Consultar incidencias de calidad y planta.' },
-  { code: 'quality.incidents.create', name: 'Registrar Incidencias', description: 'Registrar incidencias operativas.' },
-  { code: 'quality.incidents.manage', name: 'Gestionar Incidencias', description: 'Actualizar estado, causa raiz y acciones CAPA.' },
+  {
+    code: 'quality.incidents.view',
+    name: 'Ver Incidencias',
+    description: 'Consultar incidencias de calidad y planta.',
+  },
+  {
+    code: 'quality.incidents.create',
+    name: 'Registrar Incidencias',
+    description: 'Registrar incidencias operativas.',
+  },
+  {
+    code: 'quality.incidents.manage',
+    name: 'Gestionar Incidencias',
+    description: 'Actualizar estado, causa raiz y acciones CAPA.',
+  },
 
-  { code: 'analytics.view', name: 'Ver Analitica', description: 'Consultar indicadores consolidados.' },
-  { code: 'analytics.manage', name: 'Gestionar Analitica', description: 'Ejecutar consolidaciones analiticas.' },
-  { code: 'audit.view', name: 'Ver Auditoria', description: 'Consultar trazabilidad y bitacoras.' },
-  { code: 'exports.manage', name: 'Gestionar Exportaciones', description: 'Solicitar exportaciones y consultar su estado.' },
-  { code: 'imports.manage', name: 'Gestionar Importaciones', description: 'Crear, revisar y confirmar procesos de importacion.' },
-  { code: 'staging.manage', name: 'Gestionar Staging', description: 'Crear trabajos de staging y subir archivos temporales.' },
-  { code: 'sync.manage', name: 'Gestionar Sincronizacion', description: 'Ejecutar y revisar procesos de sincronizacion.' },
+  {
+    code: 'analytics.view',
+    name: 'Ver Analitica',
+    description: 'Consultar indicadores consolidados.',
+  },
+  {
+    code: 'analytics.manage',
+    name: 'Gestionar Analitica',
+    description: 'Ejecutar consolidaciones analiticas.',
+  },
+  {
+    code: 'audit.view',
+    name: 'Ver Auditoria',
+    description: 'Consultar trazabilidad y bitacoras.',
+  },
+  {
+    code: 'exports.manage',
+    name: 'Gestionar Exportaciones',
+    description: 'Solicitar exportaciones y consultar su estado.',
+  },
+  {
+    code: 'imports.manage',
+    name: 'Gestionar Importaciones',
+    description: 'Crear, revisar y confirmar procesos de importacion.',
+  },
+  {
+    code: 'staging.manage',
+    name: 'Gestionar Staging',
+    description: 'Crear trabajos de staging y subir archivos temporales.',
+  },
+  {
+    code: 'sync.manage',
+    name: 'Gestionar Sincronizacion',
+    description: 'Ejecutar y revisar procesos de sincronizacion.',
+  },
 
-  { code: 'admin.panel.view', name: 'Ver Panel de Administracion', description: 'Acceder al panel administrativo.' },
-  { code: 'admin.security.manage', name: 'Gestionar Seguridad', description: 'Administrar politicas de acceso, contrasenas y seguridad.' },
-  { code: 'admin.roles.manage', name: 'Gestionar Roles', description: 'Crear, editar y eliminar roles personalizados.' },
-  { code: 'admin.permissions.view', name: 'Ver Catalogo de Permisos', description: 'Consultar el catalogo de permisos del sistema.' },
-  { code: 'admin.users.manage', name: 'Gestionar Usuarios', description: 'Crear, editar y desactivar usuarios.' },
-  { code: 'admin.machines.manage', name: 'Gestionar Maquinas', description: 'Crear, editar y eliminar maquinas.' },
-  { code: 'admin.areas.manage', name: 'Gestionar Areas', description: 'Crear, editar y eliminar areas.' },
-  { code: 'admin.shifts.manage', name: 'Gestionar Turnos', description: 'Crear, editar y eliminar turnos.' },
-  { code: 'admin.config.manage', name: 'Gestionar Configuracion Global', description: 'Actualizar configuracion global del sistema.' },
+  {
+    code: 'admin.panel.view',
+    name: 'Ver Panel de Administracion',
+    description: 'Acceder al panel administrativo.',
+  },
+  {
+    code: 'admin.security.manage',
+    name: 'Gestionar Seguridad',
+    description: 'Administrar politicas de acceso, contrasenas y seguridad.',
+  },
+  {
+    code: 'admin.roles.manage',
+    name: 'Gestionar Roles',
+    description: 'Crear, editar y eliminar roles personalizados.',
+  },
+  {
+    code: 'admin.permissions.view',
+    name: 'Ver Catalogo de Permisos',
+    description: 'Consultar el catalogo de permisos del sistema.',
+  },
+  {
+    code: 'admin.users.manage',
+    name: 'Gestionar Usuarios',
+    description: 'Crear, editar y desactivar usuarios.',
+  },
+  {
+    code: 'admin.machines.manage',
+    name: 'Gestionar Maquinas',
+    description: 'Crear, editar y eliminar maquinas.',
+  },
+  {
+    code: 'admin.areas.manage',
+    name: 'Gestionar Areas',
+    description: 'Crear, editar y eliminar areas.',
+  },
+  {
+    code: 'admin.shifts.manage',
+    name: 'Gestionar Turnos',
+    description: 'Crear, editar y eliminar turnos.',
+  },
+  {
+    code: 'admin.config.manage',
+    name: 'Gestionar Configuracion Global',
+    description: 'Actualizar configuracion global del sistema.',
+  },
 ] as const;
 
-export const DEFAULT_ROLE_PERMISSION_CODES: Readonly<Record<string, readonly string[]>> = {
+export const DEFAULT_ROLE_PERMISSION_CODES: Readonly<
+  Record<string, readonly string[]>
+> = {
   ADMIN: PERMISSION_DEFINITIONS.map((permission) => permission.code),
   MANAGER: [
     'dashboard.view',
@@ -269,6 +476,10 @@ export const DEFAULT_ROLE_PERMISSION_CODES: Readonly<Record<string, readonly str
   ],
 };
 
-export function getDefaultRolePermissionCodes(roleCode: string | null | undefined): readonly string[] {
-  return DEFAULT_ROLE_PERMISSION_CODES[String(roleCode || '').toUpperCase()] || [];
+export function getDefaultRolePermissionCodes(
+  roleCode: string | null | undefined,
+): readonly string[] {
+  return (
+    DEFAULT_ROLE_PERMISSION_CODES[String(roleCode || '').toUpperCase()] || []
+  );
 }

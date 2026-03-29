@@ -58,6 +58,10 @@ export class HealthController {
       );
     }
 
-    return { status: 'UP', components: status, timestamp: new Date().toISOString() };
+    return {
+      status: 'UP',
+      components: status,
+      timestamp: new Date().toISOString(),
+    };
   }
 }

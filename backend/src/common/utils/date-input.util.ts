@@ -1,12 +1,20 @@
-function buildUtcDate(year: number, month: number, day: number): Date | undefined {
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+function buildUtcDate(
+  year: number,
+  month: number,
+  day: number,
+): Date | undefined {
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
     return undefined;
   }
 
   const parsed = new Date(Date.UTC(year, month - 1, day));
-  return parsed.getUTCFullYear() === year
-    && parsed.getUTCMonth() === month - 1
-    && parsed.getUTCDate() === day
+  return parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
     ? parsed
     : undefined;
 }
@@ -19,7 +27,9 @@ function parseExcelSerialDate(serial: number): Date | undefined {
   return new Date(Date.UTC(1899, 11, 30) + Math.trunc(serial) * 86400000);
 }
 
-function parseFlexibleDateInput(value: Date | string | number | null | undefined): Date | undefined {
+function parseFlexibleDateInput(
+  value: Date | string | number | null | undefined,
+): Date | undefined {
   if (!value) {
     return undefined;
   }
@@ -52,14 +62,19 @@ function parseFlexibleDateInput(value: Date | string | number | null | undefined
     return buildUtcDate(year, month, day);
   }
 
-  const dmyMatch = text.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})(?:\s+.*)?$/);
+  const dmyMatch = text.match(
+    /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})(?:\s+.*)?$/,
+  );
   if (dmyMatch) {
     const [, day, month, year] = dmyMatch;
-    const normalizedYear = year.length === 2 ? Number(`20${year}`) : Number(year);
+    const normalizedYear =
+      year.length === 2 ? Number(`20${year}`) : Number(year);
     return buildUtcDate(normalizedYear, Number(month), Number(day));
   }
 
-  const ymdMatch = text.match(/^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})(?:\s+.*)?$/);
+  const ymdMatch = text.match(
+    /^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})(?:\s+.*)?$/,
+  );
   if (ymdMatch) {
     const [, year, month, day] = ymdMatch;
     return buildUtcDate(Number(year), Number(month), Number(day));
@@ -69,11 +84,15 @@ function parseFlexibleDateInput(value: Date | string | number | null | undefined
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
-export function normalizeOptionalDateInput(value: Date | string | number | null | undefined): Date | undefined {
+export function normalizeOptionalDateInput(
+  value: Date | string | number | null | undefined,
+): Date | undefined {
   return parseFlexibleDateInput(value);
 }
 
-export function normalizeOptionalDateStringInput(value: Date | string | number | null | undefined): string | undefined {
+export function normalizeOptionalDateStringInput(
+  value: Date | string | number | null | undefined,
+): string | undefined {
   const parsed = parseFlexibleDateInput(value);
   return parsed ? parsed.toISOString().slice(0, 10) : undefined;
 }

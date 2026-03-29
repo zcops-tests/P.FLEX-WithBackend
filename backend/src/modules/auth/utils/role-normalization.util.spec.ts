@@ -1,10 +1,16 @@
-import { getRoleCapabilities, hasRequiredRole, normalizeRoleName } from './role-normalization.util';
+import {
+  getRoleCapabilities,
+  hasRequiredRole,
+  normalizeRoleName,
+} from './role-normalization.util';
 
 describe('role-normalization.util', () => {
   it('normalizes legacy backend role codes into frontend roles', () => {
     expect(normalizeRoleName('ADMIN')).toBe('Sistemas');
     expect(normalizeRoleName('PLANNER')).toBe('Asistente');
-    expect(normalizeRoleName('WAREHOUSE')).toBe('Encargado de Clisés, Troqueles y Tintas');
+    expect(normalizeRoleName('WAREHOUSE')).toBe(
+      'Encargado de Clisés, Troqueles y Tintas',
+    );
     expect(normalizeRoleName('QUALITY_MANAGER')).toBe('Jefe de Calidad');
     expect(normalizeRoleName('AUDITOR')).toBe('Auditor');
   });
