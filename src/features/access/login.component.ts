@@ -266,7 +266,7 @@ export class LoginComponent {
     if (this.username.length >= 8 && this.selectedShift && this.password) {
       try {
         await this.state.login(this.username, this.selectedShift, this.password);
-        this.router.navigate([this.state.homeRoute()]);
+        this.router.navigate([this.state.postLoginRoute()]);
       } catch (error: any) {
         this.notifications.showError(error?.message || 'No fue posible iniciar sesion.');
       }

@@ -9,7 +9,7 @@ import { authGuard, guestGuard, inventoryRoleGuard, roleGuard } from './src/guar
 const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
   { path: 'login', loadComponent: () => import('./src/features/access/login.component').then((m) => m.LoginComponent), canActivate: [guestGuard] },
-  { path: 'mode-selector', loadComponent: () => import('./src/features/access/mode-selector.component').then((m) => m.ModeSelectorComponent), canActivate: [guestGuard] },
+  { path: 'mode-selector', loadComponent: () => import('./src/features/access/mode-selector.component').then((m) => m.ModeSelectorComponent), canActivate: [authGuard] },
 
   // Manager Routes
   { path: 'dashboard', loadComponent: () => import('./src/features/dashboard/dashboard.component').then((m) => m.DashboardComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['dashboard.view'] } },

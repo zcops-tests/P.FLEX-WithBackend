@@ -57,6 +57,28 @@ export interface PlantShift {
   endTime: string;
 }
 
+const MANAGER_WORKSPACE_ROUTES: ReadonlyArray<{ route: string; permissions: readonly string[] }> = [
+  { route: '/dashboard', permissions: ['dashboard.view'] },
+  { route: '/ots', permissions: ['workorders.view'] },
+  { route: '/schedule', permissions: ['planning.view'] },
+  { route: '/reports/print', permissions: ['reports.print.view'] },
+  { route: '/reports/diecut', permissions: ['reports.diecut.view'] },
+  { route: '/reports/rewind', permissions: ['reports.rewind.view'] },
+  { route: '/reports/packaging', permissions: ['reports.packaging.view'] },
+  { route: '/inventory/layout', permissions: ['inventory.layout.view'] },
+  { route: '/inventory/clise', permissions: ['inventory.clises.view'] },
+  { route: '/inventory/die', permissions: ['inventory.dies.view'] },
+  { route: '/inventory/stock', permissions: ['inventory.stock.view'] },
+  { route: '/inventory/ink', permissions: ['inventory.ink.view'] },
+  { route: '/incidents', permissions: ['quality.incidents.view'] },
+  { route: '/analytics', permissions: ['analytics.view'] },
+  { route: '/audit', permissions: ['audit.view'] },
+  { route: '/admin', permissions: ['admin.panel.view'] },
+  { route: '/sync', permissions: ['sync.manage'] },
+];
+
+const MANAGER_WORKSPACE_PERMISSIONS = MANAGER_WORKSPACE_ROUTES.flatMap((entry) => entry.permissions);
+
 interface PersistedUserSession {
   user: User | null;
   shift: Shift;
@@ -105,7 +127,15 @@ export class StateService {
   readonly userRole = computed(() => this.currentUser()?.roleName || this.currentUser()?.role || '');
   readonly roleCode = computed(() => this.currentUser()?.roleCode || '');
   readonly canHostOperatorPanel = computed(() => this.hasPermission('operator.host'));
-  readonly homeRoute = computed(() => this.canHostOperatorPanel() ? '/operator' : '/dashboard');
+  readonly canAccessManagerWorkspace = computed(() => this.hasAnyPermission(MANAGER_WORKSPACE_PERMISSIONS));
+  readonly canSwitchWorkspace = computed(() => this.canHostOperatorPanel() && this.canAccessManagerWorkspace());
+  readonly managerHomeRoute = computed(() => {
+    const match = MANAGER_WORKSPACE_ROUTES.find((entry) => this.hasAnyPermission(entry.permissions));
+    return match?.route || '/dashboard';
+  });
+  readonly homeRoute = computed(() => this.canHostOperatorPanel() ? '/operator' : this.managerHomeRoute());
+  readonly postLoginRoute = computed(() => this.canSwitchWorkspace() ? '/mode-selector' : this.homeRoute());
+  readonly environmentRoute = computed(() => this.canSwitchWorkspace() ? '/mode-selector' : this.homeRoute());
   readonly hasActiveOperator = computed(() => !!this.activeOperator());
   readonly activeOperatorName = computed(() => this.activeOperator()?.name || 'Operario no identificado');
   readonly activeOperatorDni = computed(() => this.activeOperator()?.dni || '');

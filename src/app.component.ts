@@ -2,6 +2,7 @@
 import { Component, effect, inject } from '@angular/core';
 import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { SidebarComponent } from './core/layout/sidebar.component';
+import { NotificationCenterComponent } from './core/ui/notification-center.component';
 import { StateService } from './services/state.service';
 import { CommonModule } from '@angular/common';
 import { filter } from 'rxjs/operators';
@@ -9,7 +10,7 @@ import { filter } from 'rxjs/operators';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, SidebarComponent, CommonModule],
+  imports: [RouterOutlet, SidebarComponent, NotificationCenterComponent, CommonModule],
   template: `
     <!-- Global Background Wrapper -->
     <div class="relative flex h-screen overflow-hidden font-sans text-gray-100 selection:bg-primary selection:text-white global-bg">
@@ -30,6 +31,8 @@ import { filter } from 'rxjs/operators';
       <main class="flex-1 overflow-auto relative transition-all duration-300 flex flex-col">
         <router-outlet></router-outlet>
       </main>
+
+      <app-notification-center></app-notification-center>
 
     </div>
   `,
@@ -67,12 +70,16 @@ export class AppComponent {
       this.router.navigate(['/login']);
     });
 
+    this.updateSidebarVisibility(this.router.url);
+
     this.router.events.pipe(
       filter(event => event instanceof NavigationEnd)
     ).subscribe((event: any) => {
-      const url = event.urlAfterRedirects;
-      // Recalculate visibility on navigation
-      this.showSidebar = !(url.includes('/login') || url.includes('/mode-selector') || url.includes('/operator'));
+      this.updateSidebarVisibility(event.urlAfterRedirects);
     });
+  }
+
+  private updateSidebarVisibility(url: string) {
+    this.showSidebar = !(url.includes('/login') || url.includes('/mode-selector') || url.includes('/operator'));
   }
 }

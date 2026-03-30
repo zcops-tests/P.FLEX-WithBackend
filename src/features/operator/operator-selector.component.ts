@@ -36,7 +36,7 @@ import { NotificationService } from '../../services/notification.service';
             <!-- Header -->
             <header class="w-full glass-panel h-20 shrink-0 flex items-center justify-between px-8 z-50 border-b border-white/5">
                 <div class="flex items-center gap-6">
-                    <button (click)="logout()" class="w-12 h-12 rounded-2xl glass-button flex items-center justify-center group active:scale-95 transition-all duration-300">
+                    <button (click)="goToModeSelector()" class="w-12 h-12 rounded-2xl glass-button flex items-center justify-center group active:scale-95 transition-all duration-300">
                         <span class="material-symbols-outlined text-gray-400 group-hover:text-white transition-colors text-2xl">arrow_back</span>
                     </button>
                     <div class="flex flex-col">
@@ -250,22 +250,6 @@ import { NotificationService } from '../../services/notification.service';
                 </div>
 
             </main>
-
-            <!-- Admin FAB -->
-            <div class="fixed bottom-6 right-6 z-50">
-                <button (click)="goToManager()" class="flex items-center gap-3 px-6 py-3 rounded-2xl glass-button group shadow-[0_20px_40px_-10px_rgba(0,0,0,0.8)] border-blue-400/20 hover:border-blue-400/40 transition-all hover:translate-y-[-2px]">
-                    <div class="relative">
-                        <span class="material-symbols-outlined text-2xl text-blue-300 group-hover:text-white group-hover:rotate-180 transition-transform duration-700">settings</span>
-                        <span class="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-ping"></span>
-                        <span class="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></span>
-                    </div>
-                    <div class="flex flex-col items-start text-left">
-                        <span class="text-[9px] text-blue-300 font-mono leading-none mb-1 uppercase tracking-wider">Admin</span>
-                        <span class="font-bold text-xs tracking-[0.15em] text-white font-tech uppercase">Gestión</span>
-                    </div>
-                </button>
-            </div>
-
         </div>
     </div>
   `,
@@ -349,9 +333,8 @@ export class OperatorSelectorComponent {
   operatorDni = '';
   identifyingOperator = false;
 
-  logout() {
-    this.state.logout();
-    this.router.navigate(['/login']);
+  goToModeSelector() {
+    void this.router.navigate(['/mode-selector']);
   }
 
   navigateTo(type: string) {
@@ -375,10 +358,6 @@ export class OperatorSelectorComponent {
     } else {
         this.router.navigate(['/operator/select-machine', type]);
     }
-  }
-
-  goToManager() {
-    this.router.navigate(['/dashboard']);
   }
 
   canAccessProcess(type: string) {

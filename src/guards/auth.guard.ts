@@ -23,7 +23,7 @@ function resolvePermissionAccess(
 }
 
 function redirectToHome(state: StateService, router: Router) {
-  void router.navigate([state.homeRoute()]);
+  void router.navigate([state.postLoginRoute()]);
 }
 
 export const authGuard: CanActivateFn = () => {
@@ -46,7 +46,7 @@ export const guestGuard: CanActivateFn = () => {
     return true;
   }
 
-  void router.navigate([state.homeRoute()]);
+  void router.navigate([state.postLoginRoute()]);
   return false;
 };
 

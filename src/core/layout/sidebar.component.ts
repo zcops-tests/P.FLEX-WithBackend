@@ -84,11 +84,11 @@ interface MenuItem {
                [class.px-3]="!state.isSidebarCollapsed()" 
                [class.py-2]="!state.isSidebarCollapsed()"
                [class.p-2]="state.isSidebarCollapsed()">
-            <span class="material-icons text-gray-500 text-sm group-focus-within:text-primary transition-colors" [class.mr-2]="!state.isSidebarCollapsed()">domain</span>
+            <span class="material-icons text-gray-500 text-sm group-focus-within:text-primary transition-colors" [class.mr-2]="!state.isSidebarCollapsed()">{{ contextSwitcherIcon() }}</span>
             
             @if (!state.isSidebarCollapsed()) {
                <input class="bg-transparent border-none p-0 text-xs text-gray-200 placeholder-gray-600 focus:ring-0 w-full h-full outline-none font-medium tracking-wide cursor-pointer" 
-                      placeholder="CAMBIAR ENTORNO..." type="text" readonly/>
+                      [placeholder]="contextSwitcherLabel()" type="text" readonly/>
             }
           </div>
         </div>
@@ -433,11 +433,12 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   goToModeSelector() {
-    this.router.navigate([this.state.homeRoute()]);
+    void this.router.navigate([this.state.environmentRoute()]);
   }
 
-  logout() {
-    void this.state.logout();
+  async logout() {
+    await this.state.logout();
+    await this.router.navigate(['/login']);
   }
 
   private readonly baseMenuItems: MenuItem[] = [
@@ -491,6 +492,14 @@ export class SidebarComponent implements OnInit, OnDestroy {
 
   canAccessConfiguration() {
     return this.state.hasPermission('admin.panel.view');
+  }
+
+  contextSwitcherLabel() {
+    return this.state.canSwitchWorkspace() ? 'CAMBIAR ENTORNO...' : 'IR AL INICIO...';
+  }
+
+  contextSwitcherIcon() {
+    return this.state.canSwitchWorkspace() ? 'swap_horiz' : 'home';
   }
 
   private canAccess(permissions?: readonly string[]) {
