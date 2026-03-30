@@ -4,24 +4,24 @@
 src/
   modules/
     orders/
-      http/
-        orders.controller.ts
-        orders.routes.ts
-        orders.dto.ts
+      orders.module.ts
+      orders.controller.ts
+      dto/
+        create-order.dto.ts
+        cancel-order.dto.ts
       application/
-        create-order.use-case.ts
-        cancel-order.use-case.ts
+        create-order.service.ts
+        cancel-order.service.ts
       domain/
         order.entity.ts
         order.errors.ts
-        order.policies.ts
+        order.policy.ts
       infrastructure/
-        order.repository.ts
-        order.sql.ts
+        orders.repository.ts
         payment.gateway.ts
       jobs/
-        order-events.worker.ts
+        order-events.processor.ts
 ```
 
 Guideline:
-- Keep transport, application, domain, infrastructure, and jobs separate.
+- Keep the NestJS module as the composition root and keep transport, application, domain, infrastructure, and jobs clearly separated.

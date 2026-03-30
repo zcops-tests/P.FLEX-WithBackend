@@ -1,35 +1,57 @@
-# Framework Patterns
+# Angular 21 Patterns
 
-Read only the section for the framework in use.
+Use this reference for Angular work in this repository.
 
-## Cross-framework defaults
+## Architecture
 
-- Prefer the framework's standard state, routing, and form patterns before introducing new libraries.
-- Keep rendering declarative and side effects explicit.
-- Move backend shape normalization to adapters, services, or query layers instead of spreading it across UI code.
-- Keep reusable UI primitives generic and product features specific.
+- Organize by feature or route boundary first.
+- Keep route shells responsible for orchestration, permissions, and data loading.
+- Keep presentational components focused on rendering and local interaction.
+- Keep services focused on transport, mapping, and cross-cutting concerns.
+- Keep feature-local state near the feature unless multiple routes truly share ownership.
 
-## Angular
+## Reactivity
 
-- Keep templates declarative and move complex branching or data shaping into TypeScript.
-- Prefer `async` pipe, signals, or framework-native reactive bindings over manual subscription management when possible.
-- Tear down long-lived effects and subscriptions intentionally.
-- Keep services focused on data access or cross-cutting concerns, not arbitrary component state.
-- Use typed forms where available and keep validation messages close to the control.
-- Split large feature shells into smaller presentational components when templates become difficult to scan.
+- Prefer signals for local UI state and derived view state.
+- Prefer `computed` for derived values instead of duplicating state.
+- Use `effect` only to synchronize with external systems or imperative APIs.
+- Use RxJS for async workflows, transport boundaries, and stream composition where signals alone are not enough.
+- Bridge RxJS and signals with `toSignal`, `toObservable`, and `takeUntilDestroyed` instead of manual cleanup patterns.
 
-## React
+## Components and templates
 
-- Keep render functions pure and derive state instead of mirroring props unnecessarily.
-- Use effects to synchronize with external systems, not as a default place for business logic.
-- Keep server-state fetching and caching in a clear query layer when remote data is central.
-- Prefer composition over deep prop drilling or broad context when a narrower boundary is possible.
-- Keep hooks focused and avoid creating abstractions that only hide simple state.
+- Use standalone components by default.
+- Keep component APIs explicit with `input()`, `output()`, and `model()` when helpful.
+- Keep templates declarative and avoid expensive method calls inside bindings.
+- Use `@if`, `@for`, and `@switch` for readable control flow.
+- Always provide stable tracking in repeated rendering.
+- Split templates when they become hard to scan or when multiple concerns share one file.
 
-## Vue
+## Forms
 
-- Keep templates readable and move complex logic into computed properties or composables.
-- Prefer computed state over watchers when values are derivable.
-- Keep composables narrow and centered on one responsibility.
-- Make side effects inside watchers explicit and easy to clean up.
-- Avoid hiding business rules inside template directives when a named method or computed property would be clearer.
+- Prefer typed reactive forms for complex forms, dynamic validation, or multi-step flows.
+- Use template-driven forms only for small, simple forms with light validation.
+- Keep validation messages close to the control and submission errors visible at the form level.
+- Prevent duplicate submissions when mutations are not safely repeatable.
+
+## Routing and data
+
+- Prefer route-level lazy loading for large features.
+- Scope providers to routes or features when it improves ownership.
+- Normalize backend shapes in services or adapters before data reaches UI components.
+- Keep auth, session, and permission concerns explicit at route and feature boundaries.
+
+## Performance
+
+- Prefer `ChangeDetectionStrategy.OnPush` for new or hot-path components when it reduces render churn.
+- Replace repeated template work with computed state or pre-shaped view models.
+- Use `@defer` for secondary or below-the-fold content when it meaningfully improves interaction.
+- Bound list size and question large third-party dependencies.
+- Keep images, icons, and animation costs proportional to the screen's needs.
+
+## Security
+
+- Treat all backend data and route-derived values as untrusted.
+- Avoid `bypassSecurityTrust...` unless the trust boundary is documented and reviewed.
+- Be careful with `[innerHTML]`, dynamic URLs, downloads, and embedded content.
+- Never place secrets, privileged decisions, or server-only business rules in the client.

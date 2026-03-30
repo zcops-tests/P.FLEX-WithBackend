@@ -1,73 +1,70 @@
-# Frontend Review Checklist
+# Angular Frontend Review Checklist
 
-Use this checklist when reviewing a PR, auditing a screen, or validating a feature before merge.
+Use this checklist when reviewing an Angular feature, auditing a screen, or validating a change before merge.
 
-## 1. User flow
+## 1. User flow and visible states
 
 - Is the primary user action obvious?
-- Does the screen match the intended product behavior?
-- Are permission, feature-flag, and unavailable states handled?
+- Are loading, empty, error, disabled, and success states explicit?
+- Are permission, unavailable, and recoverable failure states handled?
 
-## 2. Visible states
+## 2. Architecture
 
-- Is there a clear loading state?
-- Is there a meaningful empty state?
-- Is the error state actionable and recoverable?
-- Are pending, disabled, and success states visible where needed?
+- Is the feature organized by capability or route boundary?
+- Are shell, presentational, service, and state responsibilities separated clearly?
+- Is state ownership obvious, or is the same data duplicated across services and components?
+- Are backend DTOs normalized before they spread through the UI?
 
-## 3. Accessibility
+## 3. Angular patterns
 
-- Are semantic elements used where possible?
+- Does the code follow standalone-first Angular patterns?
+- Are signals, `computed`, and `effect` used intentionally rather than mixing reactive styles arbitrarily?
+- Is `effect` being used only for synchronization and side effects, not as a hidden state machine?
+- Are templates readable, or is too much logic embedded in bindings?
+- Does repeated rendering use a stable tracking expression?
+
+## 4. Accessibility and responsiveness
+
 - Can the flow be completed with keyboard only?
 - Is focus visible and moved intentionally?
-- Are inputs, buttons, icons, and tables labeled accessibly?
-- Is contrast acceptable for text and important controls?
+- Are semantic elements and accessible labels used where possible?
+- Does the layout stay usable on narrow screens and touch devices?
 
-## 4. Responsiveness
+## 5. Performance
 
-- Does the layout hold up on narrow screens?
-- Does content wrap, truncate, or scroll intentionally?
-- Do tap targets and spacing stay usable on touch devices?
+- Is any heavy computation happening during template evaluation?
+- Are large lists bounded, paginated, or virtualized?
+- Are heavy screens split, lazy-loaded, or deferred when it helps?
+- Are subscriptions, signals, and change-detection patterns keeping render work proportional?
+- Is a large dependency being introduced without a strong reason?
 
-## 5. Architecture and maintainability
+## 6. Security
 
-- Are components small enough to understand quickly?
-- Is state ownership clear?
-- Is derived data duplicated unnecessarily?
-- Are API payloads mapped cleanly before reaching presentational code?
-- Are styles, templates, and logic separated at a reasonable boundary?
-
-## 6. Performance
-
-- Is any heavy computation happening during render or template evaluation?
-- Are large lists paginated, windowed, or otherwise bounded?
-- Are images and assets sized appropriately?
-- Is non-critical code lazy-loaded when it helps?
+- Is any HTML injection path escaped or sanitized?
+- Are `DomSanitizer` bypass APIs avoided unless reviewed?
+- Does the UI avoid implying authorization it cannot enforce?
+- Are route params, storage values, and backend payloads treated as untrusted?
+- Are secrets and privileged assumptions kept out of client code?
 
 ## 7. Forms and mutations
 
-- Is validation close to the input and also enforced on submission?
+- Is validation close to the input and also enforced on submit?
 - Is duplicate submission prevented where it matters?
-- Are optimistic updates reversible?
 - Is user input preserved on recoverable failures?
+- Are optimistic updates reversible when used?
 
 ## 8. Testing
 
-- Does the change cover the main user behavior?
-- Are edge states tested?
-- Is there coverage for the bug or regression being fixed?
+- Does the change cover the main user-observable behavior?
+- Are edge states and regressions covered?
+- Are high-risk flows covered with component, integration, or e2e tests as appropriate?
 
-## 9. Security
-
-- Is any HTML injection path escaped or sanitized?
-- Are secrets or privileged assumptions kept out of client code?
-- Does the UI avoid implying authorization it cannot enforce?
-
-## 10. Merge gate
+## 9. Merge gate
 
 Treat the change as incomplete if any of these are missing without justification:
 
-- loading, empty, or error handling
+- explicit loading, empty, or error handling
 - keyboard accessibility for interactive flows
 - responsive behavior for common screen sizes
+- safe handling of untrusted HTML, URL, or auth-related data
 - tests for high-risk behavior
