@@ -401,6 +401,7 @@ export class OrdersService {
 
     return {
       ...rawPayload,
+      raw_payload: rawPayload,
       id: item.id,
       row_version: item.row_version,
       backend_status: this.normalizeApiStatus(item.status),
@@ -469,6 +470,12 @@ export class OrdersService {
       t_acabado: this.readRawValue(rawPayload, 't_acabado', ''),
       ta_acabado: this.readRawValue(rawPayload, 'ta_acabado', ''),
       d_max_bob: this.readRawValue(rawPayload, 'd_max_bob', ''),
+      scheduleMachineId: this.readRawValue(rawPayload, 'scheduleMachineId', ''),
+      scheduleStartTime: this.readRawValue(rawPayload, 'scheduleStartTime', ''),
+      scheduleDurationMinutes: this.readRawValue(rawPayload, 'scheduleDurationMinutes', ''),
+      scheduleOperator: this.readRawValue(rawPayload, 'scheduleOperator', ''),
+      scheduleNotes: this.readRawValue(rawPayload, 'scheduleNotes', ''),
+      scheduleDateTime: this.readRawValue(rawPayload, 'scheduleDateTime', ''),
     } as Partial<OT>;
   }
 
@@ -515,13 +522,31 @@ export class OrdersService {
   }
 
   private buildRawPayload(ot: Partial<OT>) {
-    const rawPayload: Record<string, unknown> = {};
+    const rawPayload: Record<string, unknown> = {
+      ...this.normalizeRawPayload((ot as any).raw_payload),
+    };
 
     OT_PERSISTED_HEADERS.forEach((header) => {
       rawPayload[header] = ot[header] ?? '';
     });
 
+    this.assignRawPayloadValue(rawPayload, 'scheduleMachineId', this.toNullableString(ot.scheduleMachineId));
+    this.assignRawPayloadValue(rawPayload, 'scheduleStartTime', this.toNullableString(ot.scheduleStartTime));
+    this.assignRawPayloadValue(rawPayload, 'scheduleDurationMinutes', this.toInteger(ot.scheduleDurationMinutes));
+    this.assignRawPayloadValue(rawPayload, 'scheduleOperator', this.toNullableString(ot.scheduleOperator));
+    this.assignRawPayloadValue(rawPayload, 'scheduleNotes', this.toNullableString(ot.scheduleNotes));
+    this.assignRawPayloadValue(rawPayload, 'scheduleDateTime', this.toNullableString(ot.scheduleDateTime));
+
     return rawPayload;
+  }
+
+  private assignRawPayloadValue(rawPayload: Record<string, unknown>, key: string, value: unknown) {
+    if (value === undefined || value === null || value === '') {
+      delete rawPayload[key];
+      return;
+    }
+
+    rawPayload[key] = value;
   }
 
   private readRawValue(payload: Record<string, unknown>, key: typeof OT_PERSISTED_HEADERS[number] | keyof OT, fallback: unknown) {

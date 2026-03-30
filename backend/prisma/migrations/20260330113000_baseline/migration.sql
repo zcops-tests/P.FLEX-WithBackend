@@ -85,6 +85,9 @@ CREATE TABLE `users` (
     `username` VARCHAR(50) NOT NULL,
     `password_hash` VARCHAR(255) NOT NULL,
     `active` BOOLEAN NOT NULL DEFAULT true,
+    `failed_login_attempts` INTEGER NOT NULL DEFAULT 0,
+    `last_failed_login_at` DATETIME(3) NULL,
+    `locked_until` DATETIME(3) NULL,
     `last_login_at` DATETIME(3) NULL,
     `password_changed_at` DATETIME(3) NULL,
     `row_version` BIGINT NOT NULL DEFAULT 1,
@@ -327,6 +330,25 @@ CREATE TABLE `work_orders` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
+CREATE TABLE `work_order_management_entries` (
+    `id` VARCHAR(36) NOT NULL,
+    `work_order_id` VARCHAR(36) NOT NULL,
+    `entered_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `entered_by_user_id` VARCHAR(36) NOT NULL,
+    `exited_at` DATETIME(3) NULL,
+    `exited_by_user_id` VARCHAR(36) NULL,
+    `exit_action` VARCHAR(50) NULL,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updated_at` DATETIME(3) NOT NULL,
+
+    INDEX `work_order_management_entries_work_order_id_exited_at_idx`(`work_order_id`, `exited_at`),
+    INDEX `work_order_management_entries_entered_at_idx`(`entered_at`),
+    INDEX `work_order_management_entries_entered_by_user_id_idx`(`entered_by_user_id`),
+    INDEX `work_order_management_entries_exited_by_user_id_idx`(`exited_by_user_id`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
 CREATE TABLE `work_order_import_rows` (
     `id` VARCHAR(36) NOT NULL,
     `import_job_id` VARCHAR(36) NOT NULL,
@@ -370,6 +392,7 @@ CREATE TABLE `clises` (
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updated_at` DATETIME(3) NOT NULL,
     `deleted_at` DATETIME(3) NULL,
+    `rack_id` VARCHAR(36) NULL,
 
     UNIQUE INDEX `clises_item_code_key`(`item_code`),
     INDEX `clises_updated_at_idx`(`updated_at`),
@@ -439,6 +462,7 @@ CREATE TABLE `dies` (
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updated_at` DATETIME(3) NOT NULL,
     `deleted_at` DATETIME(3) NULL,
+    `rack_id` VARCHAR(36) NULL,
 
     UNIQUE INDEX `dies_serie_key`(`serie`),
     INDEX `dies_updated_at_idx`(`updated_at`),
@@ -627,6 +651,9 @@ CREATE TABLE `print_reports` (
     `run_minutes` INTEGER NOT NULL DEFAULT 0,
     `clise_id` VARCHAR(36) NULL,
     `die_id` VARCHAR(36) NULL,
+    `die_type_snapshot` VARCHAR(50) NULL,
+    `die_series_snapshot` VARCHAR(100) NULL,
+    `die_location_snapshot` VARCHAR(100) NULL,
     `clise_status` VARCHAR(50) NULL,
     `die_status` VARCHAR(50) NULL,
     `observations` TEXT NULL,
@@ -710,12 +737,81 @@ CREATE TABLE `diecut_activities` (
     `end_time` VARCHAR(8) NOT NULL,
     `duration_minutes` INTEGER NOT NULL DEFAULT 0,
     `quantity` DECIMAL(14, 3) NOT NULL DEFAULT 0,
+    `observations` TEXT NULL,
     `row_version` BIGINT NOT NULL DEFAULT 1,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updated_at` DATETIME(3) NOT NULL,
     `deleted_at` DATETIME(3) NULL,
 
     INDEX `diecut_activities_report_id_idx`(`report_id`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `rewind_reports` (
+    `id` VARCHAR(36) NOT NULL,
+    `reported_at` DATETIME(3) NOT NULL,
+    `work_order_id` VARCHAR(36) NULL,
+    `machine_id` VARCHAR(36) NOT NULL,
+    `operator_id` VARCHAR(36) NOT NULL,
+    `shift_id` VARCHAR(36) NULL,
+    `status` VARCHAR(50) NOT NULL DEFAULT 'SUBMITTED',
+    `work_order_number_snapshot` VARCHAR(50) NULL,
+    `client_snapshot` VARCHAR(150) NULL,
+    `product_snapshot` VARCHAR(255) NULL,
+    `operator_name_snapshot` VARCHAR(100) NULL,
+    `rolls_finished` INTEGER NOT NULL DEFAULT 0,
+    `labels_per_roll` INTEGER NOT NULL DEFAULT 0,
+    `total_labels` DECIMAL(14, 3) NOT NULL DEFAULT 0,
+    `total_meters` DECIMAL(14, 3) NOT NULL DEFAULT 0,
+    `waste_rolls` INTEGER NOT NULL DEFAULT 0,
+    `quality_check` BOOLEAN NOT NULL DEFAULT true,
+    `observations` TEXT NULL,
+    `production_status` VARCHAR(50) NOT NULL,
+    `row_version` BIGINT NOT NULL DEFAULT 1,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updated_at` DATETIME(3) NOT NULL,
+    `deleted_at` DATETIME(3) NULL,
+
+    INDEX `rewind_reports_reported_at_idx`(`reported_at`),
+    INDEX `rewind_reports_machine_id_idx`(`machine_id`),
+    INDEX `rewind_reports_operator_id_idx`(`operator_id`),
+    INDEX `rewind_reports_updated_at_idx`(`updated_at`),
+    INDEX `rewind_reports_deleted_at_idx`(`deleted_at`),
+    INDEX `rewind_reports_status_idx`(`status`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `packaging_reports` (
+    `id` VARCHAR(36) NOT NULL,
+    `reported_at` DATETIME(3) NOT NULL,
+    `work_order_id` VARCHAR(36) NULL,
+    `operator_id` VARCHAR(36) NOT NULL,
+    `shift_id` VARCHAR(36) NULL,
+    `status` VARCHAR(50) NOT NULL DEFAULT 'SUBMITTED',
+    `lot_status` VARCHAR(50) NOT NULL,
+    `work_order_number_snapshot` VARCHAR(50) NULL,
+    `client_snapshot` VARCHAR(150) NULL,
+    `product_snapshot` VARCHAR(255) NULL,
+    `operator_name_snapshot` VARCHAR(100) NULL,
+    `shift_name_snapshot` VARCHAR(100) NULL,
+    `rolls` INTEGER NOT NULL DEFAULT 0,
+    `total_meters` DECIMAL(14, 3) NOT NULL DEFAULT 0,
+    `demasia_rolls` INTEGER NOT NULL DEFAULT 0,
+    `demasia_meters` DECIMAL(14, 3) NOT NULL DEFAULT 0,
+    `notes` TEXT NULL,
+    `row_version` BIGINT NOT NULL DEFAULT 1,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updated_at` DATETIME(3) NOT NULL,
+    `deleted_at` DATETIME(3) NULL,
+
+    INDEX `packaging_reports_reported_at_idx`(`reported_at`),
+    INDEX `packaging_reports_operator_id_idx`(`operator_id`),
+    INDEX `packaging_reports_updated_at_idx`(`updated_at`),
+    INDEX `packaging_reports_deleted_at_idx`(`deleted_at`),
+    INDEX `packaging_reports_status_idx`(`status`),
+    INDEX `packaging_reports_lot_status_idx`(`lot_status`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -804,13 +900,28 @@ ALTER TABLE `sync_mutation_log` ADD CONSTRAINT `sync_mutation_log_user_id_fkey` 
 ALTER TABLE `import_jobs` ADD CONSTRAINT `import_jobs_created_by_user_id_fkey` FOREIGN KEY (`created_by_user_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE `work_order_management_entries` ADD CONSTRAINT `work_order_management_entries_work_order_id_fkey` FOREIGN KEY (`work_order_id`) REFERENCES `work_orders`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `work_order_management_entries` ADD CONSTRAINT `work_order_management_entries_entered_by_user_id_fkey` FOREIGN KEY (`entered_by_user_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `work_order_management_entries` ADD CONSTRAINT `work_order_management_entries_exited_by_user_id_fkey` FOREIGN KEY (`exited_by_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE `work_order_import_rows` ADD CONSTRAINT `work_order_import_rows_import_job_id_fkey` FOREIGN KEY (`import_job_id`) REFERENCES `import_jobs`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `clises` ADD CONSTRAINT `clises_rack_id_fkey` FOREIGN KEY (`rack_id`) REFERENCES `rack_configs`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `clise_import_rows` ADD CONSTRAINT `clise_import_rows_import_job_id_fkey` FOREIGN KEY (`import_job_id`) REFERENCES `import_jobs`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `clise_color_usage` ADD CONSTRAINT `clise_color_usage_clise_id_fkey` FOREIGN KEY (`clise_id`) REFERENCES `clises`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `dies` ADD CONSTRAINT `dies_rack_id_fkey` FOREIGN KEY (`rack_id`) REFERENCES `rack_configs`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `die_import_rows` ADD CONSTRAINT `die_import_rows_import_job_id_fkey` FOREIGN KEY (`import_job_id`) REFERENCES `import_jobs`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -898,6 +1009,27 @@ ALTER TABLE `diecut_reports` ADD CONSTRAINT `diecut_reports_die_id_fkey` FOREIGN
 
 -- AddForeignKey
 ALTER TABLE `diecut_activities` ADD CONSTRAINT `diecut_activities_report_id_fkey` FOREIGN KEY (`report_id`) REFERENCES `diecut_reports`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `rewind_reports` ADD CONSTRAINT `rewind_reports_work_order_id_fkey` FOREIGN KEY (`work_order_id`) REFERENCES `work_orders`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `rewind_reports` ADD CONSTRAINT `rewind_reports_machine_id_fkey` FOREIGN KEY (`machine_id`) REFERENCES `machines`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `rewind_reports` ADD CONSTRAINT `rewind_reports_operator_id_fkey` FOREIGN KEY (`operator_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `rewind_reports` ADD CONSTRAINT `rewind_reports_shift_id_fkey` FOREIGN KEY (`shift_id`) REFERENCES `shifts`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `packaging_reports` ADD CONSTRAINT `packaging_reports_work_order_id_fkey` FOREIGN KEY (`work_order_id`) REFERENCES `work_orders`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `packaging_reports` ADD CONSTRAINT `packaging_reports_operator_id_fkey` FOREIGN KEY (`operator_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `packaging_reports` ADD CONSTRAINT `packaging_reports_shift_id_fkey` FOREIGN KEY (`shift_id`) REFERENCES `shifts`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `production_kpi_daily` ADD CONSTRAINT `production_kpi_daily_machine_id_fkey` FOREIGN KEY (`machine_id`) REFERENCES `machines`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;

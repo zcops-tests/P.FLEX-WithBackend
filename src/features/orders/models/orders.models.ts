@@ -69,6 +69,7 @@ export interface OT {
   id?: string;
   row_version?: bigint | number | string;
   backend_status?: string;
+  raw_payload?: Record<string, unknown>;
   descripcion: string;
   'Nro. Cotizacion': string;
   'Nro. Ficha': string;
@@ -134,6 +135,12 @@ export interface OT {
   t_acabado: string;
   ta_acabado: string;
   d_max_bob: string;
+  scheduleMachineId?: string;
+  scheduleStartTime?: string;
+  scheduleDurationMinutes?: number | string;
+  scheduleOperator?: string;
+  scheduleNotes?: string;
+  scheduleDateTime?: string;
 }
 
 export interface OTImportProgress {
