@@ -119,7 +119,12 @@ import { ProductionService } from '../services/production.service';
                   </button>
                 </td>
               </tr>
-              <tr *ngIf="filteredReports.length === 0">
+              <tr *ngIf="isLoading">
+                <td colspan="9" class="p-12 text-center text-slate-500 italic">
+                  Cargando reportes de rebobinado...
+                </td>
+              </tr>
+              <tr *ngIf="!isLoading && filteredReports.length === 0">
                 <td colspan="9" class="p-12 text-center text-slate-500 italic">
                   No se encontraron reportes de rebobinado para la búsqueda actual.
                 </td>

@@ -19,6 +19,7 @@ import { toFrontendWorkOrder } from '../../common/utils/frontend-entity.util';
 import { normalizeOptionalDateInput } from '../../common/utils/date-input.util';
 
 const WORK_ORDER_BULK_CHUNK_SIZE = 200;
+const MANAGEMENT_SNAPSHOT_KEY = '__management_snapshot';
 
 type NormalizedWorkOrderInput = CreateWorkOrderDto & { ot_number: string };
 type RawPayloadRecord = Record<string, unknown>;
@@ -74,9 +75,23 @@ export class WorkOrdersService {
       const otNumbers = chunk.map((item) => item.ot_number);
       const existing = await this.prisma.workOrder.findMany({
         where: { ot_number: { in: otNumbers } },
-        select: { ot_number: true },
+        select: {
+          id: true,
+          ot_number: true,
+          status: true,
+          fecha_ingreso_planta: true,
+          fecha_programada_produccion: true,
+          maquina_texto: true,
+          raw_payload: true,
+          management_entries: {
+            where: { exited_at: null },
+            select: { id: true },
+            take: 1,
+          },
+        },
       });
       const existingSet = new Set(existing.map((item) => item.ot_number));
+      const existingMap = new Map(existing.map((item) => [item.ot_number, item]));
 
       created += chunk.filter(
         (item) => !existingSet.has(item.ot_number),
@@ -84,13 +99,28 @@ export class WorkOrdersService {
       updated += chunk.filter((item) => existingSet.has(item.ot_number)).length;
 
       await this.prisma.$transaction(
-        chunk.map((item) =>
-          this.prisma.workOrder.upsert({
+        chunk.map((item) => {
+          const current = existingMap.get(item.ot_number);
+          const isActiveInManagement = Boolean(current?.management_entries?.length);
+          const updateData = this.buildUpdateData(item);
+
+          if (isActiveInManagement && current) {
+            updateData.status = current.status;
+            updateData.fecha_ingreso_planta = current.fecha_ingreso_planta;
+            updateData.fecha_programada_produccion = current.fecha_programada_produccion;
+            updateData.maquina_texto = current.maquina_texto;
+            updateData.raw_payload = this.buildBulkUpsertRawPayload(
+              current.raw_payload,
+              item.raw_payload,
+            );
+          }
+
+          return this.prisma.workOrder.upsert({
             where: { ot_number: item.ot_number },
             create: this.buildCreateData(item),
-            update: this.buildUpdateData(item),
-          }),
-        ),
+            update: updateData,
+          });
+        }),
       );
     }
 
@@ -151,7 +181,9 @@ export class WorkOrdersService {
       },
     });
 
-    return entries.map((entry) => toFrontendWorkOrder(entry.work_order));
+    return entries.map((entry) =>
+      this.applyManagementSnapshot(toFrontendWorkOrder(entry.work_order)),
+    );
   }
 
   async findOne(id: string) {
@@ -177,7 +209,7 @@ export class WorkOrdersService {
       row_version?: bigint | number | string;
     },
   ) {
-    const wo = await this.findOne(id);
+    const wo = await this.requireWorkOrderRecord(id);
 
     if (
       data.row_version !== undefined &&
@@ -188,10 +220,20 @@ export class WorkOrdersService {
       );
     }
 
+    const isActiveInManagement = await this.hasActiveManagementEntry(id);
+    const updateData = this.buildUpdateData(data);
+
+    if (isActiveInManagement) {
+      updateData.raw_payload = this.buildManagedRawPayload(
+        wo.raw_payload,
+        data.raw_payload,
+      );
+    }
+
     const updated = await this.prisma.workOrder.update({
       where: { id },
       data: {
-        ...this.buildUpdateData(data),
+        ...updateData,
         row_version: { increment: 1 },
       },
     });
@@ -201,23 +243,29 @@ export class WorkOrdersService {
 
   async updateStatus(id: string, status: WorkOrderStatus) {
     const workOrder = await this.requireWorkOrderRecord(id);
+    const isActiveInManagement = await this.hasActiveManagementEntry(id);
+    const nextRawPayload = this.mergeRawPayload(workOrder.raw_payload, {
+      Estado_pedido: this.toFrontendStatus(status),
+    });
+    const managedRawPayload = isActiveInManagement
+      ? this.upsertManagementSnapshot(nextRawPayload)
+      : nextRawPayload;
 
     if (workOrder.status === status) {
-      return toFrontendWorkOrder({
+      const current = toFrontendWorkOrder({
         ...workOrder,
-        raw_payload: this.mergeRawPayload(workOrder.raw_payload, {
-          Estado_pedido: this.toFrontendStatus(status),
-        }),
+        raw_payload: managedRawPayload,
       });
+      return isActiveInManagement
+        ? this.applyManagementSnapshot(current)
+        : current;
     }
 
     const updated = await this.prisma.workOrder.update({
       where: { id },
       data: {
         status,
-        raw_payload: this.mergeRawPayload(workOrder.raw_payload, {
-          Estado_pedido: this.toFrontendStatus(status),
-        }),
+        raw_payload: managedRawPayload,
         row_version: { increment: 1 },
       },
     });
@@ -259,13 +307,20 @@ export class WorkOrdersService {
           : workOrder.status;
 
       const rawPayload = this.toRawPayloadRecord(workOrder.raw_payload);
+      const nextRawPayload = this.upsertManagementSnapshot(
+        this.mergeRawPayload(workOrder.raw_payload, {
+          'FECHA INGRESO PLANTA': effectivePlantEntryDateText,
+          Estado_pedido: this.toFrontendStatus(nextStatus),
+        }),
+      );
       const needsUpdate =
         !workOrder.fecha_ingreso_planta ||
         workOrder.status !== nextStatus ||
         String(rawPayload['FECHA INGRESO PLANTA'] ?? '') !==
           effectivePlantEntryDateText ||
         String(rawPayload.Estado_pedido ?? '') !==
-          this.toFrontendStatus(nextStatus);
+          this.toFrontendStatus(nextStatus) ||
+        !Object.keys(this.extractManagementSnapshot(rawPayload)).length;
 
       const updatedWorkOrder = needsUpdate
         ? await tx.workOrder.update({
@@ -273,10 +328,7 @@ export class WorkOrdersService {
             data: {
               fecha_ingreso_planta: effectivePlantEntryDate,
               status: nextStatus,
-              raw_payload: this.mergeRawPayload(workOrder.raw_payload, {
-                'FECHA INGRESO PLANTA': effectivePlantEntryDateText,
-                Estado_pedido: this.toFrontendStatus(nextStatus),
-              }),
+              raw_payload: nextRawPayload,
               row_version: { increment: 1 },
             },
           })
@@ -545,6 +597,96 @@ export class WorkOrdersService {
     });
 
     return merged as Prisma.InputJsonValue;
+  }
+
+  private extractManagementSnapshot(rawPayload: unknown): RawPayloadRecord {
+    const normalized = this.toRawPayloadRecord(rawPayload);
+    const snapshot = normalized[MANAGEMENT_SNAPSHOT_KEY];
+
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+      return {};
+    }
+
+    return { ...(snapshot as RawPayloadRecord) };
+  }
+
+  private upsertManagementSnapshot(rawPayload: unknown) {
+    const normalized = this.toRawPayloadRecord(rawPayload);
+    const snapshot = { ...normalized };
+    delete snapshot[MANAGEMENT_SNAPSHOT_KEY];
+
+    if (Object.keys(snapshot).length > 0) {
+      normalized[MANAGEMENT_SNAPSHOT_KEY] = snapshot;
+    }
+
+    return normalized as Prisma.InputJsonValue;
+  }
+
+  private buildManagedRawPayload(
+    currentRawPayload: unknown,
+    incomingRawPayload?: Record<string, unknown>,
+  ) {
+    const merged =
+      incomingRawPayload &&
+      typeof incomingRawPayload === 'object' &&
+      !Array.isArray(incomingRawPayload)
+        ? this.mergeRawPayload(currentRawPayload, incomingRawPayload)
+        : this.toRawPayloadRecord(currentRawPayload);
+
+    return this.upsertManagementSnapshot(merged);
+  }
+
+  private buildBulkUpsertRawPayload(
+    currentRawPayload: unknown,
+    incomingRawPayload: unknown,
+  ) {
+    const merged = this.toRawPayloadRecord(currentRawPayload);
+    const incoming = this.toRawPayloadRecord(incomingRawPayload);
+    delete incoming[MANAGEMENT_SNAPSHOT_KEY];
+
+    Object.entries(incoming).forEach(([key, value]) => {
+      merged[key] = value;
+    });
+
+    const existingSnapshot = this.extractManagementSnapshot(currentRawPayload);
+    const snapshot =
+      Object.keys(existingSnapshot).length > 0
+        ? existingSnapshot
+        : this.toRawPayloadRecord(currentRawPayload);
+
+    delete snapshot[MANAGEMENT_SNAPSHOT_KEY];
+    merged[MANAGEMENT_SNAPSHOT_KEY] = snapshot;
+    return merged as Prisma.InputJsonValue;
+  }
+
+  private applyManagementSnapshot(workOrder: any) {
+    const snapshot = this.extractManagementSnapshot(workOrder?.raw_payload);
+    if (!Object.keys(snapshot).length) {
+      return workOrder;
+    }
+
+    const rawPayload = {
+      ...this.toRawPayloadRecord(workOrder?.raw_payload),
+      ...snapshot,
+    };
+
+    return {
+      ...workOrder,
+      raw_payload: rawPayload,
+      ...snapshot,
+    };
+  }
+
+  private async hasActiveManagementEntry(id: string) {
+    const activeEntry = await this.prisma.workOrderManagementEntry.findFirst({
+      where: {
+        work_order_id: id,
+        exited_at: null,
+      },
+      select: { id: true },
+    });
+
+    return Boolean(activeEntry);
   }
 
   private toDateString(value: Date | string) {

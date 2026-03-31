@@ -158,7 +158,7 @@ export class OrdersService {
       .filter((row) => String(row.OT || '').trim());
 
     if (normalizedRows.length === 0) {
-      return { created: 0, updated: 0, total: 0, affectedManagementOtNumbers: [] as string[] };
+      return { created: 0, updated: 0, total: 0, preservedManagementOtNumbers: [] as string[] };
     }
 
     let created = 0;
@@ -170,7 +170,7 @@ export class OrdersService {
         .map((item) => String(item.OT || '').trim().toUpperCase())
         .filter(Boolean),
     );
-    const affectedManagementOtNumbers = Array.from(
+    const preservedManagementOtNumbers = Array.from(
       new Set(
         normalizedRows
           .map((row) => String(row.OT || '').trim().toUpperCase())
@@ -207,7 +207,7 @@ export class OrdersService {
     this._dbLastUpdated.next(new Date());
     this._internalDatabase.next([]);
 
-    return { created, updated, total: totalItems, affectedManagementOtNumbers };
+    return { created, updated, total: totalItems, preservedManagementOtNumbers };
   }
 
   async updateStatus(ot: Partial<OT>, status: string) {

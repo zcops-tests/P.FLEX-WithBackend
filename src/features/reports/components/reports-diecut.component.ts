@@ -1,11 +1,12 @@
 
-import { ChangeDetectorRef, Component, DestroyRef, inject, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, ElementRef, ViewChild, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { StateService } from '../../../services/state.service';
 import { NotificationService } from '../../../services/notification.service';
+import { FileExportService } from '../../../services/file-export.service';
 import { DiecutReport } from '../models/reports.models';
 import { ProductionService } from '../services/production.service';
 
@@ -33,9 +34,6 @@ import { ProductionService } from '../services/production.service';
               <input type="text" [(ngModel)]="searchTerm" placeholder="Buscar OT, Troquel..." 
                 class="pl-9 pr-4 py-2.5 bg-[#1e293b]/80 border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 outline-none w-64 transition-all placeholder-slate-500 shadow-inner backdrop-blur-sm">
            </div>
-           <button class="bg-[#1e293b]/80 border border-white/10 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-white/10 text-slate-300 transition-all backdrop-blur-sm">
-              <span class="material-icons text-sm">filter_list</span> Filtros
-           </button>
            <button type="button" (click)="startNewReport()" [disabled]="!canCreateReport" class="bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-purple-900/20 transition-all active:scale-95 border border-purple-500/50 disabled:opacity-50 disabled:cursor-not-allowed">
               <span class="material-icons text-sm">add</span> Nuevo Reporte
            </button>
@@ -52,7 +50,7 @@ import { ProductionService } from '../services/production.service';
                     <span class="material-icons text-sm">inventory_2</span> Unidades Prod.
                 </p>
                 <p class="text-3xl font-black text-white tracking-tight">{{ kpis.totalUnits | number }} <span class="text-sm text-slate-500 font-medium">und</span></p>
-                <div class="mt-2 text-xs text-slate-400 font-medium">+8% vs semana anterior</div>
+                <div class="mt-2 text-xs text-slate-400 font-medium">Unidades reales acumuladas en reportes cargados.</div>
             </div>
          </div>
 
@@ -70,7 +68,6 @@ import { ProductionService } from '../services/production.service';
             </div>
          </div>
 
-         <!-- Machine Availability (Mock) -->
          <div class="glass-card p-5 rounded-2xl border border-white/10 relative overflow-hidden group">
             <div class="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl -mr-6 -mt-6"></div>
             <div class="relative z-10">
@@ -78,11 +75,7 @@ import { ProductionService } from '../services/production.service';
                     <span class="material-icons text-sm">timer</span> Hrs Operativas
                 </p>
                 <p class="text-3xl font-black text-white tracking-tight">{{ kpis.totalHours | number }} <span class="text-sm text-slate-500 font-medium">hrs</span></p>
-                <div class="mt-2 flex -space-x-2">
-                    <div class="w-6 h-6 rounded-full bg-slate-700 border border-[#0f172a]"></div>
-                    <div class="w-6 h-6 rounded-full bg-slate-600 border border-[#0f172a]"></div>
-                    <div class="w-6 h-6 rounded-full bg-slate-500 border border-[#0f172a] flex items-center justify-center text-[8px] font-bold">+</div>
-                </div>
+                <div class="mt-2 text-xs text-slate-400 font-medium">{{ kpis.productiveActivities }} actividades productivas registradas.</div>
             </div>
          </div>
 
@@ -94,7 +87,9 @@ import { ProductionService } from '../services/production.service';
                     <span class="material-icons text-sm">build</span> Desgaste Herramental
                 </p>
                 <p class="text-3xl font-black text-white tracking-tight">{{ kpis.toolingIssues }} <span class="text-sm text-slate-500 font-medium">casos</span></p>
-                <p class="text-xs text-yellow-400/80 mt-1 font-medium bg-yellow-500/10 inline-block px-2 py-0.5 rounded border border-yellow-500/20">Mantenimiento Sugerido</p>
+                <p class="text-xs text-yellow-400/80 mt-1 font-medium bg-yellow-500/10 inline-block px-2 py-0.5 rounded border border-yellow-500/20">
+                  {{ kpis.toolingIssues > 0 ? 'Mantenimiento sugerido' : 'Sin desgaste reportado' }}
+                </p>
             </div>
          </div>
       </div>
@@ -153,7 +148,12 @@ import { ProductionService } from '../services/production.service';
                     </button>
                   </td>
                 </tr>
-                <tr *ngIf="filteredReports.length === 0">
+                <tr *ngIf="isLoading">
+                   <td colspan="9" class="p-12 text-center text-slate-500 italic">
+                      Cargando reportes de troquelado...
+                   </td>
+                </tr>
+                <tr *ngIf="!isLoading && filteredReports.length === 0">
                    <td colspan="9" class="p-12 text-center text-slate-500 italic">
                       No se encontraron reportes que coincidan con la búsqueda.
                    </td>
@@ -165,7 +165,7 @@ import { ProductionService } from '../services/production.service';
 
       <!-- DETAIL MODAL -->
       <div *ngIf="selectedReport" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div class="glass-card w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-[#0f172a]">
+          <div #detailContent class="glass-card w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-[#0f172a]">
               
               <!-- Modal Header -->
               <div class="px-6 py-5 border-b border-white/10 bg-white/5 flex justify-between items-start shrink-0">
@@ -305,8 +305,8 @@ import { ProductionService } from '../services/production.service';
                   <button (click)="closeDetail()" class="px-5 py-2.5 rounded-xl border border-white/10 text-slate-300 font-bold hover:bg-white/5 transition-colors text-sm">
                       Cerrar
                   </button>
-                  <button class="px-6 py-2.5 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-500 shadow-lg transition-all text-sm flex items-center gap-2">
-                      <span class="material-icons text-sm">print</span> Imprimir PDF
+                  <button type="button" (click)="exportSelectedReportToPdf()" [disabled]="isExportingPdf || !selectedReport" class="px-6 py-2.5 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-500 shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                      <span class="material-icons text-sm">picture_as_pdf</span> {{ isExportingPdf ? 'Generando...' : 'Exportar PDF' }}
                   </button>
               </div>
           </div>
@@ -338,15 +338,19 @@ export class ReportsDiecutComponent implements OnInit {
   state = inject(StateService);
   router = inject(Router);
   notifications = inject(NotificationService);
+  fileExport = inject(FileExportService);
   production = inject(ProductionService);
   destroyRef = inject(DestroyRef);
   cdr = inject(ChangeDetectorRef);
+
+  @ViewChild('detailContent') detailContent?: ElementRef<HTMLElement>;
 
   reports: DiecutReport[] = [];
   searchTerm = '';
   selectedReport: DiecutReport | null = null;
   isLoading = true;
   isDetailLoading = false;
+  isExportingPdf = false;
 
   ngOnInit() {
     this.production.diecutReports$
@@ -373,16 +377,15 @@ export class ReportsDiecutComponent implements OnInit {
       const totalUnits = this.reports.reduce((acc, r) => acc + r.goodUnits, 0);
       const totalWaste = this.reports.reduce((acc, r) => acc + r.waste, 0);
       const wasteRate = totalUnits > 0 ? (totalWaste / totalUnits) * 100 : 0;
-      const totalMinutes = this.reports.reduce((acc, report) => acc + report.activities.reduce((activityAcc, activity) => {
-          if ((activity.qty || 0) <= 0) return activityAcc;
-          return activityAcc + this.calculateDurationMinutes(activity.startTime, activity.endTime);
-      }, 0), 0);
+      const productiveActivities = this.reports.flatMap((report) => report.activities).filter((activity) => (activity.qty || 0) > 0);
+      const totalMinutes = productiveActivities.reduce((acc, activity) => acc + this.calculateDurationMinutes(activity.startTime, activity.endTime), 0);
       const totalHours = totalMinutes / 60;
 
       return {
           totalUnits,
           wasteRate,
           totalHours,
+          productiveActivities: productiveActivities.length,
           toolingIssues: this.reports.filter(r => r.dieStatus !== 'OK').length
       };
   }
@@ -407,6 +410,26 @@ export class ReportsDiecutComponent implements OnInit {
   closeDetail() {
       this.selectedReport = null;
       queueMicrotask(() => this.cdr.detectChanges());
+  }
+
+  async exportSelectedReportToPdf() {
+      if (!this.selectedReport || !this.detailContent?.nativeElement || this.isExportingPdf) {
+          return;
+      }
+
+      try {
+          this.isExportingPdf = true;
+          const safeOt = String(this.selectedReport.ot || 'reporte').replace(/[^a-z0-9_-]+/gi, '_');
+          await this.fileExport.exportElementToPdf(
+              this.detailContent.nativeElement,
+              `reporte_troquelado_${safeOt}.pdf`,
+              { backgroundColor: '#0f172a' },
+          );
+      } catch {
+          this.notifications.showError('No fue posible exportar el reporte de troquelado en PDF.');
+      } finally {
+          this.isExportingPdf = false;
+      }
   }
 
   startNewReport() {

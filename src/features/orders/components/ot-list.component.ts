@@ -10,6 +10,7 @@ import { OrdersService } from '../services/orders.service';
 import { OT, OTDatabaseBrowserState, OTImportProgress, OTManagementExitAction } from '../models/orders.models';
 import { StateService } from '../../../services/state.service';
 import { AuditService } from '../../../services/audit.service';
+import { NotificationService } from '../../../services/notification.service';
 
 @Component({
   selector: 'app-ot-list',
@@ -375,7 +376,7 @@ import { AuditService } from '../../../services/audit.service';
 
                   <!-- FECHA ENTREGA -->
                   <td class="p-4">
-                    <div class="flex items-center gap-1.5 text-xs font-medium" [ngClass]="isLate(ot['FECHA ENT']) ? 'text-red-400' : 'text-industrial-orange'">
+                    <div class="flex items-center gap-1.5 text-xs font-medium" [ngClass]="isLate(ot['FECHA ENT'], ot.Estado_pedido) ? 'text-red-400' : 'text-industrial-orange'">
                         <span class="material-icons !text-sm">event</span>
                         {{ formatDate(ot['FECHA ENT']) }}
                     </div>
@@ -457,6 +458,7 @@ export class OtListComponent implements OnInit, OnDestroy {
   ordersService = inject(OrdersService);
   state = inject(StateService);
   audit = inject(AuditService);
+  notifications = inject(NotificationService);
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
 
@@ -605,11 +607,15 @@ export class OtListComponent implements OnInit, OnDestroy {
   }
 
   getMachineCode(machineName: string | undefined): string {
-      if(!machineName) return '---';
-      if(machineName.includes('SUPERPRIMA')) return 'SEC-07';
-      if(machineName.includes('MARK ANDY')) return 'SEC-03';
-      if(machineName.includes('FOCUS')) return 'SEC-05';
-      return 'GEN-01';
+      const normalized = this.normalizeToken(machineName);
+      if (!normalized) return '---';
+
+      const machine = this.state.adminMachines().find((item) => {
+        const candidate = this.normalizeToken(item.name);
+        return candidate === normalized || candidate.includes(normalized) || normalized.includes(candidate);
+      });
+
+      return machine?.code || 'SIN-COD';
   }
 
   formatDate(val: any): string {
@@ -639,8 +645,17 @@ export class OtListComponent implements OnInit, OnDestroy {
       return '';
   }
 
-  isLate(dateVal: any): boolean {
-      return false; 
+  isLate(dateVal: any, status?: string): boolean {
+      const normalizedStatus = String(status || '').toUpperCase();
+      if (normalizedStatus === 'FINALIZADO') return false;
+
+      const normalizedDate = this.toInputDate(dateVal);
+      if (!normalizedDate) return false;
+
+      const dueDate = new Date(`${normalizedDate}T00:00:00`);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return dueDate.getTime() < today.getTime();
   }
 
   // CRUD & Modals
@@ -674,7 +689,7 @@ export class OtListComponent implements OnInit, OnDestroy {
             this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Cambio Estado', `OT ${ot.OT} cambió de ${oldVal} a ${value}`);
           } catch (error) {
             await this.ordersService.reloadManagementOrders();
-            alert(this.getErrorMessage(error, `No se pudo actualizar el estado de la OT ${ot.OT}.`));
+            this.notifications.showError(this.getErrorMessage(error, `No se pudo actualizar el estado de la OT ${ot.OT}.`));
           }
           return;
       }
@@ -698,6 +713,7 @@ export class OtListComponent implements OnInit, OnDestroy {
     }, { activate: true });
 
     this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', action, `OT afectada: ${formData.OT}`);
+    this.notifications.showSuccess(`OT ${formData.OT} guardada correctamente.`);
     this.closeForm();
   }
 
@@ -726,7 +742,7 @@ export class OtListComponent implements OnInit, OnDestroy {
       this.managementExitTarget = null;
     } catch (error: any) {
       console.error('Error removing work order from management:', error);
-      alert(`No se pudo quitar la OT de Gestión.\n${error?.message || 'Error desconocido.'}`);
+      this.notifications.showError(`No se pudo quitar la OT de Gestión. ${error?.message || 'Error desconocido.'}`);
     } finally {
       this.isApplyingManagementExit = false;
     }
@@ -749,23 +765,18 @@ export class OtListComponent implements OnInit, OnDestroy {
         });
       });
 
-      if (result.affectedManagementOtNumbers.length > 0) {
-        const shouldRefresh = confirm(
-          `Se actualizaron ${result.affectedManagementOtNumbers.length} OTs que ya están en Gestión.\n\n¿Desea refrescar las filas visibles del panel?`,
-        );
-
-        if (shouldRefresh) {
-          await this.ordersService.reloadManagementOrders();
-        }
-      }
-
       this.closeImportModal();
       this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Importación Masiva', `Se procesaron ${result.total} registros. Nuevos: ${result.created}, Actualizados: ${result.updated}.`);
-      alert(`Proceso completado.\n\nBase de Datos:\n- Nuevos: ${result.created}\n- Actualizados: ${result.updated}\n- Total procesados: ${result.total}`);
+      this.notifications.showSuccess(`Importación completada. Nuevos: ${result.created}, actualizados: ${result.updated}, total: ${result.total}.`);
+      if (result.preservedManagementOtNumbers.length > 0) {
+        this.notifications.showInfo(
+          `${result.preservedManagementOtNumbers.length} OTs activas se mantuvieron sin cambios en Gestión; la importación sólo actualizó la base interna.`,
+        );
+      }
     } catch (error: any) {
       console.error('Error importing work orders:', error);
       this.closeImportModal();
-      alert(`No se pudo completar la importación de OTs.\n${error?.message || 'Error desconocido.'}`);
+      this.notifications.showError(`No se pudo completar la importación de OTs. ${error?.message || 'Error desconocido.'}`);
     }
   }
 
@@ -840,7 +851,7 @@ export class OtListComponent implements OnInit, OnDestroy {
       const selected = this.dbState.items.filter((item) => this.dbSelectedItems.has(String(item.OT)));
 
       if (selected.length === 0) {
-          alert('Seleccione al menos una OT para agregar.');
+          this.notifications.showWarning('Seleccione al menos una OT para agregar.');
           return;
       }
 
@@ -849,15 +860,15 @@ export class OtListComponent implements OnInit, OnDestroy {
 
           if (result.added > 0) {
               this.audit.log(this.state.userName(), this.state.userRole(), 'OTS', 'Ingreso a Gestión', `Se ingresaron ${result.added} OTs desde la base interna.`);
-              alert(`${result.added} OTs agregadas a Gestión.`);
+              this.notifications.showSuccess(`${result.added} OTs agregadas a Gestión.`);
           } else {
-              alert('Las OTs seleccionadas ya están en la lista.');
+              this.notifications.showInfo('Las OTs seleccionadas ya estaban en la lista activa.');
           }
 
           this.showDbSelector = false;
       } catch (error: any) {
           console.error('Error entering work orders into management:', error);
-          alert(`No se pudieron agregar las OTs seleccionadas.\n${error?.message || 'Error desconocido.'}`);
+          this.notifications.showError(`No se pudieron agregar las OTs seleccionadas. ${error?.message || 'Error desconocido.'}`);
       }
   }
 
@@ -878,5 +889,13 @@ export class OtListComponent implements OnInit, OnDestroy {
   private getErrorMessage(error: unknown, fallback: string) {
     const message = error instanceof Error ? error.message : '';
     return message || fallback;
+  }
+
+  private normalizeToken(value: unknown) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
   }
 }

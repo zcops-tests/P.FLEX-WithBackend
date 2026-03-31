@@ -18,7 +18,7 @@ const routes: Routes = [
   { path: 'reports/print', loadComponent: () => import('./src/features/reports/components/reports-print.component').then((m) => m.ReportsPrintComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['reports.print.view'] } },
   { path: 'reports/diecut', loadComponent: () => import('./src/features/reports/components/reports-diecut.component').then((m) => m.ReportsDiecutComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['reports.diecut.view'] } },
   { path: 'reports/rewind', loadComponent: () => import('./src/features/reports/components/reports-rewind.component').then((m) => m.ReportsRewindComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['reports.rewind.view'] } },
-  { path: 'reports/packaging', loadComponent: () => import('./src/features/reports/components/reports-packaging.component').then((m) => m.ReportsPackagingComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['reports.packaging.view'] } },
+  { path: 'reports/packaging', loadComponent: () => import('./src/features/reports/components/reports-packaging.component').then((m) => m.ReportsPackagingComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['reports.packaging.view'], mode: 'manager' } },
   { path: 'reports', redirectTo: 'reports/print', pathMatch: 'full' },
   { path: 'inventory/:type', loadComponent: () => import('./src/features/inventory/components/inventory.component').then((m) => m.InventoryComponent), canActivate: [authGuard, inventoryRoleGuard], data: { permissionsByType: {
     layout: ['inventory.layout.view'],
@@ -37,7 +37,7 @@ const routes: Routes = [
   // Operator Routes
   { path: 'operator', loadComponent: () => import('./src/features/operator/operator-selector.component').then((m) => m.OperatorSelectorComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['operator.host'] } },
   { path: 'operator/select-machine/:type', loadComponent: () => import('./src/features/operator/operator-machine-selector.component').then((m) => m.OperatorMachineSelectorComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['operator.host'] } },
-  { path: 'operator/packaging', loadComponent: () => import('./src/features/reports/components/reports-packaging.component').then((m) => m.ReportsPackagingComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['operator.host'] } },
+  { path: 'operator/packaging', loadComponent: () => import('./src/features/reports/components/reports-packaging.component').then((m) => m.ReportsPackagingComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['operator.host'], mode: 'operator' } },
   { path: 'operator/report/:type/:machine', loadComponent: () => import('./src/features/operator/operator-form.component').then((m) => m.OperatorFormComponent), canActivate: [authGuard, roleGuard], data: { permissions: ['operator.host'] } },
 
   { path: '**', redirectTo: 'dashboard' }

@@ -16,6 +16,7 @@ describe('WorkOrdersService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      upsert: jest.fn(),
       count: jest.fn(),
     },
     workOrderManagementEntry: {
@@ -74,6 +75,46 @@ describe('WorkOrdersService', () => {
     });
   });
 
+  describe('findManagement', () => {
+    it('should prefer the frozen management snapshot over imported work order changes', async () => {
+      mockPrisma.workOrderManagementEntry.findMany.mockResolvedValue([
+        {
+          id: 'entry-1',
+          work_order: {
+            id: 'ot-1',
+            ot_number: 'OT-1001',
+            status: WorkOrderStatus.PLANNED,
+            raw_payload: {
+              OT: 'OT-1001',
+              descripcion: 'Descripcion importada',
+              Estado_pedido: 'PENDIENTE',
+              __management_snapshot: {
+                OT: 'OT-1001',
+                descripcion: 'Descripcion congelada en gestion',
+                Estado_pedido: 'EN PROCESO',
+                scheduleStartTime: '08:00',
+              },
+            },
+            deleted_at: null,
+          },
+        },
+      ]);
+
+      const result = await service.findManagement();
+
+      expect(result[0].descripcion).toBe('Descripcion congelada en gestion');
+      expect(result[0].Estado_pedido).toBe('EN PROCESO');
+      expect(result[0].scheduleStartTime).toBe('08:00');
+      expect(result[0].raw_payload).toEqual(
+        expect.objectContaining({
+          descripcion: 'Descripcion congelada en gestion',
+          Estado_pedido: 'EN PROCESO',
+          scheduleStartTime: '08:00',
+        }),
+      );
+    });
+  });
+
   describe('enterManagement', () => {
     it('should create a management entry and update plant data when imported', async () => {
       mockPrisma.workOrder.findUnique.mockResolvedValue({
@@ -124,6 +165,61 @@ describe('WorkOrdersService', () => {
       await expect(service.enterManagement('ot-1', 'user-1')).rejects.toThrow(
         ConflictException,
       );
+    });
+  });
+
+  describe('bulkUpsert', () => {
+    it('should preserve the active management snapshot while importing internal database changes', async () => {
+      mockPrisma.workOrder.findMany.mockResolvedValue([
+        {
+          id: 'ot-1',
+          ot_number: 'OT-1001',
+          status: WorkOrderStatus.PLANNED,
+          fecha_ingreso_planta: new Date('2026-03-28T00:00:00.000Z'),
+          fecha_programada_produccion: new Date('2026-03-30T00:00:00.000Z'),
+          maquina_texto: 'IMP-01',
+          raw_payload: {
+            OT: 'OT-1001',
+            descripcion: 'Descripcion activa',
+            scheduleStartTime: '08:00',
+            __management_snapshot: {
+              OT: 'OT-1001',
+              descripcion: 'Descripcion activa',
+              scheduleStartTime: '08:00',
+            },
+          },
+          management_entries: [{ id: 'entry-1' }],
+        },
+      ]);
+
+      await service.bulkUpsert([
+        {
+          ot_number: 'OT-1001',
+          descripcion: 'Descripcion importada',
+          status: WorkOrderStatus.IMPORTED,
+          raw_payload: {
+            OT: 'OT-1001',
+            descripcion: 'Descripcion importada',
+          },
+        } as any,
+      ]);
+
+      expect(mockPrisma.workOrder.upsert).toHaveBeenCalledWith({
+        where: { ot_number: 'OT-1001' },
+        create: expect.any(Object),
+        update: expect.objectContaining({
+          status: WorkOrderStatus.PLANNED,
+          maquina_texto: 'IMP-01',
+          raw_payload: expect.objectContaining({
+            descripcion: 'Descripcion importada',
+            scheduleStartTime: '08:00',
+            __management_snapshot: expect.objectContaining({
+              descripcion: 'Descripcion activa',
+              scheduleStartTime: '08:00',
+            }),
+          }),
+        }),
+      });
     });
   });
 

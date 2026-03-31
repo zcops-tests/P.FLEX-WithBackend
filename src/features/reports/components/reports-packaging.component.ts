@@ -2,7 +2,7 @@ import { ChangeDetectorRef, Component, DestroyRef, OnInit, inject } from '@angul
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { StateService } from '../../../services/state.service';
 import { NotificationService } from '../../../services/notification.service';
 import { OrdersService } from '../../orders/services/orders.service';
@@ -59,7 +59,7 @@ interface PackagingFormModel {
             [disabled]="!canCreateOperatorReport"
             class="bg-teal-600 hover:bg-teal-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-teal-900/20 transition-all active:scale-95 border border-teal-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span class="material-icons text-sm">add</span> Nuevo Registro
+            <span class="material-icons text-sm">add</span> {{ primaryActionLabel }}
           </button>
         </div>
       </div>
@@ -144,7 +144,12 @@ interface PackagingFormModel {
                   </button>
                 </td>
               </tr>
-              <tr *ngIf="filteredReports.length === 0">
+              <tr *ngIf="isLoading">
+                <td colspan="9" class="p-12 text-center text-slate-500 italic">
+                  Cargando reportes de empaquetado...
+                </td>
+              </tr>
+              <tr *ngIf="!isLoading && filteredReports.length === 0">
                 <td colspan="9" class="p-12 text-center text-slate-500 italic">
                   No se encontraron reportes de empaquetado para la búsqueda actual.
                 </td>
@@ -334,6 +339,7 @@ export class ReportsPackagingComponent implements OnInit {
   state = inject(StateService);
   ordersService = inject(OrdersService);
   router = inject(Router);
+  route = inject(ActivatedRoute);
   notifications = inject(NotificationService);
   production = inject(ProductionService);
   destroyRef = inject(DestroyRef);
@@ -344,12 +350,13 @@ export class ReportsPackagingComponent implements OnInit {
   showForm = false;
   isOperatorMode = false;
   isSaving = false;
+  isLoading = true;
   currentReport: PackagingFormModel = this.buildEmptyReport();
   otSuggestions: Partial<OT>[] = [];
   showOtSuggestions = false;
 
   ngOnInit() {
-    this.isOperatorMode = this.router.url.includes('/operator/packaging');
+    this.isOperatorMode = this.route.snapshot.data['mode'] === 'operator';
 
     this.production.packagingReports$
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -393,6 +400,10 @@ export class ReportsPackagingComponent implements OnInit {
 
   get canEditReports() {
     return this.state.hasPermission('reports.packaging.create');
+  }
+
+  get primaryActionLabel() {
+    return this.isOperatorMode ? 'Nuevo Registro' : 'Ir a captura operaria';
   }
 
   get shiftOptions() {
@@ -586,9 +597,12 @@ export class ReportsPackagingComponent implements OnInit {
 
   private async loadReports() {
     try {
+      this.isLoading = true;
       await this.production.reload();
     } catch {
       this.notifications.showError('No fue posible cargar los reportes de empaquetado.');
+    } finally {
+      this.isLoading = false;
     }
   }
 

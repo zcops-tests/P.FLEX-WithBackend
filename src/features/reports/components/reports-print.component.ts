@@ -1,11 +1,12 @@
 
-import { ChangeDetectorRef, Component, DestroyRef, inject, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, ElementRef, ViewChild, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { StateService } from '../../../services/state.service';
 import { NotificationService } from '../../../services/notification.service';
+import { FileExportService } from '../../../services/file-export.service';
 import { PrintReport } from '../models/reports.models';
 import { ProductionService } from '../services/production.service';
 
@@ -33,9 +34,6 @@ import { ProductionService } from '../services/production.service';
               <input type="text" [(ngModel)]="searchTerm" placeholder="Buscar OT, Máquina, Operador..." 
                 class="pl-9 pr-4 py-2.5 bg-[#1e293b]/80 border border-white/10 rounded-xl text-sm text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none w-64 transition-all placeholder-slate-500 shadow-inner backdrop-blur-sm">
            </div>
-           <button class="bg-[#1e293b]/80 border border-white/10 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-white/10 text-slate-300 transition-all backdrop-blur-sm">
-              <span class="material-icons text-sm">filter_list</span> Filtros
-           </button>
            <button type="button" (click)="startNewReport()" [disabled]="!canCreateReport" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-95 border border-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed">
               <span class="material-icons text-sm">add</span> Nuevo Reporte
            </button>
@@ -51,7 +49,7 @@ import { ProductionService } from '../services/production.service';
                     <span class="material-icons text-sm">straighten</span> Total Metros (Mes)
                 </p>
                 <p class="text-3xl font-black text-white tracking-tight">{{ kpis.totalMeters | number }} <span class="text-sm text-slate-500 font-medium">m</span></p>
-                <div class="mt-2 text-xs text-slate-400 font-medium">+12% vs mes anterior</div>
+                <div class="mt-2 text-xs text-slate-400 font-medium">Acumulado real de reportes de impresión cargados.</div>
             </div>
          </div>
 
@@ -62,9 +60,7 @@ import { ProductionService } from '../services/production.service';
                     <span class="material-icons text-sm">speed</span> Velocidad Prom.
                 </p>
                 <p class="text-3xl font-black text-white tracking-tight">{{ kpis.avgSpeed | number:'1.0-0' }} <span class="text-sm text-slate-500 font-medium">m/min</span></p>
-                <div class="w-full bg-slate-700/50 h-1.5 rounded-full mt-3 overflow-hidden">
-                    <div class="bg-emerald-500 h-full rounded-full" style="width: 85%"></div>
-                </div>
+                <div class="mt-2 text-xs text-slate-400 font-medium">{{ kpis.runEntries }} tramos con metros registrados.</div>
             </div>
          </div>
 
@@ -75,11 +71,7 @@ import { ProductionService } from '../services/production.service';
                     <span class="material-icons text-sm">assignment_turned_in</span> OTs Completadas
                 </p>
                 <p class="text-3xl font-black text-white tracking-tight">{{ kpis.completedOts }} <span class="text-sm text-slate-500 font-medium">órdenes</span></p>
-                <div class="mt-2 flex -space-x-2">
-                    <div class="w-6 h-6 rounded-full bg-slate-700 border border-[#0f172a]"></div>
-                    <div class="w-6 h-6 rounded-full bg-slate-600 border border-[#0f172a]"></div>
-                    <div class="w-6 h-6 rounded-full bg-slate-500 border border-[#0f172a] flex items-center justify-center text-[8px] font-bold">+</div>
-                </div>
+                <div class="mt-2 text-xs text-slate-400 font-medium">{{ reports.length }} reportes considerados en este resumen.</div>
             </div>
          </div>
 
@@ -90,7 +82,9 @@ import { ProductionService } from '../services/production.service';
                     <span class="material-icons text-sm">warning</span> Alertas Herramental
                 </p>
                 <p class="text-3xl font-black text-white tracking-tight">{{ kpis.toolingIssues }} <span class="text-sm text-slate-500 font-medium">casos</span></p>
-                <p class="text-xs text-red-400/80 mt-1 font-medium bg-red-500/10 inline-block px-2 py-0.5 rounded border border-red-500/20">Requiere Atención</p>
+                <p class="text-xs text-red-400/80 mt-1 font-medium bg-red-500/10 inline-block px-2 py-0.5 rounded border border-red-500/20">
+                  {{ kpis.toolingIssues > 0 ? 'Requiere atención' : 'Sin alertas activas' }}
+                </p>
             </div>
          </div>
       </div>
@@ -151,7 +145,12 @@ import { ProductionService } from '../services/production.service';
                     </button>
                   </td>
                 </tr>
-                <tr *ngIf="filteredReports.length === 0">
+                <tr *ngIf="isLoading">
+                   <td colspan="8" class="p-12 text-center text-slate-500 italic">
+                      Cargando reportes de impresión...
+                   </td>
+                </tr>
+                <tr *ngIf="!isLoading && filteredReports.length === 0">
                    <td colspan="8" class="p-12 text-center text-slate-500 italic">
                       No se encontraron reportes que coincidan con la búsqueda.
                    </td>
@@ -163,7 +162,7 @@ import { ProductionService } from '../services/production.service';
 
       <!-- DETAIL MODAL -->
       <div *ngIf="selectedReport" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div class="glass-card w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-[#0f172a]">
+          <div #detailContent class="glass-card w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-[#0f172a]">
               
               <!-- Modal Header -->
               <div class="px-6 py-5 border-b border-white/10 bg-white/5 flex justify-between items-start shrink-0">
@@ -310,8 +309,8 @@ import { ProductionService } from '../services/production.service';
                   <button (click)="closeDetail()" class="px-5 py-2.5 rounded-xl border border-white/10 text-slate-300 font-bold hover:bg-white/5 transition-colors text-sm">
                       Cerrar
                   </button>
-                  <button class="px-6 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg transition-all text-sm flex items-center gap-2">
-                      <span class="material-icons text-sm">print</span> Imprimir PDF
+                  <button type="button" (click)="exportSelectedReportToPdf()" [disabled]="isExportingPdf || !selectedReport" class="px-6 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                      <span class="material-icons text-sm">picture_as_pdf</span> {{ isExportingPdf ? 'Generando...' : 'Exportar PDF' }}
                   </button>
               </div>
           </div>
@@ -343,15 +342,19 @@ export class ReportsPrintComponent implements OnInit {
   state = inject(StateService);
   router = inject(Router);
   notifications = inject(NotificationService);
+  fileExport = inject(FileExportService);
   production = inject(ProductionService);
   destroyRef = inject(DestroyRef);
   cdr = inject(ChangeDetectorRef);
+
+  @ViewChild('detailContent') detailContent?: ElementRef<HTMLElement>;
   
   reports: PrintReport[] = [];
   searchTerm = '';
   selectedReport: PrintReport | null = null;
   isLoading = true;
   isDetailLoading = false;
+  isExportingPdf = false;
 
   ngOnInit() {
     this.production.printReports$
@@ -376,15 +379,14 @@ export class ReportsPrintComponent implements OnInit {
 
   get kpis() {
       const totalMeters = this.reports.reduce((acc, r) => acc + r.totalMeters, 0);
-      const runMinutes = this.reports.reduce((acc, report) => acc + report.activities.reduce((activityAcc, activity) => {
-          if ((activity.meters || 0) <= 0) return activityAcc;
-          return activityAcc + this.calculateDurationMinutes(activity.startTime, activity.endTime);
-      }, 0), 0);
+      const productiveActivities = this.reports.flatMap((report) => report.activities).filter((activity) => (activity.meters || 0) > 0);
+      const runMinutes = productiveActivities.reduce((acc, activity) => acc + this.calculateDurationMinutes(activity.startTime, activity.endTime), 0);
       const avgSpeed = runMinutes > 0 ? (totalMeters / runMinutes) : 0;
       
       return {
           totalMeters,
           avgSpeed,
+          runEntries: productiveActivities.length,
           completedOts: this.reports.filter(r => r.productionStatus === 'TOTAL').length,
           toolingIssues: this.reports.filter(r => r.die.status !== 'OK' || r.clise.status !== 'OK').length
       };
@@ -410,6 +412,26 @@ export class ReportsPrintComponent implements OnInit {
   closeDetail() {
       this.selectedReport = null;
       queueMicrotask(() => this.cdr.detectChanges());
+  }
+
+  async exportSelectedReportToPdf() {
+      if (!this.selectedReport || !this.detailContent?.nativeElement || this.isExportingPdf) {
+          return;
+      }
+
+      try {
+          this.isExportingPdf = true;
+          const safeOt = String(this.selectedReport.ot || 'reporte').replace(/[^a-z0-9_-]+/gi, '_');
+          await this.fileExport.exportElementToPdf(
+              this.detailContent.nativeElement,
+              `reporte_impresion_${safeOt}.pdf`,
+              { backgroundColor: '#0f172a' },
+          );
+      } catch {
+          this.notifications.showError('No fue posible exportar el reporte de impresión en PDF.');
+      } finally {
+          this.isExportingPdf = false;
+      }
   }
 
   startNewReport() {

@@ -1,552 +1,405 @@
-
-import { Component, inject, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { StateService } from '../../services/state.service';
-import { OrdersService } from '../orders/services/orders.service';
-import { OT } from '../orders/models/orders.models';
-import { QualityService } from '../quality/services/quality.service';
-import { AuditService } from '../../services/audit.service';
-import { OtImportComponent } from '../orders/components/ot-import.component';
-import { OtFormComponent } from '../orders/components/ot-form.component';
-import { OtDetailComponent } from '../orders/components/ot-detail.component';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { Router } from '@angular/router';
+import { OtDetailComponent } from '../orders/components/ot-detail.component';
+import { OT } from '../orders/models/orders.models';
+import { OrdersService } from '../orders/services/orders.service';
+import { QualityService } from '../quality/services/quality.service';
+import { ProductionService } from '../reports/services/production.service';
+import { AuditService } from '../../services/audit.service';
 import { FileExportService } from '../../services/file-export.service';
 import { NotificationService } from '../../services/notification.service';
+import { StateService } from '../../services/state.service';
+
+type DashboardFeedTab = 'ALL' | 'PRODUCTION' | 'ALERTS' | 'PLANT';
+type DashboardFeedType = Exclude<DashboardFeedTab, 'ALL'>;
+
+interface DashboardFeedItem {
+  id: string;
+  type: DashboardFeedType;
+  title: string;
+  description: string;
+  meta: string;
+  machine?: string;
+  route?: string;
+  actionLabel?: string;
+  ot?: OT;
+}
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, OtImportComponent, OtFormComponent, OtDetailComponent],
+  imports: [CommonModule, OtDetailComponent],
   template: `
-    <div class="bg-gradient-mesh min-h-screen p-6 text-slate-200 font-sans pb-20">
-      
-      <!-- Import Modal -->
-      @if (showImportModal) {
-        <app-ot-import
-            (close)="showImportModal = false"
-            (dataImported)="handleImport($event)">
-        </app-ot-import>
-      }
-
-      <!-- New OT Form Modal -->
-      @if (showOtFormModal) {
-        <app-ot-form
-            [otToEdit]="null"
-            (save)="handleOtSave($event)"
-            (cancel)="showOtFormModal = false">
-        </app-ot-form>
-      }
-
-      <!-- OT Detail Modal -->
+    <div class="bg-gradient-mesh min-h-screen p-6 pb-20 text-slate-200 font-sans">
       @if (selectedOt) {
-        <app-ot-detail
-            [ot]="selectedOt!" 
-            (close)="selectedOt = null">
-        </app-ot-detail>
+        <app-ot-detail [ot]="selectedOt" (close)="selectedOt = null"></app-ot-detail>
       }
 
-      <div class="max-w-[1800px] mx-auto space-y-6" #dashboardContent>
-        
-        <!-- HEADER -->
-        <header class="glassmorphism-card flex flex-col lg:flex-row lg:items-center justify-between gap-6 p-6 rounded-3xl relative z-20">
-          <!-- Decorator Glow -->
-          <div class="absolute top-0 left-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+      <div #dashboardContent class="mx-auto max-w-[1800px] space-y-6">
+        <header class="glassmorphism-card relative flex flex-col gap-6 overflow-hidden rounded-3xl p-6 lg:flex-row lg:items-center lg:justify-between">
+          <div class="pointer-events-none absolute left-0 top-0 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500/20 blur-3xl"></div>
 
-          <div class="flex items-center gap-5 relative z-10">
-            <div class="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
-              <span class="material-symbols-outlined text-blue-400 text-3xl">analytics</span>
+          <div class="relative z-10 flex items-center gap-5">
+            <div class="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
+              <span class="material-symbols-outlined text-3xl text-blue-400">analytics</span>
             </div>
             <div>
-              <h1 class="text-2xl font-bold text-white tracking-tight flex items-center gap-3">
+              <h1 class="flex items-center gap-3 text-2xl font-bold tracking-tight text-white">
                 CENTRO DE CONTROL
-                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-widest flex items-center gap-1.5 shadow-sm">
-                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> En Vivo
+                <span class="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400">
+                  <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span>
+                  En vivo
                 </span>
               </h1>
-              <p class="text-xs text-slate-400 flex items-center gap-2 mt-1 font-medium">
-                LABEL PERÚ SAC • SECTOR A-12 • <span class="text-blue-400">{{ state.currentShift() | uppercase }}</span> • {{ now | date:'HH:mm:ss' }}
+              <p class="mt-1 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-400">
+                LABEL PERU SAC
+                <span class="text-slate-600">•</span>
+                {{ state.currentShift() | uppercase }}
+                <span class="text-slate-600">•</span>
+                {{ now | date:'HH:mm:ss' }}
               </p>
             </div>
           </div>
-          
-          <div class="flex items-center gap-3 relative z-10">
-            <div class="hidden xl:flex items-center gap-6 mr-6 border-r border-white/10 pr-6">
+
+          <div class="relative z-10 flex items-center gap-3">
+            <div class="hidden items-center gap-6 border-r border-white/10 pr-6 xl:flex">
               <div class="text-right">
-                <p class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Estado Sistema</p>
-                <p class="text-sm font-bold text-emerald-400 shadow-emerald-500/20">99.8% Online</p>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sistema</p>
+                <p class="text-sm font-bold text-emerald-400">{{ machineMetrics.attention ? 'Con observaciones' : 'Operativo' }}</p>
               </div>
               <div class="text-right">
-                <p class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Sincronización</p>
-                <p class="text-sm font-bold text-blue-400">Al día</p>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sync</p>
+                <p class="text-sm font-bold text-blue-400">{{ syncStatusLabel }}</p>
               </div>
-            </div>
-            <button class="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-semibold text-slate-300 hover:text-white transition-all backdrop-blur-md">
-              <span class="material-symbols-outlined text-sm">filter_alt</span>
-              Filtros
-            </button>
-            
-            <!-- Export Dropdown -->
-            <div class="relative">
-                <button (click)="showExportMenu = !showExportMenu" class="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/25 transition-all border border-blue-500/50">
-                  <span class="material-symbols-outlined text-sm">ios_share</span>
-                  Exportar
-                </button>
-                @if (showExportMenu) {
-                    <div class="absolute right-0 mt-2 w-44 bg-[#1e293b] rounded-xl shadow-xl border border-white/10 z-50 overflow-hidden animate-fadeIn">
-                        <button (click)="exportToPdf()" class="w-full text-left px-4 py-3 hover:bg-white/5 flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors">
-                            <span class="material-symbols-outlined text-red-400 text-sm">picture_as_pdf</span> PDF (Visual)
-                        </button>
-                        <button (click)="exportToExcel()" class="w-full text-left px-4 py-3 hover:bg-white/5 flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors border-t border-white/5">
-                            <span class="material-symbols-outlined text-emerald-400 text-sm">table_view</span> Excel (Datos)
-                        </button>
-                    </div>
-                }
             </div>
 
+            <div class="relative">
+              <button
+                type="button"
+                (click)="showExportMenu = !showExportMenu"
+                class="flex items-center gap-2 rounded-xl border border-blue-500/50 bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:bg-blue-500">
+                <span class="material-symbols-outlined text-sm">ios_share</span>
+                Exportar
+              </button>
+              @if (showExportMenu) {
+                <div class="animate-fadeIn absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#1e293b] shadow-xl">
+                  <button type="button" (click)="exportToPdf()" class="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-bold text-slate-300 transition-colors hover:bg-white/5 hover:text-white">
+                    <span class="material-symbols-outlined text-sm text-red-400">picture_as_pdf</span>
+                    PDF visual
+                  </button>
+                  <button type="button" (click)="exportToExcel()" class="flex w-full items-center gap-2 border-t border-white/5 px-4 py-3 text-left text-xs font-bold text-slate-300 transition-colors hover:bg-white/5 hover:text-white">
+                    <span class="material-symbols-outlined text-sm text-emerald-400">table_view</span>
+                    Excel datos
+                  </button>
+                </div>
+              }
+            </div>
           </div>
         </header>
 
-        <!-- KPI GRID -->
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          
-          <!-- OEE Global -->
-          <div class="glassmorphism-card p-4 rounded-2xl hover:bg-white/5 transition-all group relative overflow-hidden">
-            <div class="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-full blur-2xl -mr-4 -mt-4 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <div class="flex justify-between items-start text-slate-500 mb-2 relative z-10">
-              <span class="text-[10px] font-bold uppercase tracking-widest group-hover:text-blue-400 transition-colors">OEE Global</span>
-              <span class="material-symbols-outlined text-sm">memory</span>
-            </div>
-            <div class="flex items-end justify-between relative z-10">
-              <div>
-                <span class="text-2xl font-bold text-white tracking-tight">82.4%</span>
-                <div class="text-[10px] text-emerald-400 font-medium flex items-center mt-0.5">
-                  <span class="material-symbols-outlined text-sm mr-0.5">trending_up</span> +1.2%
-                </div>
+        <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+          @for (card of cards; track card.label) {
+            <button
+              type="button"
+              (click)="openRoute(card.route)"
+              [disabled]="!card.route"
+              class="glassmorphism-card rounded-2xl p-4 text-left transition-all hover:bg-white/5 disabled:cursor-default">
+              <div class="mb-2 flex items-start justify-between text-slate-500">
+                <span class="text-[10px] font-bold uppercase tracking-widest" [ngClass]="card.accent">{{ card.label }}</span>
+                <span class="material-symbols-outlined text-sm" [ngClass]="card.accent">{{ card.icon }}</span>
               </div>
-              <div class="sparkline-container pb-1 opacity-60">
-                <div class="spark-bar h-[40%]" style="height: 40%"></div>
-                <div class="spark-bar h-[60%]" style="height: 60%"></div>
-                <div class="spark-bar h-[50%]" style="height: 50%"></div>
-                <div class="spark-bar h-[80%] spark-bar-active bg-blue-400" style="height: 80%"></div>
-                <div class="spark-bar h-[75%]" style="height: 75%"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- OTs Activas -->
-          <div class="glassmorphism-card p-4 rounded-2xl hover:bg-white/5 transition-all group">
-            <div class="flex justify-between items-start text-slate-500 mb-2">
-              <span class="text-[10px] font-bold uppercase tracking-widest group-hover:text-blue-400 transition-colors">OTs Activas</span>
-              <span class="material-symbols-outlined text-sm">settings_input_component</span>
-            </div>
-            <div class="flex items-end justify-between">
-              <div>
-                <span class="text-2xl font-bold text-white tracking-tight">{{ activeProduction.length }}</span>
-                <div class="text-[10px] text-slate-400 font-medium mt-0.5">{{ stats.pending }} Pendientes</div>
-              </div>
-              <div class="flex -space-x-2 pb-1 pl-2">
-                <div class="w-6 h-6 rounded-full bg-blue-600 border border-[#0B1015] flex items-center justify-center text-[9px] font-bold text-white ring-2 ring-[#0B1015]">JD</div>
-                <div class="w-6 h-6 rounded-full bg-purple-600 border border-[#0B1015] flex items-center justify-center text-[9px] font-bold text-white ring-2 ring-[#0B1015]">MS</div>
-                <div class="w-6 h-6 rounded-full bg-slate-700 border border-[#0B1015] flex items-center justify-center text-[9px] font-bold text-white ring-2 ring-[#0B1015]">+</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Incidencias -->
-          <div class="glassmorphism-card p-4 rounded-2xl hover:bg-red-500/10 hover:border-red-500/30 transition-all group cursor-pointer" (click)="router.navigate(['/incidents'])">
-            <div class="flex justify-between items-start text-slate-500 mb-2">
-              <span class="text-[10px] font-bold uppercase tracking-widest group-hover:text-red-400 transition-colors">Incidencias</span>
-              <span class="material-symbols-outlined text-sm text-red-500 animate-pulse">report</span>
-            </div>
-            <div class="flex items-end justify-between">
-              <div>
-                <span class="text-2xl font-bold text-red-500 tracking-tight">{{ activeIncidentsCount | number:'2.0-0' }}</span>
-                <div class="text-[10px] text-red-400/80 font-medium mt-0.5">{{ highPriorityCount }} Prioridad Alta</div>
-              </div>
-              <div class="sparkline-container pb-1">
-                <div class="spark-bar bg-red-500/40 h-[20%]" style="height: 20%"></div>
-                <div class="spark-bar bg-red-500/40 h-[10%]" style="height: 10%"></div>
-                <div class="spark-bar bg-red-500/60 h-[60%]" style="height: 60%"></div>
-                <div class="spark-bar bg-red-500 h-[90%] spark-bar-active" style="height: 90%"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Volumen -->
-          <div class="glassmorphism-card p-4 rounded-2xl hover:bg-white/5 transition-all group">
-            <div class="flex justify-between items-start text-slate-500 mb-2">
-              <span class="text-[10px] font-bold uppercase tracking-widest group-hover:text-blue-400 transition-colors">Volumen (m)</span>
-              <span class="material-symbols-outlined text-sm">precision_manufacturing</span>
-            </div>
-            <div class="flex items-end justify-between">
-              <div>
-                <span class="text-2xl font-bold text-white tracking-tight">45.2k</span>
-                <div class="text-[10px] text-emerald-400 font-medium mt-0.5">98% Meta</div>
-              </div>
-              <div class="sparkline-container pb-1 opacity-60">
-                <div class="spark-bar h-[30%]" style="height: 30%"></div>
-                <div class="spark-bar h-[45%]" style="height: 45%"></div>
-                <div class="spark-bar h-[65%]" style="height: 65%"></div>
-                <div class="spark-bar h-[55%]" style="height: 55%"></div>
-                <div class="spark-bar h-[85%] spark-bar-active bg-emerald-400" style="height: 85%"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Eficiencia Energ. -->
-          <div class="glassmorphism-card p-4 rounded-2xl hover:bg-white/5 transition-all group">
-            <div class="flex justify-between items-start text-slate-500 mb-2">
-              <span class="text-[10px] font-bold uppercase tracking-widest group-hover:text-yellow-400 transition-colors">Energía</span>
-              <span class="material-symbols-outlined text-sm">bolt</span>
-            </div>
-            <div class="flex items-end justify-between">
-              <div>
-                <span class="text-2xl font-bold text-white tracking-tight">94%</span>
-                <div class="text-[10px] text-slate-400 font-medium mt-0.5">-4% vs Ayer</div>
-              </div>
-              <div class="sparkline-container pb-1">
-                <div class="spark-bar bg-yellow-500/40 h-[80%]" style="height: 80%"></div>
-                <div class="spark-bar bg-yellow-500/60 h-[70%]" style="height: 70%"></div>
-                <div class="spark-bar bg-yellow-500 h-[60%] spark-bar-active" style="height: 60%"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Sync Local -->
-          <div class="glassmorphism-card p-4 rounded-2xl hover:bg-white/5 transition-all group">
-            <div class="flex justify-between items-start text-slate-500 mb-2">
-              <span class="text-[10px] font-bold uppercase tracking-widest group-hover:text-blue-400 transition-colors">Cola Sync</span>
-              <span class="material-symbols-outlined text-sm text-blue-400">cloud_sync</span>
-            </div>
-            <div class="flex items-end justify-between">
-              <div>
-                <span class="text-2xl font-bold text-blue-400 tracking-tight">{{ state.pendingSyncCount() }}</span>
-                <div class="text-[10px] text-slate-400 font-medium mt-0.5">Registros</div>
-              </div>
-              <button (click)="router.navigate(['/sync'])" class="px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/30 text-[10px] font-bold text-blue-400 hover:bg-blue-500/20 transition-all">
-                SYNC
-              </button>
-            </div>
-          </div>
+              <div class="text-2xl font-bold tracking-tight text-white">{{ card.value }}</div>
+              <div class="mt-1 text-[10px] font-medium text-slate-400">{{ card.meta }}</div>
+            </button>
+          }
         </div>
 
-        <!-- MAIN CONTENT AREA -->
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          
-          <!-- LEFT: Feed de Operaciones -->
-          <div class="lg:col-span-3 glassmorphism-card rounded-3xl flex flex-col h-[600px] overflow-hidden">
-            <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/5 backdrop-blur-md">
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-4">
+          <section class="glassmorphism-card flex h-[600px] flex-col overflow-hidden rounded-3xl lg:col-span-3">
+            <div class="flex items-center justify-between border-b border-white/5 bg-white/5 p-5">
               <div class="flex items-center gap-4">
-                <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <span class="material-symbols-outlined text-blue-400 text-lg">reorder</span>
-                  Feed de Operaciones
+                <h2 class="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-white">
+                  <span class="material-symbols-outlined text-lg text-blue-400">reorder</span>
+                  Feed operativo
                 </h2>
-                <div class="flex items-center gap-1 bg-black/20 p-1 rounded-xl border border-white/5 hidden sm:flex">
-                  <button (click)="activeFeedTab = 'ALL'" 
-                    class="px-3 py-1 text-[10px] font-bold rounded-lg shadow-sm transition-all"
-                    [ngClass]="activeFeedTab === 'ALL' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'">Todo</button>
-                  <button (click)="activeFeedTab = 'ALERTS'" 
-                    class="px-3 py-1 text-[10px] font-bold rounded-lg transition-all"
-                    [ngClass]="activeFeedTab === 'ALERTS' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'">Alertas</button>
-                  <button (click)="activeFeedTab = 'PRODUCTION'" 
-                    class="px-3 py-1 text-[10px] font-bold rounded-lg transition-all"
-                    [ngClass]="activeFeedTab === 'PRODUCTION' ? 'bg-blue-500/40 text-white' : 'text-slate-400 hover:text-white'">Producción</button>
-                  <button (click)="activeFeedTab = 'STOCK'" 
-                    class="px-3 py-1 text-[10px] font-bold rounded-lg transition-all"
-                    [ngClass]="activeFeedTab === 'STOCK' ? 'bg-yellow-600 text-white' : 'text-slate-400 hover:text-white'">Stock</button>
+                <div class="hidden rounded-xl border border-white/5 bg-black/20 p-1 sm:flex">
+                  <button type="button" (click)="activeFeedTab = 'ALL'" class="rounded-lg px-3 py-1 text-[10px] font-bold" [ngClass]="activeFeedTab === 'ALL' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'">Todo</button>
+                  <button type="button" (click)="activeFeedTab = 'PRODUCTION'" class="rounded-lg px-3 py-1 text-[10px] font-bold" [ngClass]="activeFeedTab === 'PRODUCTION' ? 'bg-blue-500/40 text-white' : 'text-slate-400 hover:text-white'">Producción</button>
+                  <button type="button" (click)="activeFeedTab = 'ALERTS'" class="rounded-lg px-3 py-1 text-[10px] font-bold" [ngClass]="activeFeedTab === 'ALERTS' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'">Alertas</button>
+                  <button type="button" (click)="activeFeedTab = 'PLANT'" class="rounded-lg px-3 py-1 text-[10px] font-bold" [ngClass]="activeFeedTab === 'PLANT' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'">Planta</button>
                 </div>
               </div>
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] text-slate-500 font-medium">En vivo</span>
-                <button class="p-1.5 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-white">
-                  <span class="material-symbols-outlined text-lg">settings</span>
-                </button>
-              </div>
+              <span class="text-[10px] font-medium text-slate-500">{{ filteredFeed.length }} items</span>
             </div>
 
-            <div class="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar">
-              
-              @for (item of filteredFeed; track item.id) {
-                <!-- PRODUCTION CARD -->
-                @if (item.type === 'PRODUCTION') {
-                  <div (click)="selectedOt = item.data" class="flex gap-4 p-4 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 transition-all group cursor-pointer relative overflow-hidden">
-                    <div class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
-                    <div class="flex-shrink-0 mt-1">
-                      <div class="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
-                        <span class="material-symbols-outlined text-xl">{{ item.icon }}</span>
+            <div class="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-5">
+              @if (isLoadingDashboard && !feedItems.length) {
+                <div class="flex h-full flex-col items-center justify-center p-12 text-center text-slate-500">
+                  <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/5">
+                    <span class="material-symbols-outlined text-3xl opacity-60">progress_activity</span>
+                  </div>
+                  <p class="text-sm font-medium text-slate-300">Sincronizando resumen operativo...</p>
+                </div>
+              } @else {
+                @for (item of filteredFeed; track item.id) {
+                  @if (item.type === 'PRODUCTION') {
+                    <button type="button" (click)="openOtDetail(item.ot)" class="flex w-full gap-4 rounded-2xl border border-white/5 bg-white/5 p-4 text-left transition-all hover:border-white/10 hover:bg-white/10">
+                      <div class="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-400">
+                        <span class="material-symbols-outlined text-xl">conveyor_belt</span>
                       </div>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <div class="flex justify-between items-start mb-1">
-                        <span class="text-sm font-bold text-white tracking-tight">{{ item.title }}</span>
-                        <span class="text-[10px] text-slate-500 font-mono">{{ item.displayTime }}</span>
-                      </div>
-                      <p class="text-xs text-slate-400 line-clamp-1 mb-3">{{ item.description }} <span class="text-slate-600 mx-1">|</span> Máquina: <span class="text-slate-300">{{ item.machine || 'N/A' }}</span></p>
-                      <div class="w-full bg-black/30 h-1.5 rounded-full overflow-hidden border border-white/5">
-                        <div class="bg-blue-500 h-full rounded-full relative" style="width: 65%">
-                           <div class="absolute right-0 top-0 bottom-0 w-2 bg-white/50 blur-[2px]"></div>
+                      <div class="min-w-0 flex-1">
+                        <div class="mb-1 flex items-start justify-between gap-3">
+                          <span class="text-sm font-bold tracking-tight text-white">{{ item.title }}</span>
+                          <span class="rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-300">En proceso</span>
+                        </div>
+                        <p class="mb-2 text-xs text-slate-400">{{ item.description }}</p>
+                        <div class="flex flex-wrap items-center gap-3 text-[11px] font-medium text-slate-500">
+                          <span>Máquina: <span class="text-slate-300">{{ item.machine }}</span></span>
+                          <span class="text-slate-600">•</span>
+                          <span>{{ item.meta }}</span>
                         </div>
                       </div>
+                    </button>
+                  } @else {
+                    <div class="rounded-2xl border p-4" [ngClass]="getFeedToneClasses(item.type)">
+                      <div class="flex gap-4">
+                        <div class="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-current/20 bg-black/10">
+                          <span class="material-symbols-outlined text-xl">{{ item.type === 'ALERTS' ? 'warning' : 'manufacturing' }}</span>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                          <div class="mb-1 flex items-start justify-between gap-3">
+                            <span class="text-sm font-bold text-white">{{ item.title }}</span>
+                            <span class="text-[10px] font-mono text-slate-500">{{ item.meta }}</span>
+                          </div>
+                          <p class="text-xs text-slate-300/90">{{ item.description }}</p>
+                          @if (item.machine) {
+                            <p class="mt-2 text-[11px] font-medium text-slate-400">Máquina: <span class="text-slate-200">{{ item.machine }}</span></p>
+                          }
+                        </div>
+                        @if (item.route && item.actionLabel) {
+                          <div class="flex items-center">
+                            <button type="button" (click)="openRoute(item.route)" class="rounded-lg border border-current/20 bg-black/10 px-4 py-1.5 text-[10px] font-bold tracking-wide text-current">
+                              {{ item.actionLabel }}
+                            </button>
+                          </div>
+                        }
+                      </div>
                     </div>
-                    <div class="text-right flex flex-col justify-between items-end pl-4">
-                      <span class="px-2 py-0.5 rounded-md text-[9px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider">EJECUTANDO</span>
-                      <span class="text-sm font-black text-white">65%</span>
-                    </div>
-                  </div>
+                  }
                 }
 
-                <!-- ALERTS CARD -->
-                @if (item.type === 'ALERTS' || item.type === 'STOCK') {
-                  <div class="flex gap-4 p-4 rounded-2xl border transition-all relative overflow-hidden" 
-                       [ngClass]="[item.bgClass, item.borderClass]">
-                    <div class="absolute left-0 top-0 bottom-0 w-1" [ngClass]="item.sideBorder"></div>
-                    <div class="flex-shrink-0 mt-1">
-                      <div class="w-10 h-10 rounded-xl flex items-center justify-center border" [ngClass]="[item.bgClass, item.colorClass, item.borderClass]">
-                        <span class="material-symbols-outlined text-xl">{{ item.icon }}</span>
-                      </div>
+                @if (!filteredFeed.length) {
+                  <div class="flex h-full flex-col items-center justify-center p-12 text-center text-slate-500">
+                    <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/5">
+                      <span class="material-symbols-outlined text-3xl opacity-50">playlist_remove</span>
                     </div>
-                    <div class="flex-1 min-w-0">
-                      <div class="flex justify-between items-start mb-1">
-                        <span class="text-sm font-bold text-white">{{ item.title }}</span>
-                        <span class="text-[10px] text-slate-500 font-mono">{{ item.displayTime }}</span>
-                      </div>
-                      <p class="text-xs text-slate-400">{{ item.description }}</p>
-                    </div>
-                    <div class="text-right flex items-center" *ngIf="item.action">
-                      <button class="px-4 py-1.5 rounded-lg border text-[10px] font-bold transition-all shadow-lg tracking-wide hover:brightness-110"
-                              [ngClass]="[item.bgClass, item.borderClass, item.colorClass]">
-                          {{ item.action }}
-                      </button>
-                    </div>
+                    <p class="text-sm font-medium text-slate-300">No hay actividad para esta categoría.</p>
                   </div>
                 }
               }
-
-              @if (filteredFeed.length === 0) {
-                <div class="p-12 text-center text-slate-500 flex flex-col items-center justify-center h-full">
-                    <div class="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
-                        <span class="material-symbols-outlined text-3xl opacity-50">playlist_remove</span>
-                    </div>
-                    <p class="text-sm font-medium">No hay actividad en esta categoría.</p>
-                </div>
-              }
-
             </div>
 
-            <div class="p-4 border-t border-white/5 bg-white/5 backdrop-blur-md flex justify-center cursor-pointer hover:bg-white/10 transition-colors" (click)="router.navigate(['/ots'])">
-              <button class="text-[10px] font-bold text-slate-400 hover:text-white transition-all uppercase tracking-widest flex items-center gap-2">
-                Ver Historial Completo
-                <span class="material-symbols-outlined text-sm">expand_more</span>
-              </button>
-            </div>
-          </div>
+            @if (feedFooterRoute) {
+              <div class="border-t border-white/5 bg-white/5 p-4">
+                <button type="button" (click)="openRoute(feedFooterRoute)" class="mx-auto flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 transition-all hover:text-white">
+                  {{ feedFooterLabel }}
+                  <span class="material-symbols-outlined text-sm">open_in_new</span>
+                </button>
+              </div>
+            }
+          </section>
 
-          <!-- RIGHT: Sidebar Widgets -->
-          <div class="space-y-6">
-            
-            <!-- Quick Operations -->
-            <div class="glassmorphism-card rounded-3xl p-5">
-              <h2 class="text-xs font-bold text-slate-300 mb-4 uppercase tracking-widest flex items-center gap-2">
-                <span class="material-symbols-outlined text-blue-400 text-sm">bolt</span>
-                Acciones Rápidas
+          <aside class="space-y-6">
+            <section class="glassmorphism-card rounded-3xl p-5">
+              <h2 class="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-300">
+                <span class="material-symbols-outlined text-sm text-blue-400">bolt</span>
+                Acciones rápidas
               </h2>
               <div class="grid grid-cols-2 gap-3">
-                <button (click)="showOtFormModal = true" class="flex flex-col items-center justify-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:bg-blue-600/20 hover:border-blue-500/50 transition-all group">
-                  <span class="material-symbols-outlined text-blue-400 mb-2 text-2xl group-hover:scale-110 transition-transform">add_task</span>
-                  <span class="text-[10px] font-bold text-slate-300 uppercase tracking-wide">Nueva OT</span>
-                </button>
-                <button (click)="showImportModal = true" class="flex flex-col items-center justify-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:bg-emerald-600/20 hover:border-emerald-500/50 transition-all group">
-                  <span class="material-symbols-outlined text-emerald-400 mb-2 text-2xl group-hover:scale-110 transition-transform">upload_file</span>
-                  <span class="text-[10px] font-bold text-slate-300 uppercase tracking-wide">Importar</span>
-                </button>
-                <button (click)="router.navigate(['/incidents'])" class="flex flex-col items-center justify-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:bg-red-600/20 hover:border-red-500/50 transition-all group">
-                  <span class="material-symbols-outlined text-red-400 mb-2 text-2xl group-hover:scale-110 transition-transform">report_problem</span>
-                  <span class="text-[10px] font-bold text-slate-300 uppercase tracking-wide">Falla</span>
-                </button>
-                <button class="flex flex-col items-center justify-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:bg-purple-600/20 hover:border-purple-500/50 transition-all group">
-                  <span class="material-symbols-outlined text-purple-400 mb-2 text-2xl group-hover:scale-110 transition-transform">qr_code_scanner</span>
-                  <span class="text-[10px] font-bold text-slate-300 uppercase tracking-wide">Escanear</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- System Logs -->
-            <div class="bg-black/20 border border-white/5 rounded-3xl p-5 backdrop-blur-sm">
-              <div class="flex items-center gap-2 mb-3">
-                <span class="material-symbols-outlined text-slate-500 text-sm">terminal</span>
-                <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Logs del Sistema</h2>
-              </div>
-              <div class="font-mono text-[9px] text-slate-400 space-y-2">
-                @for (log of systemLogs; track log.timestamp) {
-                    <p class="flex gap-2">
-                        <span class="font-bold text-blue-500">{{ log.timestamp | date:'HH:mm:ss' }}</span> 
-                        <span class="text-slate-300 truncate">{{ log.action }} - {{ log.details | slice:0:30 }}</span>
-                    </p>
-                }
-                @if (systemLogs.length === 0) {
-                    <p class="text-slate-600 italic">Esperando actividad...</p>
+                @for (action of quickActions; track action.route) {
+                  <button type="button" (click)="openRoute(action.route)" class="rounded-2xl border border-white/5 bg-white/5 p-4 text-left transition-all hover:bg-white/10">
+                    <span class="material-symbols-outlined text-2xl" [ngClass]="action.accent">{{ action.icon }}</span>
+                    <div class="mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-200">{{ action.label }}</div>
+                    <div class="mt-1 text-[11px] text-slate-500">{{ action.meta }}</div>
+                  </button>
                 }
               </div>
-            </div>
+            </section>
 
-          </div>
+            <section class="glassmorphism-card rounded-3xl p-5">
+              <div class="mb-4 flex items-center gap-2">
+                <span class="material-symbols-outlined text-sm text-amber-400">precision_manufacturing</span>
+                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-300">Planta</h2>
+              </div>
+              <div class="grid grid-cols-3 gap-3">
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <div class="text-[10px] uppercase tracking-widest text-slate-500">Operativas</div>
+                  <div class="mt-1 text-lg font-bold text-emerald-400">{{ machineMetrics.operational }}</div>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <div class="text-[10px] uppercase tracking-widest text-slate-500">Atención</div>
+                  <div class="mt-1 text-lg font-bold text-amber-300">{{ machineMetrics.attention }}</div>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <div class="text-[10px] uppercase tracking-widest text-slate-500">Total</div>
+                  <div class="mt-1 text-lg font-bold text-white">{{ machineMetrics.total }}</div>
+                </div>
+              </div>
+              <div class="mt-4 space-y-2">
+                @for (machine of machineAttention; track machine.id) {
+                  <div class="flex items-center justify-between rounded-xl border border-white/5 bg-black/20 px-3 py-2">
+                    <div>
+                      <div class="text-xs font-bold text-white">{{ machine.name }}</div>
+                      <div class="text-[10px] uppercase tracking-widest text-slate-500">{{ machine.code || 'SIN-COD' }}</div>
+                    </div>
+                    <span class="rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide" [ngClass]="getMachineStatusClass(machine.status)">{{ machine.status }}</span>
+                  </div>
+                }
+                @if (!machineAttention.length) {
+                  <div class="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-xs font-medium text-emerald-300">
+                    No hay máquinas fuera del estado operativo normal.
+                  </div>
+                }
+              </div>
+            </section>
 
+            <section class="rounded-3xl border border-white/5 bg-black/20 p-5 backdrop-blur-sm">
+              <div class="mb-3 flex items-center gap-2">
+                <span class="material-symbols-outlined text-sm text-slate-500">terminal</span>
+                <h2 class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Logs del sistema</h2>
+              </div>
+              <div class="space-y-2 font-mono text-[9px] text-slate-400">
+                @for (log of systemLogs; track log.id) {
+                  <p class="flex gap-2">
+                    <span class="font-bold text-blue-500">{{ log.timestamp | date:'HH:mm:ss' }}</span>
+                    <span class="truncate text-slate-300">{{ log.action }} - {{ log.details | slice:0:44 }}</span>
+                  </p>
+                }
+                @if (!systemLogs.length) {
+                  <p class="italic text-slate-600">Esperando actividad...</p>
+                }
+              </div>
+            </section>
+          </aside>
         </div>
-
       </div>
     </div>
   `,
   styles: [`
-    .glassmorphism-card {
-        @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg;
+    .glassmorphism-card { @apply border border-white/10 bg-white/5 shadow-lg backdrop-blur-xl; }
+    .bg-gradient-mesh {
+      background-color: #0b0e14;
+      background-image:
+        radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%),
+        radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%),
+        radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
     }
-    .sparkline-container {
-        height: 30px;
-        display: flex;
-        align-items: flex-end;
-        gap: 2px;
-    }
-    .spark-bar {
-        width: 4px;
-        background: currentColor;
-        opacity: 0.2;
-        border-radius: 1px;
-    }
-    .spark-bar-active {
-        opacity: 1;
-        box-shadow: 0 0 8px currentColor;
-    }
-    .custom-scrollbar::-webkit-scrollbar {
-        width: 6px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-track {
-        background: rgba(0,0,0,0.2); 
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: rgba(255,255,255,0.1); 
-        border-radius: 10px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: rgba(255,255,255,0.2); 
-    }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 999px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
     @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(-5px); }
-        to { opacity: 1; transform: translateY(0); }
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
     }
-    .animate-fadeIn {
-        animation: fadeIn 0.2s ease-out;
-    }
-  `]
+    .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
+  `],
 })
-export class DashboardComponent implements OnDestroy {
+export class DashboardComponent implements OnInit, OnDestroy {
   state = inject(StateService);
   ordersService = inject(OrdersService);
   qualityService = inject(QualityService);
+  production = inject(ProductionService);
   audit = inject(AuditService);
   router = inject(Router);
   fileExport = inject(FileExportService);
   notifications = inject(NotificationService);
 
-  @ViewChild('dashboardContent') dashboardContent!: ElementRef;
+  @ViewChild('dashboardContent') dashboardContent!: ElementRef<HTMLElement>;
 
-  showImportModal = false;
-  showOtFormModal = false;
   showExportMenu = false;
   selectedOt: OT | null = null;
   now = new Date();
-  
-  activeFeedTab: 'ALL' | 'ALERTS' | 'PRODUCTION' | 'STOCK' = 'ALL';
+  activeFeedTab: DashboardFeedTab = 'ALL';
+  isLoadingDashboard = true;
 
-  private clockInterval: any;
+  private clockInterval: ReturnType<typeof setInterval> | null = null;
 
-  constructor() {
+  ngOnInit() {
     this.clockInterval = setInterval(() => {
       this.now = new Date();
     }, 1000);
+
+    void this.loadDashboardData();
   }
 
   ngOnDestroy() {
     if (this.clockInterval) clearInterval(this.clockInterval);
   }
 
-  // EXPORT FUNCTIONS
-  async exportToPdf() {
-    this.showExportMenu = false;
-    const element = this.dashboardContent.nativeElement;
-    
-    try {
-      const dateStr = new Date().toISOString().slice(0, 10);
-      await this.fileExport.exportElementToPdf(element, `Dashboard_Report_${dateStr}.pdf`, {
-        orientation: 'l',
-        backgroundColor: '#0B0E14',
-      });
-      this.audit.log(this.state.userName(), this.state.userRole(), 'DASHBOARD', 'Export PDF', 'Exportación visual del tablero completada.');
-
-    } catch (err) {
-      this.notifications.showError('Error al generar PDF.');
-    }
-  }
-
-  async exportToExcel() {
-    this.showExportMenu = false;
-    await this.fileExport.preloadXlsx();
-    const xlsx = this.fileExport.getXlsx();
-    const wb = xlsx.utils.book_new();
-    const dateStr = new Date().toISOString().split('T')[0];
-
-    // Sheet 1: General Stats
-    const statsData = [
-      ['REPORTE GENERAL DE PLANTA', dateStr],
-      [''],
-      ['METRICAS PRINCIPALES'],
-      ['OEE Global', '82.4%'],
-      ['OTs Activas', this.activeProduction.length],
-      ['Pendientes', this.stats.pending],
-      ['Metros Totales (Volumen)', '45.2k'],
-      ['Incidencias Activas', this.activeIncidentsCount],
-      ['Prioridad Alta', this.highPriorityCount],
-      ['Eficiencia Energética', '94%'],
-      ['Cola de Sincronización', this.state.pendingSyncCount()]
+  get cards() {
+    return [
+      {
+        label: 'Reportes cargados',
+        value: this.reportMetrics.totalReports,
+        meta: 'Impresión, troquelado, rebobinado y empaquetado',
+        accent: 'text-blue-400',
+        icon: 'assignment_turned_in',
+      },
+      {
+        label: 'OTs activas',
+        value: this.activeProduction.length,
+        meta: `${this.stats.pending} pendientes en gestión`,
+        accent: 'text-blue-400',
+        icon: 'settings_input_component',
+      },
+      {
+        label: 'Incidencias',
+        value: this.activeIncidentsCount,
+        meta: `${this.highPriorityCount} de prioridad alta`,
+        accent: 'text-red-400',
+        icon: 'report',
+        route: '/incidents',
+      },
+      {
+        label: 'Metros registrados',
+        value: this.reportMetrics.totalMeters.toLocaleString('es-PE'),
+        meta: 'Impresión + rebobinado + empaquetado',
+        accent: 'text-emerald-400',
+        icon: 'straighten',
+      },
+      {
+        label: 'Máquinas en atención',
+        value: this.machineMetrics.attention,
+        meta: `${this.machineMetrics.operational} operativas de ${this.machineMetrics.total}`,
+        accent: 'text-amber-400',
+        icon: 'precision_manufacturing',
+      },
+      {
+        label: 'Cola sync',
+        value: this.state.pendingSyncCount(),
+        meta: this.syncStatusLabel,
+        accent: 'text-violet-400',
+        icon: 'cloud_sync',
+        route: '/sync',
+      },
     ];
-    const wsStats = xlsx.utils.aoa_to_sheet(statsData);
-    xlsx.utils.book_append_sheet(wb, wsStats, "KPIs");
-
-    const activeOTsData = this.activeProduction.map(ot => ({
-      OT: ot.OT,
-      Cliente: ot['Razon Social'],
-      Producto: ot.descripcion,
-      Maquina: ot.maquina,
-      Metros: ot.total_mtl,
-      Estado: ot.Estado_pedido
-    }));
-    const wsOTs = xlsx.utils.json_to_sheet(activeOTsData);
-    const XLSX = xlsx;
-    XLSX.utils.book_append_sheet(wb, wsOTs, "Producción en Curso");
-    // Sheet 3: Feed / Logs
-    const feedData = this.feedItems.map(item => ({
-      Hora: item.displayTime,
-      Tipo: item.type,
-      Titulo: item.title,
-      Descripcion: item.description,
-      Maquina: item.machine || '-'
-    }));
-    const wsFeed = xlsx.utils.json_to_sheet(feedData);
-    xlsx.utils.book_append_sheet(wb, wsFeed, "Feed de Actividad");
-
-    await this.fileExport.writeWorkbook(wb, `Dashboard_Data_${dateStr}.xlsx`);
-    this.audit.log(this.state.userName(), this.state.userRole(), 'DASHBOARD', 'Export Excel', 'Exportación de datos estadísticos completada.');
   }
 
-  // Getter for real logs
-  get systemLogs() {
-      // Get the last 6 logs from the service
-      return this.audit.logs().slice(0, 6);
+  get quickActions() {
+    return [
+      { route: '/ots', icon: 'assignment', label: 'Gestión OTs', meta: 'Administrar órdenes activas.', permission: 'workorders.view', accent: 'text-blue-400' },
+      { route: '/reports/print', icon: 'description', label: 'Reportes', meta: 'Consultar producción real.', permission: 'reports.print.view', accent: 'text-emerald-400' },
+      { route: '/incidents', icon: 'report_problem', label: 'Incidencias', meta: 'Abrir calidad.', permission: 'quality.incidents.view', accent: 'text-red-400' },
+      { route: '/sync', icon: 'cloud_sync', label: 'Sincronización', meta: 'Revisar cola y errores.', permission: 'sync.manage', accent: 'text-violet-400' },
+    ].filter((action) => this.state.hasPermission(action.permission));
   }
 
   get activeProduction() {
     return this.ordersService.ots
-      .filter(ot => ot.Estado_pedido === 'EN PROCESO')
-      .slice(0, 5); 
+      .filter((ot) => String(ot.Estado_pedido || '').toUpperCase() === 'EN PROCESO')
+      .slice(0, 6) as OT[];
   }
 
   get activeIncidentsCount() {
@@ -554,151 +407,234 @@ export class DashboardComponent implements OnDestroy {
   }
 
   get highPriorityCount() {
-    return this.qualityService.activeIncidents.filter(i => i.priority === 'Alta').length;
+    return this.qualityService.activeIncidents.filter((incident) => incident.priority === 'Alta').length;
   }
 
   get stats() {
-    const all = this.ordersService.ots;
-    let totalMeters = 0;
-    
-    all.forEach(ot => {
-        const mtl = parseFloat(String(ot.total_mtl || '0').replace(/,/g, ''));
-        if (!isNaN(mtl)) totalMeters += mtl;
-    });
-
     return {
-      pending: all.filter(ot => ot.Estado_pedido === 'PENDIENTE').length,
-      totalMeters: Math.round(totalMeters)
+      pending: this.ordersService.ots.filter((ot) => String(ot.Estado_pedido || '').toUpperCase() === 'PENDIENTE').length,
     };
   }
 
-  get workstationStatus() {
-    return [
-      { name: 'Flexo-03', status: 'Carga 100%', color: 'bg-green-500 text-green-500' },
-      { name: 'Offset-02', status: 'Inactivo (Rep)', color: 'bg-amber-500 text-amber-500' },
-      { name: 'Digital-V2', status: 'Carga 45%', color: 'bg-green-500 text-green-500' },
-      { name: 'Troquel-01', status: 'Operando', color: 'bg-green-500 text-green-500' },
-      { name: 'Rebob-04', status: 'Desconectado', color: 'bg-slate-500 text-slate-500' }
-    ];
+  get reportMetrics() {
+    const printMeters = this.production.printReports.reduce((acc, report) => acc + report.totalMeters, 0);
+    const rewindMeters = this.production.rewindReports.reduce((acc, report) => acc + report.meters, 0);
+    const packagingMeters = this.production.packagingReports.reduce((acc, report) => acc + report.meters, 0);
+
+    return {
+      totalReports:
+        this.production.printReports.length
+        + this.production.diecutReports.length
+        + this.production.rewindReports.length
+        + this.production.packagingReports.length,
+      totalMeters: printMeters + rewindMeters + packagingMeters,
+    };
   }
 
-  get feedItems() {
-    const items: any[] = [];
+  get machineAttention() {
+    return this.state.adminMachines()
+      .filter((machine) => !machine.active || machine.status !== 'Activo')
+      .slice(0, 5);
+  }
 
-    // 1. Production OTs
-    this.ordersService.ots.forEach(ot => {
-        if (ot.Estado_pedido === 'EN PROCESO') {
-            items.push({
-                id: ot.OT,
-                type: 'PRODUCTION',
-                title: `OT #${ot.OT} - Producción en Curso`,
-                description: ot.descripcion,
-                machine: ot.maquina,
-                time: new Date(),
-                displayTime: 'En curso',
-                icon: 'conveyor_belt',
-                data: ot 
-            });
-        }
-    });
+  get machineMetrics() {
+    const machines = this.state.adminMachines();
+    return {
+      total: machines.length,
+      operational: machines.filter((machine) => machine.active && machine.status === 'Activo').length,
+      attention: machines.filter((machine) => !machine.active || machine.status !== 'Activo').length,
+    };
+  }
 
-    // 2. Incidents (Alerts)
-    this.qualityService.activeIncidents.forEach(inc => {
-        const isHigh = inc.priority === 'Alta';
-        items.push({
-            id: inc.id,
-            type: 'ALERTS',
-            title: `Incidencia: ${inc.title}`,
-            description: inc.description,
-            machine: inc.machineRef,
-            time: inc.reportedAt,
-            displayTime: this.formatTime(inc.reportedAt),
-            icon: isHigh ? 'warning' : 'info',
-            colorClass: isHigh ? 'text-red-400' : 'text-yellow-400',
-            bgClass: isHigh ? 'bg-red-500/5' : 'bg-yellow-500/5',
-            borderClass: isHigh ? 'border-red-500/20' : 'border-yellow-500/20',
-            sideBorder: isHigh ? 'bg-red-500' : 'bg-yellow-500',
-            action: 'VER DETALLE',
-            statusLabel: inc.priority.toUpperCase(),
-            isAlert: true
-        });
-    });
+  get systemLogs() {
+    return this.audit.logs().slice(0, 6);
+  }
 
-    // 3. Stock (Mock)
-    items.push({
-        id: 'stk-1',
-        type: 'STOCK',
-        title: 'Alerta de Inventario: Stock Crítico',
-        description: 'Polietileno HD - Rollo 200m (B-12). Solo 4.2 Kg restantes.',
-        time: new Date(Date.now() - 1000 * 60 * 35),
-        displayTime: '09:35',
-        icon: 'inventory_2',
-        colorClass: 'text-red-400',
-        bgClass: 'bg-red-500/5',
-        borderClass: 'border-red-500/20',
-        sideBorder: 'bg-red-500',
-        action: 'REORDENAR',
-        isStock: true
-    });
-    items.push({
-        id: 'stk-2',
-        type: 'STOCK',
-        title: 'Recepción de Material',
-        description: 'Lote #441 (Barniz UV) verificado sin desviaciones.',
-        time: new Date(Date.now() - 1000 * 60 * 90),
-        displayTime: '08:40',
-        icon: 'verified_user',
-        colorClass: 'text-emerald-400',
-        bgClass: 'bg-white/5',
-        borderClass: 'border-white/5',
-        sideBorder: 'bg-emerald-500',
-        isStock: true
-    });
+  get syncStatusLabel() {
+    const pending = this.state.pendingSyncCount();
+    if (pending > 0) return `${pending} pendientes`;
 
-    return items.sort((a, b) => b.time.getTime() - a.time.getTime());
+    switch (this.state.syncStatus()) {
+      case 'offline':
+        return 'Sin conexión';
+      case 'syncing':
+        return 'Sincronizando';
+      case 'conflict':
+        return 'Con conflicto';
+      default:
+        return 'Al día';
+    }
+  }
+
+  get feedItems(): DashboardFeedItem[] {
+    const productionItems = this.activeProduction.map<DashboardFeedItem>((ot) => ({
+      id: `prod-${ot.OT}`,
+      type: 'PRODUCTION',
+      title: `OT ${ot.OT}`,
+      description: String(ot.descripcion || 'Sin descripción disponible.'),
+      meta: `${Number(ot.total_mtl || 0) || 0} m planificados`,
+      machine: String(ot.maquina || 'Sin asignar'),
+      ot,
+    }));
+
+    const alertItems = [...this.qualityService.activeIncidents]
+      .sort((left, right) => right.reportedAt.getTime() - left.reportedAt.getTime())
+      .slice(0, 6)
+      .map<DashboardFeedItem>((incident) => ({
+        id: `alert-${incident.id}`,
+        type: 'ALERTS',
+        title: incident.title,
+        description: incident.description || 'Incidencia sin descripción adicional.',
+        meta: this.formatTime(incident.reportedAt),
+        machine: incident.machineRef || undefined,
+        route: '/incidents',
+        actionLabel: 'Abrir',
+      }));
+
+    const plantItems = this.machineAttention.map<DashboardFeedItem>((machine) => ({
+      id: `plant-${machine.id}`,
+      type: 'PLANT',
+      title: machine.name,
+      description: `Estado actual: ${machine.status}.`,
+      meta: machine.code || 'Sin código',
+      route: this.state.hasPermission('admin.panel.view') ? '/admin' : undefined,
+      actionLabel: this.state.hasPermission('admin.panel.view') ? 'Revisar' : undefined,
+    }));
+
+    return [...productionItems, ...alertItems, ...plantItems];
   }
 
   get filteredFeed() {
-      if (this.activeFeedTab === 'ALL') return this.feedItems;
-      return this.feedItems.filter(i => i.type === this.activeFeedTab);
+    return this.activeFeedTab === 'ALL'
+      ? this.feedItems
+      : this.feedItems.filter((item) => item.type === this.activeFeedTab);
   }
 
-  formatTime(date: Date) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  get feedFooterRoute() {
+    if (this.activeFeedTab === 'ALERTS') return '/incidents';
+    if (this.activeFeedTab === 'PLANT') return this.state.hasPermission('sync.manage') ? '/sync' : null;
+    return '/ots';
   }
 
-  async handleImport(data: any[]) {
+  get feedFooterLabel() {
+    if (this.activeFeedTab === 'ALERTS') return 'Abrir módulo de incidencias';
+    if (this.activeFeedTab === 'PLANT') return 'Abrir módulo relacionado';
+    return 'Abrir Gestión de OTs';
+  }
+
+  async exportToPdf() {
+    this.showExportMenu = false;
+
     try {
-      const result = await this.ordersService.importWorkOrders(data);
-      this.showImportModal = false;
-      alert(`Importación completada.\n\nNuevos: ${result.created}\nActualizados: ${result.updated}\nTotal procesados: ${result.total}`);
-    } catch (error: any) {
-      console.error('Error importing work orders from dashboard:', error);
-      this.showImportModal = false;
-      alert(`No se pudo completar la importación de OTs.\n${error?.message || 'Error desconocido.'}`);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      await this.fileExport.exportElementToPdf(this.dashboardContent.nativeElement, `dashboard_resumen_${dateStr}.pdf`, {
+        orientation: 'l',
+        backgroundColor: '#0b0e14',
+      });
+      this.audit.log(this.state.userName(), this.state.userRole(), 'DASHBOARD', 'Export PDF', 'Exportación visual del tablero completada.');
+    } catch {
+      this.notifications.showError('No fue posible generar el PDF del dashboard.');
     }
   }
 
-  async handleOtSave(formData: Partial<OT>) {
-    const existing = await this.ordersService.findWorkOrderByOtNumber(formData.OT);
-
-    if (existing && !confirm(`La OT ${formData.OT} ya existe. ¿Desea sobrescribirla?`)) {
-      return;
-    }
+  async exportToExcel() {
+    this.showExportMenu = false;
 
     try {
-      await this.ordersService.saveOt({
-        ...existing,
-        ...formData,
-        Estado_pedido: formData.Estado_pedido || existing?.Estado_pedido || 'PENDIENTE',
-        'FECHA INGRESO PLANTA': formData['FECHA INGRESO PLANTA'] || existing?.['FECHA INGRESO PLANTA'] || new Date().toISOString().split('T')[0],
-      }, { activate: true });
+      const dateStr = new Date().toISOString().split('T')[0];
+      await this.fileExport.exportJsonToWorkbook([
+        {
+          name: 'Resumen',
+          rows: [
+            ['REPORTE GENERAL DE PLANTA', dateStr],
+            [''],
+            ['METRICA', 'VALOR'],
+            ['Reportes cargados', this.reportMetrics.totalReports],
+            ['OTs activas', this.activeProduction.length],
+            ['OTs pendientes', this.stats.pending],
+            ['Metros registrados', this.reportMetrics.totalMeters],
+            ['Incidencias activas', this.activeIncidentsCount],
+            ['Incidencias alta prioridad', this.highPriorityCount],
+            ['Maquinas en atencion', this.machineMetrics.attention],
+            ['Cola de sincronizacion', this.state.pendingSyncCount()],
+          ],
+        },
+        {
+          name: 'Produccion',
+          rows: this.activeProduction.map((ot) => ({
+            OT: ot.OT,
+            Cliente: ot['Razon Social'],
+            Producto: ot.descripcion,
+            Maquina: ot.maquina || 'Sin asignar',
+            Estado: ot.Estado_pedido,
+            MetrosPlanificados: Number(ot.total_mtl || 0) || 0,
+          })),
+        },
+        {
+          name: 'Feed',
+          rows: this.feedItems.map((item) => ({
+            Tipo: item.type,
+            Titulo: item.title,
+            Descripcion: item.description,
+            Maquina: item.machine || '-',
+            Referencia: item.meta,
+          })),
+        },
+      ], `dashboard_data_${dateStr}.xlsx`);
 
-      this.showOtFormModal = false;
-      alert(`OT ${formData.OT} guardada correctamente.`);
-    } catch (error: any) {
-      console.error('Error saving work order from dashboard:', error);
-      alert(`No se pudo guardar la OT.\n${error?.message || 'Error desconocido.'}`);
+      this.audit.log(this.state.userName(), this.state.userRole(), 'DASHBOARD', 'Export Excel', 'Exportación de datos del tablero completada.');
+    } catch {
+      this.notifications.showError('No fue posible exportar los datos del dashboard.');
+    }
+  }
+
+  openOtDetail(ot?: OT) {
+    if (ot) this.selectedOt = ot;
+  }
+
+  openRoute(route: string | null | undefined) {
+    if (!route) return;
+    this.showExportMenu = false;
+    void this.router.navigate([route]);
+  }
+
+  getFeedToneClasses(type: DashboardFeedType) {
+    if (type === 'ALERTS') return 'border-red-500/20 bg-red-500/5 text-red-400';
+    if (type === 'PLANT') return 'border-amber-500/20 bg-amber-500/5 text-amber-300';
+    return 'border-blue-500/20 bg-blue-500/5 text-blue-400';
+  }
+
+  getMachineStatusClass(status: string) {
+    switch (status) {
+      case 'Mantenimiento':
+        return 'border-amber-500/20 bg-amber-500/10 text-amber-300';
+      case 'Detenida':
+        return 'border-red-500/20 bg-red-500/10 text-red-300';
+      case 'Sin Operario':
+        return 'border-yellow-500/20 bg-yellow-500/10 text-yellow-200';
+      case 'Inactivo':
+        return 'border-slate-500/20 bg-slate-500/10 text-slate-300';
+      default:
+        return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300';
+    }
+  }
+
+  private formatTime(date: Date | null | undefined) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'Sin hora';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  private async loadDashboardData() {
+    this.isLoadingDashboard = true;
+    try {
+      await Promise.allSettled([
+        this.ordersService.reload(),
+        this.qualityService.reload(),
+        this.production.reload(),
+        this.audit.reload({ page: 1, pageSize: 12 }),
+      ]);
+    } finally {
+      this.isLoadingDashboard = false;
     }
   }
 }
