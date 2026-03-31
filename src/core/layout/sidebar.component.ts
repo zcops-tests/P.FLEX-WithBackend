@@ -4,6 +4,8 @@ import { CommonModule } from '@angular/common';
 import { RouterModule, Router } from '@angular/router';
 import { StateService } from '../../services/state.service';
 import { QualityService } from '../../features/quality/services/quality.service';
+import { OrdersService } from '../../features/orders/services/orders.service';
+import { ApiClientService } from '../../services/api-client.service';
 
 interface MenuItem {
   label: string;
@@ -362,12 +364,14 @@ export class SidebarComponent implements OnInit, OnDestroy {
   state = inject(StateService);
   router: Router = inject(Router);
   qualityService = inject(QualityService);
+  ordersService = inject(OrdersService);
+  apiClient = inject(ApiClientService);
   expandedMenus: string[] = [];
 
   // Connectivity Signals
   isOnline = signal(true);
   latency = signal(24);
-  private intervalId: any;
+  private intervalId: ReturnType<typeof window.setInterval> | null = null;
 
   ngOnInit() {
     this.isOnline.set(navigator.onLine);
@@ -387,22 +391,38 @@ export class SidebarComponent implements OnInit, OnDestroy {
 
   updateStatus = () => {
     this.isOnline.set(navigator.onLine);
-    if (navigator.onLine) this.measureLatency();
+    if (navigator.onLine) {
+      void this.measureLatency();
+    }
   }
 
   async measureLatency() {
-    if (!this.isOnline()) return;
-    
+    if (!navigator.onLine) {
+      this.isOnline.set(false);
+      return;
+    }
+
     const start = performance.now();
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 4000);
+
     try {
-        // Try to fetch current origin HEAD to test RTT
-        await fetch(window.location.origin, { method: 'HEAD', cache: 'no-store' });
+        const response = await fetch(`${this.apiClient.baseUrl}/health/live`, {
+          method: 'GET',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
         const end = performance.now();
+        this.isOnline.set(true);
         this.latency.set(Math.round(end - start));
-    } catch (e) {
-        // Fallback for strict environments (like some file:// or restricted CORS)
-        // Simulate jitter if online but fetch fails
-        this.latency.set(Math.floor(Math.random() * 40) + 15);
+    } catch {
+        this.isOnline.set(false);
+    } finally {
+        window.clearTimeout(timeoutId);
     }
   }
 
@@ -443,7 +463,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
 
   private readonly baseMenuItems: MenuItem[] = [
     { label: 'DASHBOARD', icon: 'dashboard', route: '/dashboard', permissions: ['dashboard.view'] },
-    { label: 'OTS', icon: 'assignment', route: '/ots', badge: '3', permissions: ['workorders.view'] },
+    { label: 'OTS', icon: 'assignment', route: '/ots', permissions: ['workorders.view'] },
     { label: 'PROGRAMACIÓN', icon: 'calendar_month', route: '/schedule', permissions: ['planning.view'] },
     { 
       label: 'REPORTES', icon: 'precision_manufacturing', route: '/reports',
@@ -473,7 +493,16 @@ export class SidebarComponent implements OnInit, OnDestroy {
   ];
 
   get mainMenuItems() {
-    return this.baseMenuItems.filter((item) => this.canAccess(item.permissions) && this.hasVisibleChildren(item));
+    const managementOtCount = this.ordersService.ots.length;
+
+    return this.baseMenuItems
+      .map((item) => item.label === 'OTS'
+        ? {
+            ...item,
+            badge: managementOtCount > 0 ? String(managementOtCount) : undefined,
+          }
+        : item)
+      .filter((item) => this.canAccess(item.permissions) && this.hasVisibleChildren(item));
   }
 
   get managementMenuItems() {

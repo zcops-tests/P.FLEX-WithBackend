@@ -9,6 +9,8 @@ import { QualityService } from '../quality/services/quality.service';
 import { FileExportService } from '../../services/file-export.service';
 import { NotificationService } from '../../services/notification.service';
 import { AdminService } from '../admin/services/admin.service';
+import { AppUser } from '../admin/models/admin.models';
+import { isOperatorAreaMatch, OperatorProductionArea } from '../admin/utils/operator-area.util';
 
 interface ScheduledJob {
   id: string;
@@ -686,7 +688,6 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   showNowLine = true;
   isSavingJob = false;
   isScheduleLoading = true;
-  readonly operatorOptions = ['Juan Martinez', 'Carlos Ruiz', 'Ana Lopez', 'Pedro Night', 'Luis Night'];
   readonly validationSteps = [1, 2, 3, 4];
   private scheduleHydrationPending = false;
   private readonly scheduleMachineSyncEffect = effect(() => {
@@ -936,6 +937,25 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   get selectedMachineForModal(): Machine | null {
     return this.state.adminMachines().find((machine) => machine.id === this.currentJob.machineId) || null;
   }
+  get operatorOptions(): string[] {
+    const scheduleArea = this.getSelectedOperatorArea();
+    const dynamicUsers = this.state.adminUsers()
+      .filter((user) => this.isAssignableScheduleUser(user, scheduleArea))
+      .map((user) => String(user.name || '').trim())
+      .filter(Boolean);
+    const scheduledOperators = this._jobs
+      .map((job) => String(job.operator || '').trim())
+      .filter(Boolean);
+    const hostName = String(this.state.userName() || '').trim();
+
+    const unique = [...new Set([
+      ...dynamicUsers,
+      ...scheduledOperators,
+      ...(hostName ? [hostName] : []),
+    ])];
+
+    return unique.sort((left, right) => left.localeCompare(right, 'es'));
+  }
   get operatorSelectOptions() {
     const currentOperator = String(this.currentJob.operator || '').trim();
     return currentOperator && !this.operatorOptions.includes(currentOperator)
@@ -1029,7 +1049,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
       scheduledDate: this.getCurrentLocalDate(),
       color: '#3b82f6',
       machineId: this.filteredMachines[0]?.id || '',
-      operator: this.operatorOptions[0],
+      operator: this.operatorOptions[0] || this.state.userName(),
       meters: 0,
     };
     this.showJobModal = true;
@@ -1144,5 +1164,46 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     } catch (error) {
       this.notifications.showError('Hubo un error al generar el PDF visual.');
     }
+  }
+
+  private getSelectedOperatorArea(): OperatorProductionArea {
+    if (this.selectedArea === 'TROQUELADO') return 'Troquelado';
+    if (this.selectedArea === 'REBOBINADO') return 'Rebobinado';
+    return 'Impresión';
+  }
+
+  private isAssignableScheduleUser(
+    user: AppUser,
+    scheduleArea: OperatorProductionArea,
+  ) {
+    if (!user.active || !String(user.name || '').trim()) {
+      return false;
+    }
+
+    const roleToken = this.normalizeScheduleToken(
+      user.roleCode || user.roleName || user.role,
+    );
+
+    if (roleToken.includes('SISTEM') || roleToken.includes('AUDIT')) {
+      return false;
+    }
+
+    const assignedAreas = Array.isArray(user.assignedAreas)
+      ? user.assignedAreas.filter(Boolean)
+      : [];
+
+    if (!assignedAreas.length) {
+      return true;
+    }
+
+    return assignedAreas.some((area) => isOperatorAreaMatch(scheduleArea, area));
+  }
+
+  private normalizeScheduleToken(value: unknown) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
   }
 }

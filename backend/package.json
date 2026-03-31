@@ -19,6 +19,7 @@
     "start:prod": "node dist/src/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:baseline": "jest --runInBand src/modules/auth/auth.service.spec.ts src/modules/users/users.service.spec.ts src/modules/machines/machines.service.spec.ts src/modules/work-orders/work-orders.service.spec.ts src/modules/production/printing/printing.service.spec.ts src/modules/production/diecutting/diecutting.service.spec.ts src/modules/production/rewinding/rewinding.service.spec.ts src/modules/production/packaging/packaging.service.spec.ts",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
