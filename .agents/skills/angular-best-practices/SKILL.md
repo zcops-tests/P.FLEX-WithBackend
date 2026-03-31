@@ -1,5 +1,5 @@
 ---
-name: frontend-best-practices
+name: angular-best-practices
 description: Design, review, refactor, and harden Angular 21 frontends with senior-level judgment in architecture, performance, accessibility, and security. Use when Codex needs to create or improve standalone components, route shells, signals-based state, typed forms, HTTP data flows, guards, styling systems, or frontend test coverage in this Angular 21.2.5 project.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: nodejs-backend-architect
+name: nestjs-backend-architect
 description: Design, review, refactor, and harden NestJS backends with senior-level judgment in architecture, performance, security, and operations. Use when Codex needs to create or improve NestJS modules, controllers, providers, guards, interceptors, exception filters, auth flows, persistence layers, queues, integrations, or production-readiness in TypeScript services.
 ---
 
