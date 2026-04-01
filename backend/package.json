@@ -10,6 +10,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
+    "db:planning-backfill": "node scripts/backfill-planning-history.js --apply",
     "db:reset": "prisma migrate reset --force",
     "db:seed": "prisma db seed",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",

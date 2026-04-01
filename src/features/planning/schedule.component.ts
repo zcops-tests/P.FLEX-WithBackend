@@ -1,5 +1,5 @@
 
-import { Component, inject, OnInit, OnDestroy, ElementRef, viewChild, ChangeDetectorRef, NgZone, effect } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, ElementRef, viewChild, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { OrdersService } from '../orders/services/orders.service';
@@ -11,20 +11,11 @@ import { NotificationService } from '../../services/notification.service';
 import { AdminService } from '../admin/services/admin.service';
 import { AppUser } from '../admin/models/admin.models';
 import { isOperatorAreaMatch, OperatorProductionArea } from '../admin/utils/operator-area.util';
+import { BackendApiService } from '../../services/backend-api.service';
+import { PlanningArea, PlanningScheduleEntry, PlanningShift } from './models/planning.models';
 
-interface ScheduledJob {
-  id: string;
-  ot: string;
-  client: string;
-  description: string;
-  machineId: string;
-  start: string;
-  scheduledDate?: string;
-  duration: number;
+interface ScheduledJob extends PlanningScheduleEntry {
   color: string;
-  operator: string;
-  meters: number;
-  workOrderId?: string;
 }
 
 @Component({
@@ -64,11 +55,24 @@ interface ScheduledJob {
               <h1 class="text-xl font-bold text-white tracking-tight flex items-center gap-2">
                 <span class="material-icons text-blue-500">calendar_month</span>
                 Programación de Producción
+                <span *ngIf="isHistoricalView" class="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.22em] text-amber-300">
+                  Histórico
+                </span>
               </h1>
               <p class="text-xs text-slate-400 mt-0.5">Gestión de tiempos y asignación de máquinas</p>
             </div>
             
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+               <label class="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                  <span class="material-icons text-sm text-slate-500">event</span>
+                  <span>Fecha</span>
+                  <input
+                    type="date"
+                    [ngModel]="selectedDate"
+                    (ngModelChange)="setSelectedDate($event)"
+                    class="rounded-lg border border-white/10 bg-slate-950/60 px-2 py-1 text-[11px] font-semibold tracking-normal text-white outline-none [color-scheme:dark]">
+               </label>
+
                <!-- SHIFT SELECTOR -->
                <div class="flex items-center bg-white/5 rounded-xl border border-white/10 p-1">
                   <button (click)="setShift('DIA')" 
@@ -102,7 +106,7 @@ interface ScheduledJob {
 
         <!-- AREA SELECTOR TABS -->
         <div class="flex gap-1 border-b border-white/10">
-            <button (click)="selectedArea = 'IMPRESION'"
+            <button (click)="setArea('IMPRESION')"
                [class.text-primary]="selectedArea === 'IMPRESION'"
                [class.border-primary]="selectedArea === 'IMPRESION'"
                [class.text-slate-500]="selectedArea !== 'IMPRESION'"
@@ -110,7 +114,7 @@ interface ScheduledJob {
                class="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 hover:text-white transition-colors flex items-center gap-2">
                <span class="material-icons text-sm">print</span> Impresión
             </button>
-            <button (click)="selectedArea = 'TROQUELADO'"
+            <button (click)="setArea('TROQUELADO')"
                [class.text-purple-400]="selectedArea === 'TROQUELADO'"
                [class.border-purple-400]="selectedArea === 'TROQUELADO'"
                [class.text-slate-500]="selectedArea !== 'TROQUELADO'"
@@ -118,7 +122,7 @@ interface ScheduledJob {
                class="px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 hover:text-white transition-colors flex items-center gap-2">
                <span class="material-icons text-sm">content_cut</span> Troquelado
             </button>
-            <button (click)="selectedArea = 'REBOBINADO'"
+            <button (click)="setArea('REBOBINADO')"
                [class.text-orange-400]="selectedArea === 'REBOBINADO'"
                [class.border-orange-400]="selectedArea === 'REBOBINADO'"
                [class.text-slate-500]="selectedArea !== 'REBOBINADO'"
@@ -153,6 +157,12 @@ interface ScheduledJob {
            <div *ngIf="isScheduleLoading" class="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/25 backdrop-blur-[2px]">
               <div class="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.28em] text-slate-300 shadow-lg">
                  Cargando programacion...
+              </div>
+           </div>
+
+           <div *ngIf="!isScheduleLoading && filteredMachines.length > 0 && _jobs.length === 0" class="absolute inset-x-6 top-4 z-20 flex justify-center">
+              <div class="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.26em] text-slate-300 shadow-lg">
+                 Sin programación para {{ selectedDate }} / {{ selectedShift }} / {{ selectedAreaLabel }}
               </div>
            </div>
            
@@ -669,12 +679,14 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   fileExport = inject(FileExportService);
   notifications = inject(NotificationService);
   adminService = inject(AdminService);
+  backend = inject(BackendApiService);
   private zone = inject(NgZone);
   private changeDetectorRef = inject(ChangeDetectorRef);
 
   readonly scheduleContainer = viewChild<ElementRef>('scheduleContainer');
-  selectedShift: 'DIA' | 'NOCHE' = this.getCurrentShift();
-  selectedArea: 'IMPRESION' | 'TROQUELADO' | 'REBOBINADO' = 'IMPRESION';
+  selectedShift: PlanningShift = this.getCurrentShift();
+  selectedArea: PlanningArea = 'IMPRESION';
+  selectedDate = this.getCurrentLocalDate();
   _jobs: ScheduledJob[] = [];
   showJobModal = false;
   isEditing = false;
@@ -689,16 +701,6 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   isSavingJob = false;
   isScheduleLoading = true;
   readonly validationSteps = [1, 2, 3, 4];
-  private scheduleHydrationPending = false;
-  private readonly scheduleMachineSyncEffect = effect(() => {
-    const machineCount = this.state.adminMachines().length;
-    if (!this.scheduleHydrationPending || machineCount === 0) return;
-
-    this.scheduleHydrationPending = false;
-    queueMicrotask(() => {
-      void this.refreshScheduleFromBackend();
-    });
-  });
 
   async ngOnInit() {
     this.updateNowLine();
@@ -730,19 +732,38 @@ export class ScheduleComponent implements OnInit, OnDestroy {
      if (this.selectedArea === 'REBOBINADO') typeFilter = 'Rebobinado';
      return this.state.adminMachines().filter(m => m.type === typeFilter);
   }
+  get selectedAreaLabel() {
+    if (this.selectedArea === 'TROQUELADO') return 'Troquelado';
+    if (this.selectedArea === 'REBOBINADO') return 'Rebobinado';
+    return 'Impresión';
+  }
+  get isHistoricalView() {
+    return this.selectedDate < this.getCurrentLocalDate();
+  }
   get timeSlots() { return this.selectedShift === 'DIA' ? ['07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'] : ['19:00', '20:00', '21:00', '22:00', '23:00', '00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00']; }
-  setShift(shift: 'DIA' | 'NOCHE') { this.selectedShift = shift; this.updateNowLine(); }
+  async setShift(shift: PlanningShift) {
+    if (this.selectedShift === shift) return;
+    this.selectedShift = shift;
+    this.updateNowLine();
+    await this.refreshScheduleFromBackend();
+  }
+  async setArea(area: PlanningArea) {
+    if (this.selectedArea === area) return;
+    this.selectedArea = area;
+    await this.refreshScheduleFromBackend();
+  }
+  async setSelectedDate(value: string) {
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim())
+      ? String(value).trim()
+      : this.getCurrentLocalDate();
+    if (this.selectedDate === normalized) return;
+    this.selectedDate = normalized;
+    this.updateNowLine();
+    await this.refreshScheduleFromBackend();
+  }
   trackByMachine(index: number, item: Machine) { return item.id; }
   getJobsForMachine(machineId: string): ScheduledJob[] {
-    return this._jobs.filter(j => {
-        if (j.machineId !== machineId) return false;
-        const startHour = parseInt(j.start.split(':')[0]);
-        const isNightJob = (startHour >= 19 || startHour <= 6);
-        const isDayJob = (startHour >= 7 && startHour <= 18);
-        if (this.selectedShift === 'DIA' && isDayJob) return true;
-        if (this.selectedShift === 'NOCHE' && isNightJob) return true;
-        return false;
-    });
+    return this._jobs.filter(j => j.machineId === machineId);
   }
   async updateMachineStatus(machine: Machine | undefined, newStatus: Machine['status']) {
     if (!machine || machine.status === newStatus) return;
@@ -780,6 +801,13 @@ export class ScheduleComponent implements OnInit, OnDestroy {
    }
   calculateWidth(job: ScheduledJob): number { return ((job.duration / 60) / 12) * 100; }
   updateNowLine() {
+    if (this.selectedDate !== this.getCurrentLocalDate()) {
+      this.commitScheduleViewUpdate(() => {
+        this.showNowLine = false;
+      });
+      return;
+    }
+
     const now = new Date();
     const offset = this.getHourOffset(now.getHours(), now.getMinutes());
 
@@ -836,50 +864,28 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     const hash = normalized.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return palette[hash % palette.length];
   }
-  private resolveMachineForWorkOrder(ot: Partial<OT>): Machine | null {
-    const allMachines = this.state.adminMachines();
-    const byId = allMachines.find((machine) => machine.id === String(ot.scheduleMachineId || '').trim());
-    if (byId) return byId;
-
-    const code = String(ot.codmaquina || '').trim().toUpperCase();
-    if (code) {
-      const byCode = allMachines.find((machine) => String(machine.code || '').trim().toUpperCase() === code);
-      if (byCode) return byCode;
-    }
-
-    const name = String(ot.maquina || '').trim().toUpperCase();
-    if (name) {
-      const byName = allMachines.find((machine) => String(machine.name || '').trim().toUpperCase() === name);
-      if (byName) return byName;
-    }
-
-    return null;
-  }
-  private mapWorkOrderToScheduledJob(ot: Partial<OT>): ScheduledJob | null {
-    const machine = this.resolveMachineForWorkOrder(ot);
-    const startTime = String(ot.scheduleStartTime || '').trim();
-    if (!machine || !startTime || !ot.OT) return null;
-
-    const durationMinutes = Number(ot.scheduleDurationMinutes || 0);
-
+  private mapPlanningEntryToScheduledJob(entry: any): ScheduledJob {
     return {
-      id: String((ot as any).id || ot.OT),
-      ot: String(ot.OT || '').trim().toUpperCase(),
-      client: String(ot['Razon Social'] || '').trim(),
-      description: String(ot.scheduleNotes || ot.ObsDes || '').trim(),
-      machineId: machine.id,
-      start: startTime,
-      scheduledDate: String(ot.fechaPrd || '').trim(),
-      duration: durationMinutes > 0 ? durationMinutes : 60,
-      color: this.getJobColor(String(ot.OT || machine.code)),
-      operator: String(ot.scheduleOperator || '').trim(),
-      meters: Number(ot.total_mtl || 0) || 0,
-      workOrderId: String((ot as any).id || ''),
+      id: String(entry.id || ''),
+      scheduleEntryId: String(entry.scheduleEntryId || entry.id || ''),
+      rowVersion: entry.row_version ?? entry.rowVersion,
+      ot: String(entry.ot || '').trim().toUpperCase(),
+      client: String(entry.client || '').trim(),
+      description: String(entry.notes || entry.description || '').trim(),
+      machineId: String(entry.machineId || '').trim(),
+      machineCode: String(entry.machineCode || '').trim(),
+      machineName: String(entry.machineName || '').trim(),
+      scheduledDate: String(entry.scheduledDate || this.selectedDate).trim(),
+      shift: (entry.shift || this.selectedShift) as PlanningShift,
+      area: (entry.area || this.selectedArea) as PlanningArea,
+      start: String(entry.start || '').slice(0, 5),
+      duration: Number(entry.duration || 0) || 60,
+      operator: String(entry.operator || '').trim(),
+      meters: Number(entry.meters || 0) || 0,
+      workOrderId: String(entry.workOrderId || '').trim(),
+      isHistorical: String(entry.scheduledDate || this.selectedDate).trim() < this.getCurrentLocalDate(),
+      color: this.getJobColor(String(entry.ot || entry.machineCode || entry.machineId || '')),
     };
-  }
-  private hasPersistedSchedule(ot: Partial<OT>) {
-    return Boolean(String(ot.scheduleStartTime || '').trim())
-      && Boolean(String(ot.scheduleMachineId || ot.codmaquina || ot.maquina || '').trim());
   }
   private async refreshScheduleFromBackend() {
     this.commitScheduleViewUpdate(() => {
@@ -887,22 +893,18 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     });
 
     try {
-      const managementOrders = await this.ordersService.reloadManagementOrders();
-      const backendJobs = managementOrders
-        .map((ot) => this.mapWorkOrderToScheduledJob(ot))
-        .filter((job): job is ScheduledJob => Boolean(job));
-      const hasPersistedSchedule = managementOrders.some((ot) => this.hasPersistedSchedule(ot));
-
-      this.scheduleHydrationPending = hasPersistedSchedule
-        && !backendJobs.length
-        && this.state.adminMachines().length === 0;
+      const entries = await this.backend.getPlanningSchedules({
+        date: this.selectedDate,
+        shift: this.selectedShift,
+        area: this.selectedArea,
+      });
+      const backendJobs = (entries || []).map((entry) => this.mapPlanningEntryToScheduledJob(entry));
 
       this.commitScheduleViewUpdate(() => {
         this._jobs = backendJobs;
         this.isScheduleLoading = false;
       });
     } catch {
-      this.scheduleHydrationPending = false;
       this.commitScheduleViewUpdate(() => {
         this._jobs = [];
         this.isScheduleLoading = false;
@@ -1041,12 +1043,14 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   openAddModal() {
     this.isEditing = false;
     const defaultTime = this.getDefaultModalTime();
-    this.tempStartDateTime = this.composeLocalDateTime(undefined, defaultTime);
+    this.tempStartDateTime = this.composeLocalDateTime(this.selectedDate, defaultTime);
     this.tempDurationHours = 1; 
     this.currentJob = {
       start: defaultTime,
       duration: 60,
-      scheduledDate: this.getCurrentLocalDate(),
+      scheduledDate: this.selectedDate,
+      shift: this.selectedShift,
+      area: this.selectedArea,
       color: '#3b82f6',
       machineId: this.filteredMachines[0]?.id || '',
       operator: this.operatorOptions[0] || this.state.userName(),
@@ -1091,6 +1095,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     const normalizedOt = String(this.currentJob.ot || '').trim().toUpperCase();
     const [scheduledDate, scheduledTime = this.getDefaultModalTime()] = this.tempStartDateTime.split('T');
     const durationMinutes = Math.round(this.tempDurationHours * 60);
+    const operatorName = String(this.currentJob.operator || '').trim();
+    const notes = String(this.currentJob.description || '').trim();
 
     this.isSavingJob = true;
 
@@ -1101,21 +1107,39 @@ export class ScheduleComponent implements OnInit, OnDestroy {
         return;
       }
 
-      await this.ordersService.saveOt({
-        ...existingOt,
-        OT: normalizedOt,
-        fechaPrd: scheduledDate,
-        maquina: selectedMachine.name,
-        codmaquina: selectedMachine.code,
-        Linea_produccion: this.selectedArea,
-        Estado_pedido: 'PLANIFICADO',
-        scheduleMachineId: selectedMachine.id,
-        scheduleStartTime: scheduledTime,
-        scheduleDurationMinutes: durationMinutes,
-        scheduleOperator: String(this.currentJob.operator || '').trim(),
-        scheduleNotes: String(this.currentJob.description || '').trim(),
-        scheduleDateTime: this.tempStartDateTime,
-      }, { activate: true });
+      const payload = {
+        work_order_id: String((existingOt as any).id),
+        machine_id: selectedMachine.id,
+        schedule_date: scheduledDate,
+        shift: this.selectedShift,
+        area: this.selectedArea,
+        start_time: scheduledTime,
+        duration_minutes: durationMinutes,
+        operator_name: operatorName || undefined,
+        notes: notes || undefined,
+      };
+
+      if (this.isEditing && this.currentJob.id) {
+        let changeReason: string | undefined;
+        if (scheduledDate < this.getCurrentLocalDate()) {
+          changeReason = String(window.prompt('Ingrese el motivo del cambio para esta programación histórica:', '') || '').trim();
+          if (!changeReason) {
+            this.notifications.showWarning('Debe indicar un motivo para editar una programación histórica.');
+            return;
+          }
+        }
+
+        await this.backend.updatePlanningSchedule(this.currentJob.id, {
+          ...payload,
+          change_reason: changeReason,
+        });
+      } else {
+        await this.backend.createPlanningSchedule(payload);
+      }
+
+      if (scheduledDate === this.getCurrentLocalDate()) {
+        await this.ordersService.enterManagementWorkOrders([{ ...(existingOt as any), id: String((existingOt as any).id) }]);
+      }
 
       await this.refreshScheduleFromBackend();
       this.showJobModal = false;
@@ -1155,7 +1179,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     const element = el.nativeElement;
 
     try {
-      const dateStr = new Date().toISOString().split('T')[0];
+      const dateStr = this.selectedDate;
       await this.fileExport.exportElementToPdf(element, `Programacion_${dateStr}.pdf`, {
         orientation: 'l',
         backgroundColor: '#0f172a',

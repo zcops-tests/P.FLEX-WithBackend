@@ -137,6 +137,9 @@ model User {
   change_log      ChangeLog[]
   management_entries_entered WorkOrderManagementEntry[] @relation("ManagementEnteredBy")
   management_entries_exited  WorkOrderManagementEntry[] @relation("ManagementExitedBy")
+  planning_entries_created   ProductionScheduleEntry[]  @relation("PlanningCreatedBy")
+  planning_entries_updated   ProductionScheduleEntry[]  @relation("PlanningUpdatedBy")
+  planning_revisions         ProductionScheduleRevision[]
 
   @@map("users")
 }
@@ -193,6 +196,7 @@ model Machine {
   diecut_reports DiecutReport[]
   rewind_reports RewindReport[]
   kpis           ProductionKpiDaily[]
+  planning_entries ProductionScheduleEntry[]
 
   @@map("machines")
 }
@@ -394,6 +398,7 @@ model WorkOrder {
   rewind_reports RewindReport[]
   packaging_reports PackagingReport[]
   management_entries WorkOrderManagementEntry[]
+  planning_entries ProductionScheduleEntry[]
 
   @@index([updated_at])
   @@index([deleted_at])
@@ -422,6 +427,55 @@ model WorkOrderManagementEntry {
   @@index([entered_by_user_id])
   @@index([exited_by_user_id])
   @@map("work_order_management_entries")
+}
+
+model ProductionScheduleEntry {
+  id                 String    @id @default(uuid()) @db.VarChar(36)
+  schedule_date      DateTime  @db.Date
+  shift              String    @db.VarChar(20)
+  area               String    @db.VarChar(50)
+  machine_id         String    @db.VarChar(36)
+  work_order_id      String    @db.VarChar(36)
+  start_time         String    @db.VarChar(8)
+  duration_minutes   Int
+  operator_name      String?   @db.VarChar(100)
+  notes              String?   @db.Text
+  snapshot_payload   Json
+  created_by_user_id String?   @db.VarChar(36)
+  updated_by_user_id String?   @db.VarChar(36)
+  row_version        BigInt    @default(1)
+  created_at         DateTime  @default(now()) @db.DateTime(3)
+  updated_at         DateTime  @updatedAt @db.DateTime(3)
+  deleted_at         DateTime? @db.DateTime(3)
+
+  machine     Machine                    @relation(fields: [machine_id], references: [id])
+  work_order  WorkOrder                  @relation(fields: [work_order_id], references: [id])
+  created_by  User?                      @relation("PlanningCreatedBy", fields: [created_by_user_id], references: [id])
+  updated_by  User?                      @relation("PlanningUpdatedBy", fields: [updated_by_user_id], references: [id])
+  revisions   ProductionScheduleRevision[]
+
+  @@index([schedule_date, shift, area, deleted_at], map: "idx_pse_date_shift_area_del")
+  @@index([machine_id, schedule_date, deleted_at], map: "idx_pse_machine_date_del")
+  @@index([work_order_id, schedule_date, deleted_at], map: "idx_pse_wo_date_del")
+  @@map("production_schedule_entries")
+}
+
+model ProductionScheduleRevision {
+  id                 String   @id @default(uuid()) @db.VarChar(36)
+  schedule_entry_id  String   @db.VarChar(36)
+  revision_number    Int
+  changed_by_user_id String?  @db.VarChar(36)
+  change_reason      String?  @db.Text
+  before_payload     Json
+  after_payload      Json
+  created_at         DateTime @default(now()) @db.DateTime(3)
+
+  schedule_entry ProductionScheduleEntry @relation(fields: [schedule_entry_id], references: [id])
+  changed_by     User?                   @relation(fields: [changed_by_user_id], references: [id])
+
+  @@unique([schedule_entry_id, revision_number], map: "uq_psr_entry_revision")
+  @@index([schedule_entry_id, created_at], map: "idx_psr_entry_created")
+  @@map("production_schedule_revisions")
 }
 
 model WorkOrderImportRow {

@@ -294,7 +294,7 @@ import { NotificationService } from '../../../services/notification.service';
                   <th class="p-4 w-44">Máquina</th>
                   <th class="p-4 w-28">OT</th>
                   <th class="p-4 w-52">Cliente</th>
-                  <th class="p-4 w-64">Descripción</th>
+                  <th class="p-4 w-64">Impresión</th>
                   <th class="p-4 w-28 text-right">Mts Tot.</th>
                   <th class="p-4 w-36">Fecha Ingreso</th>
                   <th class="p-4 w-32">Entrega</th>
@@ -355,9 +355,9 @@ import { NotificationService } from '../../../services/notification.service';
                     <span class="font-semibold text-slate-200 truncate block" [title]="ot['Razon Social']">{{ ot['Razon Social'] }}</span>
                   </td>
 
-                  <!-- DESC -->
-                  <td class="p-4 text-slate-400 truncate text-xs" [title]="ot.descripcion">
-                      {{ ot.descripcion }}
+                  <!-- PRINTING -->
+                  <td class="p-4 text-slate-400 truncate text-xs" [title]="ot.impresion">
+                      {{ ot.impresion || '-' }}
                   </td>
 
                   <!-- MTS -->
@@ -718,6 +718,11 @@ export class OtListComponent implements OnInit, OnDestroy {
   }
 
   async deleteOt(ot: OT) {
+    const confirmed = window.confirm(
+      `¿Seguro que deseas quitar la OT ${ot.OT} de la tabla activa?`,
+    );
+    if (!confirmed) return;
+
     this.managementExitTarget = ot;
   }
 

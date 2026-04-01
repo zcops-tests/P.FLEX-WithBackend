@@ -66,6 +66,11 @@ export class BackendApiService {
   exitWorkOrderManagement(id: string, body: any) { return this.api.post<any>(`/work-orders/${id}/management/exit`, body); }
   deleteWorkOrder(id: string) { return this.api.delete(`/work-orders/${id}`); }
 
+  getPlanningSchedules(query: any) { return this.api.get<any[]>('/planning/schedules', { query }); }
+  createPlanningSchedule(body: any) { return this.api.post<any>('/planning/schedules', body); }
+  updatePlanningSchedule(id: string, body: any) { return this.api.put<any>(`/planning/schedules/${id}`, body); }
+  deletePlanningSchedule(id: string) { return this.api.delete(`/planning/schedules/${id}`); }
+
   getClises(query?: any) { return this.api.get<any>('/inventory/clises', { query }); }
   getClise(id: string) { return this.api.get<any>(`/inventory/clises/${id}`); }
   createClise(body: any) { return this.api.post<any>('/inventory/clises', body); }

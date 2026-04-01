@@ -5,12 +5,14 @@ import { ConflictException } from '@nestjs/common';
 
 describe('Concurrency (Optimistic Locking)', () => {
   let service: WorkOrdersService;
-  let prisma: PrismaService;
 
   const mockPrisma = {
     workOrder: {
       findUnique: jest.fn(),
       update: jest.fn(),
+    },
+    workOrderManagementEntry: {
+      findFirst: jest.fn(),
     },
   };
 
@@ -23,7 +25,7 @@ describe('Concurrency (Optimistic Locking)', () => {
     }).compile();
 
     service = module.get<WorkOrdersService>(WorkOrdersService);
-    prisma = module.get<PrismaService>(PrismaService);
+    jest.clearAllMocks();
   });
 
   it('should prevent update if row_version mismatch', async () => {
@@ -43,15 +45,20 @@ describe('Concurrency (Optimistic Locking)', () => {
     mockPrisma.workOrder.findUnique.mockResolvedValue({
       id: '1',
       row_version: BigInt(1),
+      deleted_at: null,
+      raw_payload: {},
     });
+    mockPrisma.workOrderManagementEntry.findFirst.mockResolvedValue(null);
     mockPrisma.workOrder.update.mockResolvedValue({
       id: '1',
       row_version: BigInt(2),
+      deleted_at: null,
+      raw_payload: {},
     });
 
     const result = await service.update('1', {
       row_version: 1,
-      name: 'Updated',
+      descripcion: 'Updated',
     });
     expect(result.row_version).toBe(BigInt(2));
   });

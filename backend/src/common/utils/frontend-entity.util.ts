@@ -345,6 +345,56 @@ export function toFrontendSystemConfig(config: any) {
   };
 }
 
+export function toFrontendPlanningScheduleEntry(entry: any) {
+  const snapshot =
+    entry?.snapshot_payload &&
+    typeof entry.snapshot_payload === 'object' &&
+    !Array.isArray(entry.snapshot_payload)
+      ? entry.snapshot_payload
+      : {};
+
+  return {
+    id: entry.id,
+    row_version: entry.row_version,
+    workOrderId: entry.work_order_id,
+    machineId: entry.machine_id,
+    scheduleEntryId: entry.id,
+    scheduledDate: toDateString(entry.schedule_date),
+    shift: entry.shift,
+    area: entry.area,
+    start: String(entry.start_time || '').slice(0, 5),
+    duration: Number(entry.duration_minutes || 0),
+    operator: String(entry.operator_name || snapshot['operator'] || ''),
+    notes: String(entry.notes || snapshot['notes'] || ''),
+    ot: String(snapshot['ot'] || entry.work_order?.ot_number || ''),
+    client: String(
+      snapshot['client'] ||
+        entry.work_order?.cliente_razon_social ||
+        '',
+    ),
+    description: String(
+      snapshot['description'] ||
+        entry.work_order?.descripcion ||
+        '',
+    ),
+    meters: toNumber(snapshot['meters']) || 0,
+    machineCode: String(
+      snapshot['machine_code'] ||
+        entry.machine?.code ||
+        '',
+    ),
+    machineName: String(
+      snapshot['machine_name'] ||
+        entry.machine?.name ||
+        '',
+    ),
+    snapshot_payload: snapshot,
+    created_at: entry.created_at,
+    updated_at: entry.updated_at,
+    deleted_at: entry.deleted_at,
+  };
+}
+
 export function toFrontendWorkOrder(workOrder: any) {
   const rawPayload = normalizeRawPayload(workOrder.raw_payload);
 
