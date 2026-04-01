@@ -234,15 +234,12 @@ export class InventoryService {
   async addDies(items: DieItem[]) {
     const created: DieItem[] = [];
     for (const item of items) {
-      try {
-        created.push(this.mapDie(await this.backend.createDie(this.mapDieToPayload(item))));
-      } catch {
-        created.push(item);
-      }
+      created.push(this.mapDie(await this.backend.createDie(this.mapDieToPayload(item))));
     }
     this._dieItems.next([...created, ...this.dieItems]);
     this.mapItemsToLayout();
     this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Alta Troqueles', `Se agregaron ${items.length} troqueles.`);
+    return created;
   }
 
   async importDies(
@@ -254,17 +251,21 @@ export class InventoryService {
     const totalItems = payloadItems.length;
 
     if (totalItems === 0) {
-      return { imported: 0, conflicts: 0 };
+      return { imported: 0, conflicts: 0, created: 0, updated: 0 };
     }
 
     const totalBatches = Math.max(1, Math.ceil(totalItems / chunkSize));
+    let created = 0;
+    let updated = 0;
 
     for (let index = 0; index < totalBatches; index += 1) {
       const start = index * chunkSize;
       const end = start + chunkSize;
       const batch = payloadItems.slice(start, end);
 
-      await this.backend.bulkUpsertDies({ items: batch });
+      const result = await this.backend.bulkUpsertDies({ items: batch });
+      created += Number(result?.created || 0);
+      updated += Number(result?.updated || 0);
       onProgress?.({
         currentBatch: index + 1,
         totalBatches,
@@ -279,53 +280,40 @@ export class InventoryService {
     return {
       imported: totalItems,
       conflicts: items.filter((item) => item.hasConflict).length,
+      created,
+      updated,
     };
   }
 
   async updateDie(item: DieItem) {
-    try {
-      await this.backend.updateDie(item.id, this.mapDieToPayload(item));
-    } catch {
-      // Preserve local edit on failure.
-    }
-    this._dieItems.next(this.dieItems.map(entry => entry.id === item.id ? item : entry));
+    const persisted = this.mapDie(await this.backend.updateDie(item.id, this.mapDieToPayload(item)));
+    this._dieItems.next(this.dieItems.map(entry => entry.id === item.id ? persisted : entry));
     this.mapItemsToLayout();
-    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Editar Troquel', `Se modifico el troquel ${item.serie}.`);
+    this.audit.log(this.state.userName(), this.state.userRole(), 'INVENTARIO', 'Editar Troquel', `Se modifico el troquel ${persisted.serie}.`);
+    return persisted;
   }
 
   async addStock(item: StockItem) {
-    let created = item;
-    try {
-      created = this.mapStock(await this.backend.createStockItem(this.mapStockToPayload(item)));
-    } catch {
-      // Preserve local insert on failure.
-    }
+    const created = this.mapStock(await this.backend.createStockItem(this.mapStockToPayload(item)));
     this._stockItems.next([created, ...this.stockItems]);
     this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ingreso PT', `Entrada de Producto: OT ${created.ot}`);
+    return created;
   }
 
   async addStocks(items: StockItem[]) {
-    const created: StockItem[] = [];
-    for (const item of items) {
-      try {
-        created.push(this.mapStock(await this.backend.createStockItem(this.mapStockToPayload(item))));
-      } catch {
-        created.push(item);
-      }
-    }
-    this._stockItems.next([...created, ...this.stockItems]);
+    const payloadItems = items.map((item) => this.mapStockToPayload(item));
+    const result = await this.backend.bulkCreateStockItems({ items: payloadItems });
+    await this.reload();
     this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Importacion Masiva', `Se importaron ${items.length} items de stock.`);
+    return result;
   }
 
   async updateStock(item: StockItem) {
-    try {
-      await this.backend.updateStockItem(item.id, this.mapStockToPayload(item));
-      await this.backend.updateStockStatus(item.id, { status: this.mapStockStatusToApi(item.status) });
-    } catch {
-      // Preserve local edit on failure.
-    }
-    this._stockItems.next(this.stockItems.map(entry => entry.id === item.id ? item : entry));
-    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ajuste PT', `Ajuste en OT ${item.ot} - ${item.status}`);
+    await this.backend.updateStockItem(item.id, this.mapStockToPayload(item));
+    const persisted = this.mapStock(await this.backend.updateStockStatus(item.id, { status: this.mapStockStatusToApi(item.status) }));
+    this._stockItems.next(this.stockItems.map(entry => entry.id === item.id ? persisted : entry));
+    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ajuste PT', `Ajuste en OT ${persisted.ot} - ${persisted.status}`);
+    return persisted;
   }
 
   mapItemsToLayout() {

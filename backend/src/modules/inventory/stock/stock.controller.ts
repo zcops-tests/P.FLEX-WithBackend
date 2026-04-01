@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { StockService } from './stock.service';
 import {
+  BulkCreateStockItemsDto,
   CreateStockItemDto,
   UpdateStockItemDto,
   StockStatus,
@@ -40,6 +41,13 @@ export class StockController {
   @ApiOperation({ summary: 'Create a new stock item' })
   async create(@Body() dto: CreateStockItemDto) {
     return this.stockService.create(dto);
+  }
+
+  @Post('bulk-create')
+  @Permissions('inventory.stock.manage')
+  @ApiOperation({ summary: 'Create stock items in a single transactional batch' })
+  async bulkCreate(@Body() dto: BulkCreateStockItemsDto) {
+    return this.stockService.bulkCreate(dto.items);
   }
 
   @Get()

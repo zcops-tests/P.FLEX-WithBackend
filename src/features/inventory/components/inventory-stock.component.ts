@@ -452,7 +452,7 @@ export class InventoryStockComponent {
      this.showModal = true;
   }
 
-  saveItem() {
+  async saveItem() {
      if (this.isReadOnly || !this.canManageInventory) return;
      if(!this.tempItem.ot || !this.tempItem.client) {
         alert('Complete la OT y el Cliente.');
@@ -465,12 +465,16 @@ export class InventoryStockComponent {
         item.entryDate = new Date().toISOString();
      }
 
-     if (this.editingItem) {
-        this.inventoryService.updateStock(item);
-     } else {
-        this.inventoryService.addStock(item);
+     try {
+        if (this.editingItem) {
+           await this.inventoryService.updateStock(item);
+        } else {
+           await this.inventoryService.addStock(item);
+        }
+        this.showModal = false;
+     } catch (error: any) {
+        alert(`Error al guardar: ${error?.message || 'No se pudo persistir el producto terminado.'}`);
      }
-     this.showModal = false;
   }
 
   // --- IMPORT ---

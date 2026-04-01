@@ -21,29 +21,95 @@ import { toFrontendStockItem } from '../../../common/utils/frontend-entity.util'
 export class StockService {
   constructor(private prisma: PrismaService) {}
 
+  private normalizePalletId(value: string | null | undefined) {
+    const palletId = String(value || '').trim();
+    return palletId || null;
+  }
+
+  private normalizeCreateData(dto: CreateStockItemDto) {
+    return {
+      ...dto,
+      pallet_id: this.normalizePalletId(dto.pallet_id) ?? undefined,
+      status: dto.status || StockStatus.LIBERATED,
+    };
+  }
+
   async create(dto: CreateStockItemDto) {
-    if (dto.pallet_id) {
+    const normalizedDto = this.normalizeCreateData(dto);
+
+    if (normalizedDto.pallet_id) {
       const existingPallet = await this.prisma.stockItem.findUnique({
-        where: { pallet_id: dto.pallet_id },
+        where: { pallet_id: normalizedDto.pallet_id },
       });
       if (existingPallet) {
         throw new ConflictException(
-          `Pallet ID ${dto.pallet_id} already exists`,
+          `Pallet ID ${normalizedDto.pallet_id} already exists`,
         );
       }
     }
 
     const created = await this.prisma.stockItem.create({
-      data: {
-        ...dto,
-        status: dto.status || StockStatus.LIBERATED,
-      },
+      data: normalizedDto,
       include: {
         work_order: true,
       },
     });
 
     return toFrontendStockItem(created);
+  }
+
+  async bulkCreate(dtos: CreateStockItemDto[]) {
+    if (!Array.isArray(dtos) || dtos.length === 0) {
+      return { processed: 0, created: 0 };
+    }
+
+    const normalizedItems = dtos.map((dto) => this.normalizeCreateData(dto));
+    const palletIds = normalizedItems
+      .map((dto) => dto.pallet_id)
+      .filter((value): value is string => Boolean(value));
+
+    const duplicateInPayload = palletIds.find(
+      (palletId, index) => palletIds.indexOf(palletId) !== index,
+    );
+
+    if (duplicateInPayload) {
+      throw new ConflictException(
+        `Pallet ID ${duplicateInPayload} is duplicated in this batch`,
+      );
+    }
+
+    if (palletIds.length > 0) {
+      const existingPallets = await this.prisma.stockItem.findMany({
+        where: {
+          pallet_id: {
+            in: palletIds,
+          },
+          deleted_at: null,
+        },
+        select: {
+          pallet_id: true,
+        },
+      });
+
+      if (existingPallets.length > 0) {
+        throw new ConflictException(
+          `Pallet ID ${existingPallets[0].pallet_id} already exists`,
+        );
+      }
+    }
+
+    await this.prisma.$transaction(
+      normalizedItems.map((item) =>
+        this.prisma.stockItem.create({
+          data: item,
+        }),
+      ),
+    );
+
+    return {
+      processed: normalizedItems.length,
+      created: normalizedItems.length,
+    };
   }
 
   async findAll(params: StockQueryDto) {
@@ -103,10 +169,37 @@ export class StockService {
   }
 
   async update(id: string, dto: UpdateStockItemDto) {
-    await this.findOne(id);
+    const current = await this.prisma.stockItem.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        pallet_id: true,
+        deleted_at: true,
+      },
+    });
+
+    if (!current || current.deleted_at) {
+      throw new NotFoundException(`Stock item with ID ${id} not found`);
+    }
+
+    const normalizedPalletId = this.normalizePalletId(dto.pallet_id);
+    if (normalizedPalletId && normalizedPalletId !== current.pallet_id) {
+      const existingPallet = await this.prisma.stockItem.findUnique({
+        where: { pallet_id: normalizedPalletId },
+      });
+      if (existingPallet && existingPallet.id !== id) {
+        throw new ConflictException(
+          `Pallet ID ${normalizedPalletId} already exists`,
+        );
+      }
+    }
+
     const updated = await this.prisma.stockItem.update({
       where: { id },
-      data: dto,
+      data: {
+        ...dto,
+        pallet_id: normalizedPalletId ?? undefined,
+      },
       include: {
         work_order: true,
       },

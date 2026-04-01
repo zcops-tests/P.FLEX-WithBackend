@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsString,
   IsNotEmpty,
   IsOptional,
@@ -6,8 +7,10 @@ import {
   IsDateString,
   IsEnum,
   IsUUID,
+  ValidateNested,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 
 export enum StockStatus {
   LIBERATED = 'LIBERATED',
@@ -90,4 +93,12 @@ export class UpdateStockStatusDto {
   @IsEnum(StockStatus)
   @IsNotEmpty()
   status: StockStatus;
+}
+
+export class BulkCreateStockItemsDto {
+  @ApiProperty({ type: [CreateStockItemDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateStockItemDto)
+  items: CreateStockItemDto[];
 }

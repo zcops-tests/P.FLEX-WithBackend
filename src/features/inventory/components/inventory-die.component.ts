@@ -1076,18 +1076,22 @@ export class InventoryDieComponent implements OnDestroy {
       this.isExporting = false;
   }
 
-  saveDie() {
+  async saveDie() {
       if (!this.canManageInventory) return;
       if (this.currentDie.id) {
           const item = this.currentDie as DieItem;
           const exists = this.dieItems.find(i => i.id === item.id);
-          if (exists) {
-             this.inventoryService.updateDie(item);
-          } else {
-             this.inventoryService.addDies([item]);
+          try {
+             if (exists) {
+                await this.inventoryService.updateDie(item);
+             } else {
+                await this.inventoryService.addDies([item]);
+             }
+             this.closeModal();
+          } catch (error: any) {
+             alert(`Error al guardar: ${error?.message || 'No se pudo persistir el troquel.'}`);
           }
       }
-      this.closeModal();
   }
 
   // --- IMPORT ---

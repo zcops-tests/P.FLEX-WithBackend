@@ -99,6 +99,7 @@ export class BackendApiService {
   getStockItems(query?: any) { return this.api.get<any>('/inventory/stock', { query }); }
   getStockItem(id: string) { return this.api.get<any>(`/inventory/stock/${id}`); }
   createStockItem(body: any) { return this.api.post<any>('/inventory/stock', body); }
+  bulkCreateStockItems(body: any) { return this.api.post<any>('/inventory/stock/bulk-create', body); }
   updateStockItem(id: string, body: any) { return this.api.put<any>(`/inventory/stock/${id}`, body); }
   updateStockStatus(id: string, body: any) { return this.api.patch<any>(`/inventory/stock/${id}/status`, body); }
   deleteStockItem(id: string) { return this.api.delete(`/inventory/stock/${id}`); }
