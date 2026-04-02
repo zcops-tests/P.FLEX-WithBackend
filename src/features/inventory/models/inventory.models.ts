@@ -77,18 +77,23 @@ export interface DieItem {
 
 export interface StockItem {
   id: string;
-  ot: string;           // Referencia a la Orden de Trabajo
-  client: string;       // Cliente
-  product: string;      // Descripción del Producto
-  quantity: number;     // Cantidad almacenada (Legacy/Total)
-  unit: string;         // Unidad (Legacy)
-  rolls?: number;       // Nueva: Cantidad de Rollos
-  millares?: number;    // Nueva: Cantidad de Millares
-  location: string;     // Ubicación en almacén de producto terminado
+  medida: string;
+  anchoMm: number | null;
+  avanceMm: number | null;
+  material: string;
+  columnas: number | null;
+  prepicado: string;
+  cantidadXRollo: number | null;
+  cantidadMillares: number | null;
+  etiqueta: string;
+  forma: string;
+  tipoProducto: string;
+  caja: string;
+  ubicacion: string;
   status: 'Liberado' | 'Cuarentena' | 'Retenido' | 'Despachado';
-  entryDate: string;    // Fecha de ingreso a almacén
+  entryDate: string;
   notes?: string;
-  palletId?: string;    // ID del Pallet/Lote
+  boxId?: string;
 }
 
 export interface RackBox {

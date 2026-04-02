@@ -684,16 +684,23 @@ export function toFrontendDie(die: any) {
 export function toFrontendStockItem(item: any) {
   return {
     ...item,
-    ot: item.ot_number_snapshot || item.work_order?.ot_number || '',
-    client: item.client_snapshot || '',
-    product: item.product_snapshot || '',
-    quantity: toNumber(item.quantity) || 0,
-    millares: toNumber(item.millares) || undefined,
-    location: item.location || '',
-    uiStatus: normalizeStockStatus(item.status),
-    entryDate: toDateString(item.entry_date),
+    medida: item.medida || '',
+    anchoMm: toNumber(item.ancho_mm),
+    avanceMm: toNumber(item.avance_mm),
+    material: item.material || '',
+    columnas: item.columnas ?? null,
+    prepicado: item.prepicado || '',
+    cantidadXRollo: toNumber(item.cantidad_x_rollo),
+    cantidadMillares: toNumber(item.cantidad_millares),
+    etiqueta: item.etiqueta || '',
+    forma: item.forma || '',
+    tipoProducto: item.tipo_producto || '',
+    caja: item.caja || '',
+    ubicacion: item.location || '',
+    status: normalizeStockStatus(item.status),
+    entryDate: item.entry_date,
     notes: item.notes || undefined,
-    palletId: item.pallet_id || undefined,
+    boxId: item.box_id || undefined,
   };
 }
 

@@ -1,12 +1,11 @@
 import {
   IsArray,
-  IsString,
-  IsNotEmpty,
-  IsOptional,
-  IsNumber,
   IsDateString,
   IsEnum,
-  IsUUID,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
@@ -20,52 +19,97 @@ export enum StockStatus {
 }
 
 export class CreateStockItemDto {
-  @ApiProperty({ example: 'uuid-ot' })
-  @IsUUID()
+  @ApiProperty({ example: 'uuid-ot', required: false })
+  @IsString()
   @IsOptional()
   work_order_id?: string;
 
-  @ApiProperty({ example: 'OT-12345' })
+  @ApiProperty({ example: 'OT-12345', required: false })
   @IsString()
   @IsOptional()
   ot_number_snapshot?: string;
 
-  @ApiProperty({ example: 'Client ABC' })
+  @ApiProperty({ example: 'Client ABC', required: false })
   @IsString()
   @IsOptional()
   client_snapshot?: string;
 
-  @ApiProperty({ example: 'Product XYZ' })
+  @ApiProperty({ example: 'Product XYZ', required: false })
   @IsString()
   @IsOptional()
   product_snapshot?: string;
 
-  @ApiProperty({ example: 5000 })
+  @ApiProperty({ example: 5000, required: false })
   @IsNumber()
-  @IsNotEmpty()
-  quantity: number;
+  @IsOptional()
+  quantity?: number;
 
-  @ApiProperty({ example: 'UNIDADES' })
+  @ApiProperty({ example: '100 x 200' })
   @IsString()
   @IsOptional()
-  unit?: string;
+  medida?: string;
 
-  @ApiProperty({ example: 10 })
+  @ApiProperty({ example: 100 })
   @IsNumber()
   @IsOptional()
-  rolls?: number;
+  ancho_mm?: number;
 
-  @ApiProperty({ example: 5 })
+  @ApiProperty({ example: 200 })
   @IsNumber()
   @IsOptional()
-  millares?: number;
+  avance_mm?: number;
+
+  @ApiProperty({ example: 'Papel Couche' })
+  @IsString()
+  @IsOptional()
+  material?: string;
+
+  @ApiProperty({ example: 4 })
+  @IsNumber()
+  @IsOptional()
+  columnas?: number;
+
+  @ApiProperty({ example: 'Horizontal' })
+  @IsString()
+  @IsOptional()
+  prepicado?: string;
+
+  @ApiProperty({ example: 2500 })
+  @IsNumber()
+  @IsOptional()
+  cantidad_x_rollo?: number;
+
+  @ApiProperty({ example: 12.5 })
+  @IsNumber()
+  @IsOptional()
+  cantidad_millares?: number;
+
+  @ApiProperty({ example: 'Etiqueta Premium' })
+  @IsString()
+  @IsOptional()
+  etiqueta?: string;
+
+  @ApiProperty({ example: 'Rectangular' })
+  @IsString()
+  @IsOptional()
+  forma?: string;
+
+  @ApiProperty({ example: 'Autoadhesivo' })
+  @IsString()
+  @IsOptional()
+  tipo_producto?: string;
+
+  @ApiProperty({ example: '1' })
+  @IsString()
+  @IsOptional()
+  caja?: string;
 
   @ApiProperty({ example: 'A-01-01' })
   @IsString()
   @IsOptional()
-  location?: string;
+  ubicacion?: string;
 
-  @ApiProperty({ enum: StockStatus, default: StockStatus.LIBERATED })
+  @ApiProperty({ enum: StockStatus, default: StockStatus.QUARANTINE })
   @IsEnum(StockStatus)
   @IsOptional()
   status?: StockStatus;
@@ -75,15 +119,10 @@ export class CreateStockItemDto {
   @IsNotEmpty()
   entry_date: string;
 
-  @ApiProperty({ example: 'Notes' })
+  @ApiProperty({ example: 'Observaciones' })
   @IsString()
   @IsOptional()
   notes?: string;
-
-  @ApiProperty({ example: 'PALLET-001' })
-  @IsString()
-  @IsOptional()
-  pallet_id?: string;
 }
 
 export class UpdateStockItemDto extends CreateStockItemDto {}

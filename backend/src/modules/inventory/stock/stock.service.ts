@@ -1,14 +1,10 @@
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import {
   CreateStockItemDto,
-  UpdateStockItemDto,
   StockStatus,
+  UpdateStockItemDto,
 } from './dto/stock.dto';
 import { StockQueryDto } from './dto/stock-query.dto';
 import {
@@ -21,38 +17,96 @@ import { toFrontendStockItem } from '../../../common/utils/frontend-entity.util'
 export class StockService {
   constructor(private prisma: PrismaService) {}
 
-  private normalizePalletId(value: string | null | undefined) {
-    const palletId = String(value || '').trim();
-    return palletId || null;
+  private normalizeCaja(value: string | null | undefined) {
+    const caja = String(value || '').trim();
+    if (!caja) return null;
+    if (/^\d+$/.test(caja)) return caja.padStart(4, '0');
+    return caja.toUpperCase();
+  }
+
+  private normalizeText(value: string | null | undefined) {
+    const text = String(value || '').trim();
+    return text || undefined;
+  }
+
+  private extractBoxSequence(value: string | null | undefined) {
+    const match = String(value || '')
+      .trim()
+      .match(/(\d+)$/);
+
+    if (!match) return null;
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private async getNextBoxSequence(tx: PrismaService | Prisma.TransactionClient) {
+    const existingBoxes = await tx.stockItem.findMany({
+      where: {
+        box_id: {
+          startsWith: 'C',
+        },
+      },
+      select: {
+        box_id: true,
+      },
+    });
+
+    const maxSequence = existingBoxes.reduce((currentMax, item) => {
+      const sequence = this.extractBoxSequence(item.box_id);
+      return sequence !== null && sequence > currentMax ? sequence : currentMax;
+    }, -1);
+
+    return maxSequence + 1;
+  }
+
+  private buildGeneratedBoxId(caja: string | null | undefined, sequence: number) {
+    const normalizedCaja = this.normalizeCaja(caja) || '0000';
+    return `C${normalizedCaja}-${String(sequence).padStart(4, '0')}`;
   }
 
   private normalizeCreateData(dto: CreateStockItemDto) {
     return {
-      ...dto,
-      pallet_id: this.normalizePalletId(dto.pallet_id) ?? undefined,
-      status: dto.status || StockStatus.LIBERATED,
+      work_order_id: dto.work_order_id || undefined,
+      ot_number_snapshot: this.normalizeText(dto.ot_number_snapshot),
+      client_snapshot: this.normalizeText(dto.client_snapshot),
+      product_snapshot: this.normalizeText(dto.product_snapshot),
+      medida: this.normalizeText(dto.medida),
+      ancho_mm: dto.ancho_mm ?? undefined,
+      avance_mm: dto.avance_mm ?? undefined,
+      material: this.normalizeText(dto.material),
+      columnas: dto.columnas ?? undefined,
+      prepicado: this.normalizeText(dto.prepicado),
+      cantidad_x_rollo: dto.cantidad_x_rollo ?? undefined,
+      cantidad_millares: dto.cantidad_millares ?? undefined,
+      etiqueta: this.normalizeText(dto.etiqueta),
+      forma: this.normalizeText(dto.forma),
+      tipo_producto: this.normalizeText(dto.tipo_producto),
+      caja: this.normalizeCaja(dto.caja) || '0000',
+      location: this.normalizeText(dto.ubicacion),
+      status: dto.status || StockStatus.QUARANTINE,
+      entry_date: dto.entry_date,
+      notes: this.normalizeText(dto.notes),
+      quantity:
+        dto.quantity ??
+        dto.cantidad_millares ??
+        dto.cantidad_x_rollo ??
+        undefined,
+      unit: 'PT',
+      millares: dto.cantidad_millares ?? undefined,
     };
   }
 
   async create(dto: CreateStockItemDto) {
     const normalizedDto = this.normalizeCreateData(dto);
+    const created = await this.prisma.$transaction(async (tx) => {
+      const nextSequence = await this.getNextBoxSequence(tx);
 
-    if (normalizedDto.pallet_id) {
-      const existingPallet = await this.prisma.stockItem.findUnique({
-        where: { pallet_id: normalizedDto.pallet_id },
+      return tx.stockItem.create({
+        data: {
+          ...normalizedDto,
+          box_id: this.buildGeneratedBoxId(normalizedDto.caja, nextSequence),
+        },
       });
-      if (existingPallet) {
-        throw new ConflictException(
-          `Pallet ID ${normalizedDto.pallet_id} already exists`,
-        );
-      }
-    }
-
-    const created = await this.prisma.stockItem.create({
-      data: normalizedDto,
-      include: {
-        work_order: true,
-      },
     });
 
     return toFrontendStockItem(created);
@@ -64,47 +118,22 @@ export class StockService {
     }
 
     const normalizedItems = dtos.map((dto) => this.normalizeCreateData(dto));
-    const palletIds = normalizedItems
-      .map((dto) => dto.pallet_id)
-      .filter((value): value is string => Boolean(value));
+    let nextSequence = await this.getNextBoxSequence(this.prisma);
+    const data = normalizedItems.map((item) => {
+      const generated = {
+        ...item,
+        box_id: this.buildGeneratedBoxId(item.caja, nextSequence),
+      };
+      nextSequence += 1;
+      return generated;
+    });
 
-    const duplicateInPayload = palletIds.find(
-      (palletId, index) => palletIds.indexOf(palletId) !== index,
-    );
-
-    if (duplicateInPayload) {
-      throw new ConflictException(
-        `Pallet ID ${duplicateInPayload} is duplicated in this batch`,
-      );
-    }
-
-    if (palletIds.length > 0) {
-      const existingPallets = await this.prisma.stockItem.findMany({
-        where: {
-          pallet_id: {
-            in: palletIds,
-          },
-          deleted_at: null,
-        },
-        select: {
-          pallet_id: true,
-        },
+    const chunkSize = 500;
+    for (let index = 0; index < data.length; index += chunkSize) {
+      await this.prisma.stockItem.createMany({
+        data: data.slice(index, index + chunkSize),
       });
-
-      if (existingPallets.length > 0) {
-        throw new ConflictException(
-          `Pallet ID ${existingPallets[0].pallet_id} already exists`,
-        );
-      }
     }
-
-    await this.prisma.$transaction(
-      normalizedItems.map((item) =>
-        this.prisma.stockItem.create({
-          data: item,
-        }),
-      ),
-    );
 
     return {
       processed: normalizedItems.length,
@@ -126,12 +155,15 @@ export class StockService {
 
     if (q) {
       where.OR = [
-        { ot_number_snapshot: { contains: q } },
-        { client_snapshot: { contains: q } },
-        { product_snapshot: { contains: q } },
-        { pallet_id: { contains: q } },
+        { medida: { contains: q } },
+        { material: { contains: q } },
+        { etiqueta: { contains: q } },
+        { forma: { contains: q } },
+        { tipo_producto: { contains: q } },
+        { caja: { contains: q } },
+        { box_id: { contains: q } },
         { location: { contains: q } },
-      ];
+      ] as any;
     }
 
     const [total, items] = await Promise.all([
@@ -141,9 +173,6 @@ export class StockService {
         skip: pagination.skip,
         take: pagination.take,
         orderBy: { entry_date: 'desc' },
-        include: {
-          work_order: true,
-        },
       }),
     ]);
 
@@ -157,9 +186,6 @@ export class StockService {
   async findOne(id: string) {
     const item = await this.prisma.stockItem.findUnique({
       where: { id },
-      include: {
-        work_order: true,
-      },
     });
 
     if (!item || item.deleted_at) {
@@ -173,7 +199,7 @@ export class StockService {
       where: { id },
       select: {
         id: true,
-        pallet_id: true,
+        box_id: true,
         deleted_at: true,
       },
     });
@@ -182,26 +208,12 @@ export class StockService {
       throw new NotFoundException(`Stock item with ID ${id} not found`);
     }
 
-    const normalizedPalletId = this.normalizePalletId(dto.pallet_id);
-    if (normalizedPalletId && normalizedPalletId !== current.pallet_id) {
-      const existingPallet = await this.prisma.stockItem.findUnique({
-        where: { pallet_id: normalizedPalletId },
-      });
-      if (existingPallet && existingPallet.id !== id) {
-        throw new ConflictException(
-          `Pallet ID ${normalizedPalletId} already exists`,
-        );
-      }
-    }
+    const normalizedDto = this.normalizeCreateData(dto);
 
     const updated = await this.prisma.stockItem.update({
       where: { id },
       data: {
-        ...dto,
-        pallet_id: normalizedPalletId ?? undefined,
-      },
-      include: {
-        work_order: true,
+        ...normalizedDto,
       },
     });
 
@@ -213,9 +225,6 @@ export class StockService {
     const updated = await this.prisma.stockItem.update({
       where: { id },
       data: { status },
-      include: {
-        work_order: true,
-      },
     });
 
     return toFrontendStockItem(updated);

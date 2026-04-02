@@ -67,7 +67,7 @@ export class AppComponent {
     effect(() => {
       if (!this.state.sessionExpired()) return;
       void this.state.logout();
-      this.router.navigate(['/login']);
+      this.state.redirectToLogin();
     });
 
     this.updateSidebarVisibility(this.router.url);

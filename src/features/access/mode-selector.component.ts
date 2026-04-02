@@ -188,6 +188,6 @@ export class ModeSelectorComponent {
 
   async logout() {
     await this.state.logout();
-    await this.router.navigate(['/login']);
+    this.state.redirectToLogin();
   }
 }

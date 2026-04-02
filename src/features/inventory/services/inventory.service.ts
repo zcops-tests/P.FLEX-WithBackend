@@ -71,15 +71,19 @@ export class InventoryService {
   };
 
   readonly STOCK_MAPPING = {
-    ot: ['ot', 'orden', 'op', 'nro'],
-    client: ['cliente', 'razon social', 'customer'],
-    product: ['producto', 'descripcion', 'item'],
-    rolls: ['rollos', 'cantidad'],
-    millares: ['millares', 'mll'],
-    location: ['ubicacion', 'loc'],
-    status: ['estado', 'status'],
-    palletId: ['pallet', 'lote', 'pallet id', 'id'],
-    notes: ['notas', 'observaciones', 'obs']
+    medida: ['MEDIDA', 'Medida', 'medida'],
+    anchoMm: ['ANCHO MM', 'Ancho MM', 'ancho mm'],
+    avanceMm: ['AVANCE MM', 'Avance MM', 'avance mm'],
+    material: ['MATERIAL', 'Material', 'material'],
+    columnas: ['COLUMNAS', 'Columnas', 'columnas'],
+    prepicado: ['PREPICADO', 'Prepicado', 'prepicado'],
+    cantidadXRollo: ['CANTIDAD X ROLLO', 'Cantidad X Rollo', 'cantidad x rollo'],
+    cantidadMillares: ['CANTIDAD MILLARES', 'Cantidad Millares', 'cantidad millares'],
+    etiqueta: ['ETIQUETA', 'Etiqueta', 'etiqueta'],
+    forma: ['FORMA', 'Forma', 'forma'],
+    tipoProducto: ['TIPO DE PRODUCTO', 'Tipo de Producto', 'tipo de producto'],
+    caja: ['CAJA', 'Caja', 'caja'],
+    ubicacion: ['UBICACIÓN', 'UBICACION', 'Ubicación', 'Ubicacion', 'ubicación', 'ubicacion']
   };
 
   constructor() {
@@ -296,7 +300,7 @@ export class InventoryService {
   async addStock(item: StockItem) {
     const created = this.mapStock(await this.backend.createStockItem(this.mapStockToPayload(item)));
     this._stockItems.next([created, ...this.stockItems]);
-    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ingreso PT', `Entrada de Producto: OT ${created.ot}`);
+    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ingreso PT', `Entrada de producto terminado: caja ${created.caja}, etiqueta ${created.etiqueta}.`);
     return created;
   }
 
@@ -304,7 +308,7 @@ export class InventoryService {
     const payloadItems = items.map((item) => this.mapStockToPayload(item));
     const result = await this.backend.bulkCreateStockItems({ items: payloadItems });
     await this.reload();
-    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Importacion Masiva', `Se importaron ${items.length} items de stock.`);
+    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Importacion Masiva', `Se importaron ${items.length} items de producto terminado.`);
     return result;
   }
 
@@ -312,7 +316,7 @@ export class InventoryService {
     await this.backend.updateStockItem(item.id, this.mapStockToPayload(item));
     const persisted = this.mapStock(await this.backend.updateStockStatus(item.id, { status: this.mapStockStatusToApi(item.status) }));
     this._stockItems.next(this.stockItems.map(entry => entry.id === item.id ? persisted : entry));
-    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ajuste PT', `Ajuste en OT ${persisted.ot} - ${persisted.status}`);
+    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ajuste PT', `Ajuste en caja ${persisted.caja} - ${persisted.status}`);
     return persisted;
   }
 
@@ -386,28 +390,31 @@ export class InventoryService {
 
   normalizeStockData(rawData: any[]): { valid: StockItem[], conflicts: StockItem[] } {
     const normalized = this.excelService.normalizeData(rawData, this.STOCK_MAPPING);
-    const mapped: StockItem[] = normalized.map(row => {
-      const rolls = this.excelService.parseNumber(row.rolls) || 0;
-      const millares = this.excelService.parseNumber(row.millares) || 0;
-      return {
+    const mapped: StockItem[] = normalized
+      .filter((row) => !this.isStockRowEmpty(row))
+      .map((row) => ({
         id: Math.random().toString(36).slice(2, 11),
-        ot: this.excelService.toDisplayString(row.ot),
-        client: this.excelService.toDisplayString(row.client),
-        product: this.excelService.toDisplayString(row.product),
-        quantity: rolls,
-        unit: 'Rollos',
-        rolls,
-        millares,
-        location: this.excelService.toDisplayString(row.location) || 'RECEPCION',
-        status: this.normalizeStockStatus(row.status),
+        medida: this.excelService.toDisplayString(row.medida),
+        anchoMm: this.excelService.parseNumber(row.anchoMm),
+        avanceMm: this.excelService.parseNumber(row.avanceMm),
+        material: this.excelService.toDisplayString(row.material),
+        columnas: this.excelService.parseNumber(row.columnas),
+        prepicado: this.excelService.toDisplayString(row.prepicado),
+        cantidadXRollo: this.excelService.parseNumber(row.cantidadXRollo),
+        cantidadMillares: this.excelService.parseNumber(row.cantidadMillares),
+        etiqueta: this.excelService.toDisplayString(row.etiqueta),
+        forma: this.excelService.toDisplayString(row.forma),
+        tipoProducto: this.excelService.toDisplayString(row.tipoProducto),
+        caja: this.excelService.toDisplayString(row.caja),
+        ubicacion: this.excelService.toDisplayString(row.ubicacion) || 'RECEPCION',
+        status: 'Cuarentena',
         entryDate: new Date().toISOString(),
-        notes: this.excelService.toDisplayString(row.notes),
-        palletId: this.excelService.toDisplayString(row.palletId) || `PAL-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`
-      };
-    });
+        notes: '',
+        boxId: undefined,
+      }));
 
-    const valid = mapped.filter(item => item.ot && item.client);
-    const conflicts = mapped.filter(item => !item.ot || !item.client);
+    const valid = mapped.filter(item => String(item.caja || '').trim());
+    const conflicts = mapped.filter(item => !String(item.caja || '').trim());
     return { valid, conflicts };
   }
 
@@ -585,18 +592,23 @@ export class InventoryService {
   private mapStock(item: any): StockItem {
     return {
       id: item.id,
-      ot: item.ot_number_snapshot || item.work_order?.ot_number || '',
-      client: item.client_snapshot || '',
-      product: item.product_snapshot || '',
-      quantity: Number(item.quantity || 0),
-      unit: item.unit || 'Rollos',
-      rolls: item.rolls ?? 0,
-      millares: item.millares ? Number(item.millares) : 0,
-      location: item.location || '',
+      medida: item.medida || '',
+      anchoMm: this.toNullableNumber(item.anchoMm ?? item.ancho_mm),
+      avanceMm: this.toNullableNumber(item.avanceMm ?? item.avance_mm),
+      material: item.material || '',
+      columnas: item.columnas ?? null,
+      prepicado: item.prepicado || '',
+      cantidadXRollo: this.toNullableNumber(item.cantidadXRollo ?? item.cantidad_x_rollo),
+      cantidadMillares: this.toNullableNumber(item.cantidadMillares ?? item.cantidad_millares),
+      etiqueta: item.etiqueta || '',
+      forma: item.forma || '',
+      tipoProducto: item.tipoProducto || item.tipo_producto || '',
+      caja: item.caja || '',
+      ubicacion: item.ubicacion || item.location || '',
       status: this.normalizeStockStatus(item.status),
-      entryDate: item.entry_date || new Date().toISOString(),
+      entryDate: item.entryDate || item.entry_date || new Date().toISOString(),
       notes: item.notes || '',
-      palletId: item.pallet_id || '',
+      boxId: item.box_id || '',
     };
   }
 
@@ -693,23 +705,31 @@ export class InventoryService {
 
   private mapStockToPayload(item: StockItem) {
     return {
-      ot_number_snapshot: item.ot || undefined,
-      client_snapshot: item.client || undefined,
-      product_snapshot: item.product || undefined,
-      quantity: item.quantity ?? 0,
-      unit: item.unit || 'Rollos',
-      rolls: item.rolls ?? undefined,
-      millares: item.millares ?? undefined,
-      location: item.location || undefined,
+      medida: item.medida || undefined,
+      ancho_mm: item.anchoMm ?? undefined,
+      avance_mm: item.avanceMm ?? undefined,
+      material: item.material || undefined,
+      columnas: item.columnas ?? undefined,
+      prepicado: item.prepicado || undefined,
+      cantidad_x_rollo: item.cantidadXRollo ?? undefined,
+      cantidad_millares: item.cantidadMillares ?? undefined,
+      etiqueta: item.etiqueta || undefined,
+      forma: item.forma || undefined,
+      tipo_producto: item.tipoProducto || undefined,
+      caja: item.caja || undefined,
+      ubicacion: item.ubicacion || undefined,
       status: this.mapStockStatusToApi(item.status),
       entry_date: item.entryDate || new Date().toISOString(),
       notes: item.notes || undefined,
-      pallet_id: item.palletId || undefined,
     };
   }
 
   private normalizeStockStatus(val: string): any {
     const v = String(val || '').toLowerCase();
+    if (v.includes('cuarentena')) return 'Cuarentena';
+    if (v.includes('retenido')) return 'Retenido';
+    if (v.includes('despachado')) return 'Despachado';
+    if (v.includes('liberado')) return 'Liberado';
     if (v.includes('liberado') || v.includes('liberated') || v.includes('ok') || v.includes('aprobado')) return 'Liberado';
     if (v.includes('retenido') || v.includes('retained') || v.includes('hold') || v.includes('rechazado')) return 'Retenido';
     if (v.includes('despachado') || v.includes('dispatched') || v.includes('enviado') || v.includes('salida')) return 'Despachado';
@@ -722,6 +742,24 @@ export class InventoryService {
     if (normalized.includes('ret')) return 'RETAINED';
     if (normalized.includes('desp')) return 'DISPATCHED';
     return 'QUARANTINE';
+  }
+
+  private isStockRowEmpty(row: Record<string, unknown>) {
+    return ![
+      row.medida,
+      row.anchoMm,
+      row.avanceMm,
+      row.material,
+      row.columnas,
+      row.prepicado,
+      row.cantidadXRollo,
+      row.cantidadMillares,
+      row.etiqueta,
+      row.forma,
+      row.tipoProducto,
+      row.caja,
+      row.ubicacion,
+    ].some((value) => String(value ?? '').trim());
   }
 
   private buildFallbackLayout(): RackConfig[] {

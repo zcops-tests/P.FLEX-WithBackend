@@ -458,7 +458,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
 
   async logout() {
     await this.state.logout();
-    await this.router.navigate(['/login']);
+    this.state.redirectToLogin();
   }
 
   private readonly baseMenuItems: MenuItem[] = [

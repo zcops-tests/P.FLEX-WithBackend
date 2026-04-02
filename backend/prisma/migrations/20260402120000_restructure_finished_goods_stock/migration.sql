@@ -1,0 +1,13 @@
+ALTER TABLE `stock_items`
+  ADD COLUMN `medida` VARCHAR(100) NULL,
+  ADD COLUMN `ancho_mm` DECIMAL(12, 3) NULL,
+  ADD COLUMN `avance_mm` DECIMAL(12, 3) NULL,
+  ADD COLUMN `material` VARCHAR(150) NULL,
+  ADD COLUMN `columnas` INTEGER NULL,
+  ADD COLUMN `prepicado` VARCHAR(100) NULL,
+  ADD COLUMN `cantidad_x_rollo` DECIMAL(14, 3) NULL,
+  ADD COLUMN `cantidad_millares` DECIMAL(14, 3) NULL,
+  ADD COLUMN `etiqueta` VARCHAR(255) NULL,
+  ADD COLUMN `forma` VARCHAR(100) NULL,
+  ADD COLUMN `tipo_producto` VARCHAR(100) NULL,
+  ADD COLUMN `caja` VARCHAR(100) NULL;

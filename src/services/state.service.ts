@@ -221,6 +221,11 @@ export class StateService {
     this.activeOperator.set(null);
   }
 
+  redirectToLogin() {
+    const { origin, pathname, search } = window.location;
+    window.location.replace(`${origin}${pathname}${search}#/login`);
+  }
+
   toggleSidebar() {
     this.isSidebarCollapsed.update((v) => !v);
   }

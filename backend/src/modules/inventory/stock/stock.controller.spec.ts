@@ -49,7 +49,7 @@ describe('StockController', () => {
   });
 
   it('delegates create', async () => {
-    const dto = { ot_number_snapshot: 'OT-1' };
+    const dto = { caja: '1', medida: '100 x 200', entry_date: '2026-04-01T10:00:00.000Z' };
     mockStockService.create.mockResolvedValue({ id: 'stock-1' });
 
     const result = await controller.create(dto as any);
@@ -59,7 +59,7 @@ describe('StockController', () => {
   });
 
   it('delegates bulkCreate', async () => {
-    const dto = { items: [{ pallet_id: 'P1' }] };
+    const dto = { items: [{ caja: '1', entry_date: '2026-04-01T10:00:00.000Z' }] };
     mockStockService.bulkCreate.mockResolvedValue({ processed: 1 });
 
     const result = await controller.bulkCreate(dto as any);

@@ -1,0 +1,1 @@
+-- No-op: the previous migration already restores the global unique index on box_id.

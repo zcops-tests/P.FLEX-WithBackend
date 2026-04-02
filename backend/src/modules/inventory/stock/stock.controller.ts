@@ -60,7 +60,7 @@ export class StockController {
     name: 'q',
     required: false,
     type: String,
-    description: 'Search by OT, client, product, pallet, or location',
+    description: 'Search by OT, client, product, box, or location',
   })
   async findAll(@Query() query: StockQueryDto) {
     return this.stockService.findAll(query);
