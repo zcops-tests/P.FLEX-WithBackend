@@ -183,11 +183,38 @@ export class ModeSelectorComponent {
   });
 
   navigate(route: string) {
-    void this.router.navigate([route]);
+    void this.navigateWithRecovery(route);
   }
 
   async logout() {
     await this.state.logout();
     this.state.redirectToLogin();
+  }
+
+  private async navigateWithRecovery(route: string) {
+    try {
+      const navigated = await this.router.navigateByUrl(route);
+      if (!navigated) {
+        this.hardRedirect(route);
+      }
+    } catch (error: any) {
+      const message = String(error?.message || error || '');
+      if (
+        message.includes('Failed to fetch dynamically imported module') ||
+        message.includes('Importing a module script failed') ||
+        message.includes('Loading chunk')
+      ) {
+        this.hardRedirect(route);
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  private hardRedirect(route: string) {
+    const normalizedRoute = route.startsWith('/') ? route : `/${route}`;
+    const { origin, pathname, search } = window.location;
+    window.location.assign(`${origin}${pathname}${search}#${normalizedRoute}`);
   }
 }

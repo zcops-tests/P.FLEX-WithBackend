@@ -1,4 +1,14 @@
-import { Component, inject, NgZone, ChangeDetectorRef, DestroyRef } from '@angular/core';
+import {
+  AfterViewInit,
+  ChangeDetectorRef,
+  Component,
+  DestroyRef,
+  ElementRef,
+  HostListener,
+  NgZone,
+  ViewChild,
+  inject,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -13,7 +23,10 @@ import { NotificationService } from '../../../services/notification.service';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="flex-1 flex flex-col p-6 max-w-[1920px] mx-auto w-full overflow-hidden h-full bg-[#0f172a] text-slate-200">
+    <div
+      #viewportRoot
+      class="flex-1 flex flex-col p-6 max-w-[1920px] mx-auto w-full overflow-hidden min-h-0 bg-[#0f172a] text-slate-200"
+      [style.height.px]="viewportHeight">
       <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 flex-shrink-0">
         <div>
           <div class="flex items-center gap-3">
@@ -26,7 +39,11 @@ import { NotificationService } from '../../../services/notification.service';
         </div>
 
         <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-          <input [(ngModel)]="searchTerm" class="w-full sm:w-80 px-4 py-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Buscar medida, material, etiqueta, caja o ubicación">
+          <input
+            [(ngModel)]="searchTerm"
+            (ngModelChange)="handleSearchChange()"
+            class="w-full sm:w-80 px-4 py-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="Buscar medida, material, etiqueta, caja o ubicación">
           <ng-container *ngIf="canManageInventory">
             <input #fileInputStock type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
             <button (click)="fileInputStock.click()" [disabled]="isLoading || isImporting" class="btn-secondary">
@@ -44,12 +61,12 @@ import { NotificationService } from '../../../services/notification.service';
         <div class="stat-card"><span>Retenidos</span><strong>{{ stats.held }}</strong></div>
       </section>
 
-      <div class="bg-[#1e293b] rounded-xl shadow-lg border border-slate-700/60 overflow-hidden flex-1 flex flex-col relative">
+      <div class="bg-[#1e293b] rounded-xl shadow-lg border border-slate-700/60 overflow-hidden flex-1 flex flex-col relative min-h-0 h-full">
         <div *ngIf="isLoading" class="absolute inset-0 z-20 flex items-center justify-center bg-[#1e293b]/85 backdrop-blur-sm text-white font-bold">
           Analizando archivo de stock...
         </div>
 
-        <div class="overflow-auto custom-scrollbar flex-1">
+        <div #tableScroll class="overflow-x-auto overflow-y-hidden custom-scrollbar flex-1 min-h-0">
           <table class="w-full text-sm text-left">
             <thead class="bg-[#020617]/50 text-slate-400 font-bold sticky top-0 z-10">
               <tr>
@@ -71,7 +88,7 @@ import { NotificationService } from '../../../services/notification.service';
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-700/50 bg-[#1e293b]">
-              <tr *ngFor="let item of filteredItems" class="hover:bg-slate-700/30 transition-colors">
+              <tr *ngFor="let item of paginatedItems; trackBy: trackByItemId" class="hover:bg-slate-700/30 transition-colors">
                 <td class="td-cell">{{ item.medida || '---' }}</td>
                 <td class="td-cell text-right font-mono">{{ item.anchoMm ?? '---' }}</td>
                 <td class="td-cell text-right font-mono">{{ item.avanceMm ?? '---' }}</td>
@@ -83,7 +100,7 @@ import { NotificationService } from '../../../services/notification.service';
                 <td class="td-cell">
                   <div class="flex flex-col">
                     <span>{{ item.etiqueta || '---' }}</span>
-                    <span class="text-[10px] text-slate-500 font-mono">{{ item.boxId || 'ID pendiente' }}</span>
+                    <span class="text-[10px] text-slate-500 font-mono leading-tight">{{ item.boxId || 'ID pendiente' }}</span>
                   </div>
                 </td>
                 <td class="td-cell">{{ item.forma || '---' }}</td>
@@ -94,16 +111,51 @@ import { NotificationService } from '../../../services/notification.service';
                   <span class="inline-flex items-center px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider" [ngClass]="getStatusClass(item.status)">{{ item.status }}</span>
                 </td>
                 <td class="td-cell">
-                  <button (click)="openModal(item)" class="text-slate-400 hover:text-indigo-400 transition-colors p-2 hover:bg-slate-700/50 rounded-lg">
+                  <button (click)="openModal(item)" class="text-slate-400 hover:text-indigo-400 transition-colors p-1.5 hover:bg-slate-700/50 rounded-lg">
                     <span class="material-icons">{{ canManageInventory ? 'edit_note' : 'visibility' }}</span>
                   </button>
                 </td>
               </tr>
-              <tr *ngIf="filteredItems.length === 0">
+              <tr *ngIf="paginatedItems.length === 0">
                 <td colspan="15" class="p-12 text-center text-slate-500 italic">No se encontraron productos terminados.</td>
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="flex shrink-0 items-center justify-between gap-4 border-t border-slate-700/60 bg-[#0f172a] px-4 py-3">
+          <div class="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+            {{ filteredItems.length }} registros · página {{ currentPage }} de {{ totalPages }}
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              (click)="goToPreviousPage()"
+              [disabled]="currentPage === 1"
+              class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-300 transition-colors hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40">
+              Anterior
+            </button>
+
+            <div class="flex items-center gap-1">
+              <button
+                *ngFor="let page of visiblePages"
+                type="button"
+                (click)="goToPage(page)"
+                class="min-w-9 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors"
+                [ngClass]="page === currentPage ? 'bg-indigo-600 text-white' : 'border border-slate-700 text-slate-300 hover:border-slate-500 hover:bg-slate-800'">
+                {{ page }}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              (click)="goToNextPage()"
+              [disabled]="currentPage === totalPages"
+              class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-300 transition-colors hover:border-slate-500 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40">
+              Siguiente
+            </button>
+          </div>
         </div>
       </div>
 
@@ -233,6 +285,7 @@ import { NotificationService } from '../../../services/notification.service';
     </div>
   `,
   styles: [`
+    :host { display: block; height: 100%; min-height: 0; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: #121921; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
@@ -241,14 +294,14 @@ import { NotificationService } from '../../../services/notification.service';
     .stat-card { background: #1e293b; padding: 1.25rem; border-radius: .75rem; border: 1px solid rgba(71,85,105,.6); display:flex; flex-direction:column; gap:.5rem; }
     .stat-card span { font-size: .625rem; font-weight: 700; letter-spacing: .12em; color: #94a3b8; text-transform: uppercase; }
     .stat-card strong { font-size: 1.875rem; font-weight: 900; color: white; }
-    .th-cell { padding: 1rem; font-size: 10px; text-transform: uppercase; letter-spacing: .12em; border-bottom: 1px solid #334155; white-space: nowrap; }
-    .td-cell { padding: .875rem 1rem; color: #cbd5e1; vertical-align: top; }
+    .th-cell { padding: .65rem .75rem; font-size: 10px; text-transform: uppercase; letter-spacing: .12em; border-bottom: 1px solid #334155; white-space: nowrap; line-height: 1.1; }
+    .td-cell { padding: .45rem .75rem; color: #cbd5e1; vertical-align: middle; line-height: 1.15; }
     .input-field { width: 100%; background: #0f172a; border: 1px solid #475569; border-radius: .5rem; padding: .625rem .75rem; color: white; outline: none; }
     .status-btn { padding: .5rem; border-radius: .5rem; border: 1px solid transparent; font-size: .75rem; font-weight: 700; }
     .status-btn-idle { background: transparent; color: #94a3b8; border-color: #475569; }
   `],
 })
-export class InventoryStockComponent {
+export class InventoryStockComponent implements AfterViewInit {
   inventoryService = inject(InventoryService);
   excelService = inject(ExcelService);
   state = inject(StateService);
@@ -256,6 +309,9 @@ export class InventoryStockComponent {
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
   destroyRef = inject(DestroyRef);
+
+  @ViewChild('viewportRoot') viewportRootRef?: ElementRef<HTMLDivElement>;
+  @ViewChild('tableScroll') tableScrollRef?: ElementRef<HTMLDivElement>;
 
   stockItems: StockItem[] = [];
   searchTerm = '';
@@ -268,6 +324,12 @@ export class InventoryStockComponent {
   showImportPreviewModal = false;
   previewData: StockItem[] = [];
   conflictsData: StockItem[] = [];
+  currentPage = 1;
+  rowsPerPage = 8;
+  viewportHeight: number | null = null;
+
+  private readonly minimumRowsPerPage = 4;
+  private readonly compactRowHeight = 42;
 
   readonly modalFields = [
     { key: 'medida', label: 'Medida' },
@@ -289,7 +351,20 @@ export class InventoryStockComponent {
   constructor() {
     this.inventoryService.stockItems$
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((items) => (this.stockItems = items));
+      .subscribe((items) => {
+        this.stockItems = items;
+        this.ensurePageWithinBounds();
+        this.schedulePageSizeCalculation();
+      });
+  }
+
+  ngAfterViewInit() {
+    this.schedulePageSizeCalculation();
+  }
+
+  @HostListener('window:resize')
+  onWindowResize() {
+    this.schedulePageSizeCalculation();
   }
 
   get canManageInventory() {
@@ -311,6 +386,26 @@ export class InventoryStockComponent {
     );
   }
 
+  get paginatedItems() {
+    const start = (this.currentPage - 1) * this.rowsPerPage;
+    return this.filteredItems.slice(start, start + this.rowsPerPage);
+  }
+
+  get totalPages() {
+    return Math.max(1, Math.ceil(this.filteredItems.length / this.rowsPerPage));
+  }
+
+  get visiblePages() {
+    const total = this.totalPages;
+    const start = Math.max(1, this.currentPage - 2);
+    const end = Math.min(total, start + 4);
+    const adjustedStart = Math.max(1, end - 4);
+    return Array.from(
+      { length: end - adjustedStart + 1 },
+      (_, index) => adjustedStart + index,
+    );
+  }
+
   get stats() {
     return {
       totalMillares: this.stockItems.reduce((acc, item) => acc + (item.cantidadMillares || 0), 0),
@@ -328,6 +423,27 @@ export class InventoryStockComponent {
       case 'Despachado': return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
       default: return 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
     }
+  }
+
+  handleSearchChange() {
+    this.currentPage = 1;
+    this.ensurePageWithinBounds();
+  }
+
+  goToPage(page: number) {
+    this.currentPage = Math.min(this.totalPages, Math.max(1, page));
+  }
+
+  goToPreviousPage() {
+    this.goToPage(this.currentPage - 1);
+  }
+
+  goToNextPage() {
+    this.goToPage(this.currentPage + 1);
+  }
+
+  trackByItemId(index: number, item: StockItem) {
+    return item.id || item.boxId || `${item.caja}-${index}`;
   }
 
   openModal(item: StockItem | null) {
@@ -443,5 +559,65 @@ export class InventoryStockComponent {
     this.showImportPreviewModal = false;
     this.previewData = [];
     this.conflictsData = [];
+  }
+
+  private schedulePageSizeCalculation() {
+    this.ngZone.runOutsideAngular(() => {
+      window.requestAnimationFrame(() => {
+        const nextViewportHeight = this.calculateViewportHeight();
+        const nextRowsPerPage = this.calculateRowsPerPage();
+        const viewportHeightChanged = nextViewportHeight !== this.viewportHeight;
+        const rowsChanged = nextRowsPerPage !== this.rowsPerPage;
+
+        if (!viewportHeightChanged && !rowsChanged) return;
+
+        this.ngZone.run(() => {
+          this.viewportHeight = nextViewportHeight;
+          this.rowsPerPage = nextRowsPerPage;
+          this.ensurePageWithinBounds();
+          this.cdr.detectChanges();
+        });
+      });
+    });
+  }
+
+  private calculateViewportHeight() {
+    const viewportRootElement = this.viewportRootRef?.nativeElement;
+    if (!viewportRootElement) {
+      return this.viewportHeight;
+    }
+
+    const rootRect = viewportRootElement.getBoundingClientRect();
+    const availableHeight = Math.floor(window.innerHeight - rootRect.top);
+    return availableHeight > 0 ? availableHeight : this.viewportHeight;
+  }
+
+  private calculateRowsPerPage() {
+    const tableScrollElement = this.tableScrollRef?.nativeElement;
+    if (!tableScrollElement) {
+      return this.rowsPerPage;
+    }
+
+    const tableHeadElement = tableScrollElement.querySelector('thead');
+    const scrollAreaHeight = tableScrollElement.clientHeight;
+    const tableHeadHeight = tableHeadElement?.getBoundingClientRect().height ?? 0;
+    const availableRowsHeight = scrollAreaHeight - tableHeadHeight;
+
+    if (!scrollAreaHeight || !availableRowsHeight) {
+      return this.rowsPerPage;
+    }
+
+    const rowsThatFit = Math.floor(availableRowsHeight / this.compactRowHeight);
+    return Math.max(this.minimumRowsPerPage, rowsThatFit || this.minimumRowsPerPage);
+  }
+
+  private ensurePageWithinBounds() {
+    const totalPages = this.totalPages;
+    if (this.currentPage > totalPages) {
+      this.currentPage = totalPages;
+    }
+    if (this.currentPage < 1) {
+      this.currentPage = 1;
+    }
   }
 }

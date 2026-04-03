@@ -58,6 +58,13 @@ export class DiesController {
     return this.diesService.findAll(query);
   }
 
+  @Get('catalog')
+  @Permissions('inventory.dies.view')
+  @ApiOperation({ summary: 'Get all active dies without pagination' })
+  async findCatalog() {
+    return this.diesService.findCatalog();
+  }
+
   @Get(':id')
   @Permissions('inventory.dies.view')
   @ApiOperation({ summary: 'Get a specific die by ID' })

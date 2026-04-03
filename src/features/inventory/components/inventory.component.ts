@@ -22,7 +22,7 @@ import { InventoryStockComponent } from './inventory-stock.component';
     InventoryStockComponent
   ],
   template: `
-    <div class="h-full flex flex-col w-full">
+    <div class="h-full min-h-0 flex flex-col w-full overflow-hidden">
       
       <!-- SUB-ROUTING / SWITCHER -->
       
@@ -42,7 +42,14 @@ import { InventoryStockComponent } from './inventory-stock.component';
       </div>
 
     </div>
-  `
+  `,
+  styles: [`
+    :host {
+      display: block;
+      height: 100%;
+      min-height: 0;
+    }
+  `]
 })
 export class InventoryComponent {
   route: ActivatedRoute = inject(ActivatedRoute);

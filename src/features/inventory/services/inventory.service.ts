@@ -128,27 +128,6 @@ export class InventoryService {
   get layoutData$() { return this._layoutData.asObservable(); }
   get loadStatus$() { return this._loadStatus.asObservable(); }
 
-  private async fetchAllPages<T>(fetchPage: (query: { page: number; pageSize: number }) => Promise<{ items?: T[]; meta?: { totalPages?: number } }>) {
-    const pageSize = 500;
-    const firstPage = await fetchPage({ page: 1, pageSize });
-    const items = [...(firstPage.items || [])];
-    const totalPages = Math.max(1, Number(firstPage.meta?.totalPages || 1));
-
-    if (totalPages === 1) {
-      return items;
-    }
-
-    const remainingPages = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, index) => fetchPage({ page: index + 2, pageSize })),
-    );
-
-    remainingPages.forEach((page) => {
-      items.push(...(page.items || []));
-    });
-
-    return items;
-  }
-
   async reload() {
     this._loadStatus.next({
       state: 'loading',
@@ -163,9 +142,9 @@ export class InventoryService {
 
     const [clisesResult, diesResult, stockResult, racksResult] =
       await Promise.allSettled([
-        this.fetchAllPages((query) => this.backend.getClises(query)),
-        this.fetchAllPages((query) => this.backend.getDies(query)),
-        this.fetchAllPages((query) => this.backend.getStockItems(query)),
+        this.backend.getClisesCatalog(),
+        this.backend.getDiesCatalog(),
+        this.backend.getStockCatalog(),
         this.backend.getRackConfigs(),
       ]);
 

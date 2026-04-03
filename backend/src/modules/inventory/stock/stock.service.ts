@@ -202,6 +202,15 @@ export class StockService {
     );
   }
 
+  async findCatalog() {
+    const items = await this.prisma.stockItem.findMany({
+      where: { deleted_at: null },
+      orderBy: { entry_date: 'desc' },
+    });
+
+    return items.map((item) => toFrontendStockItem(item));
+  }
+
   async findOne(id: string) {
     const item = await this.prisma.stockItem.findUnique({
       where: { id },

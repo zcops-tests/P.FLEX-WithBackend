@@ -189,6 +189,28 @@ export class DiesService {
     );
   }
 
+  async findCatalog() {
+    const items = await this.prisma.die.findMany({
+      where: { deleted_at: null },
+      orderBy: { created_at: 'desc' },
+      include: {
+        clise_links: {
+          include: {
+            clise: true,
+          },
+        },
+        history: {
+          include: {
+            user: true,
+            machine: true,
+          },
+        },
+      },
+    });
+
+    return items.map((item) => toFrontendDie(item));
+  }
+
   async findOne(id: string) {
     const die = await this.prisma.die.findUnique({
       where: { id },

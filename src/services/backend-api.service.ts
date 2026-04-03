@@ -72,6 +72,7 @@ export class BackendApiService {
   deletePlanningSchedule(id: string) { return this.api.delete(`/planning/schedules/${id}`); }
 
   getClises(query?: any) { return this.api.get<any>('/inventory/clises', { query }); }
+  getClisesCatalog() { return this.api.get<any[]>('/inventory/clises/catalog'); }
   getClise(id: string) { return this.api.get<any>(`/inventory/clises/${id}`); }
   createClise(body: any) { return this.api.post<any>('/inventory/clises', body); }
   bulkUpsertClises(body: any) { return this.api.post<any>('/inventory/clises/bulk-upsert', body); }
@@ -79,6 +80,7 @@ export class BackendApiService {
   deleteClise(id: string) { return this.api.delete(`/inventory/clises/${id}`); }
 
   getDies(query?: any) { return this.api.get<any>('/inventory/dies', { query }); }
+  getDiesCatalog() { return this.api.get<any[]>('/inventory/dies/catalog'); }
   getDie(id: string) { return this.api.get<any>(`/inventory/dies/${id}`); }
   createDie(body: any) { return this.api.post<any>('/inventory/dies', body); }
   bulkUpsertDies(body: any) { return this.api.post<any>('/inventory/dies/bulk-upsert', body); }
@@ -97,6 +99,7 @@ export class BackendApiService {
   getDieClises(id: string) { return this.api.get<any[]>(`/inventory/relations/die/${id}/clises`); }
 
   getStockItems(query?: any) { return this.api.get<any>('/inventory/stock', { query }); }
+  getStockCatalog() { return this.api.get<any[]>('/inventory/stock/catalog'); }
   getStockItem(id: string) { return this.api.get<any>(`/inventory/stock/${id}`); }
   createStockItem(body: any) { return this.api.post<any>('/inventory/stock', body); }
   bulkCreateStockItems(body: any) { return this.api.post<any>('/inventory/stock/bulk-create', body); }

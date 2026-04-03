@@ -62,6 +62,13 @@ export class ClisesController {
     return this.clisesService.findAll(query);
   }
 
+  @Get('catalog')
+  @Permissions('inventory.clises.view')
+  @ApiOperation({ summary: 'Get all active clises without pagination' })
+  async findCatalog() {
+    return this.clisesService.findCatalog();
+  }
+
   @Get(':id')
   @Permissions('inventory.clises.view')
   @ApiOperation({ summary: 'Get a specific cliché by ID' })

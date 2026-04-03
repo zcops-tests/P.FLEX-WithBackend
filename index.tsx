@@ -1,10 +1,12 @@
 import 'zone.js';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { APP_BASE_HREF } from '@angular/common';
+import { ErrorHandler } from '@angular/core';
 import { provideRouter, Routes, withHashLocation } from '@angular/router';
 // import { provideZonelessChangeDetection } from '@angular/core';
 import { AppComponent } from './src/app.component';
 import { authGuard, guestGuard, inventoryRoleGuard, roleGuard } from './src/guards/auth.guard';
+import { LazyRouteErrorHandlerService } from './src/services/lazy-route-error-handler.service';
 
 const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
@@ -47,6 +49,7 @@ bootstrapApplication(AppComponent, {
   providers: [
 //   provideZonelessChangeDetection(),
     { provide: APP_BASE_HREF, useValue: '/' },
+    { provide: ErrorHandler, useClass: LazyRouteErrorHandlerService },
     provideRouter(routes, withHashLocation())
   ]
 }).catch((err) => console.error(err));

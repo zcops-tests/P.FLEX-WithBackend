@@ -66,6 +66,13 @@ export class StockController {
     return this.stockService.findAll(query);
   }
 
+  @Get('catalog')
+  @Permissions('inventory.stock.view')
+  @ApiOperation({ summary: 'Get all active stock items without pagination' })
+  async findCatalog() {
+    return this.stockService.findCatalog();
+  }
+
   @Get(':id')
   @Permissions('inventory.stock.view')
   @ApiOperation({ summary: 'Get a specific stock item by ID' })

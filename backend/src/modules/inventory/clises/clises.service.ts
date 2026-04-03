@@ -170,6 +170,16 @@ export class ClisesService {
     );
   }
 
+  async findCatalog() {
+    const items = await this.prisma.clise.findMany({
+      where: { deleted_at: null },
+      orderBy: { created_at: 'desc' },
+      include: this.includeGraph,
+    });
+
+    return items.map((item) => toFrontendClise(item));
+  }
+
   async findOne(id: string) {
     const clise = await this.prisma.clise.findUnique({
       where: { id },
