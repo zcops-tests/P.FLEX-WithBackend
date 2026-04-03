@@ -12,7 +12,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { InventoryService } from '../services/inventory.service';
+import { InventoryLoadStatus, InventoryService } from '../services/inventory.service';
 import { StockItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
 import { StateService } from '../../../services/state.service';
@@ -62,6 +62,12 @@ import { NotificationService } from '../../../services/notification.service';
       </section>
 
       <div class="bg-[#1e293b] rounded-xl shadow-lg border border-slate-700/60 overflow-hidden flex-1 flex flex-col relative min-h-0 h-full">
+        <div *ngIf="showInitialLoadingOverlay" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#1e293b]/88 backdrop-blur-sm text-white">
+          <div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-indigo-500"></div>
+          <h3 class="text-lg font-bold">Cargando stock de producto terminado...</h3>
+          <p class="mt-1 text-sm text-slate-400">Obteniendo registros y preparando la tabla.</p>
+        </div>
+
         <div *ngIf="isLoading" class="absolute inset-0 z-20 flex items-center justify-center bg-[#1e293b]/85 backdrop-blur-sm text-white font-bold">
           Analizando archivo de stock...
         </div>
@@ -327,6 +333,11 @@ export class InventoryStockComponent implements AfterViewInit {
   currentPage = 1;
   rowsPerPage = 8;
   viewportHeight: number | null = null;
+  loadStatus: InventoryLoadStatus = {
+    state: 'idle',
+    lastSuccessfulSync: null,
+    errorMessage: null,
+  };
 
   private readonly minimumRowsPerPage = 4;
   private readonly compactRowHeight = 42;
@@ -352,9 +363,21 @@ export class InventoryStockComponent implements AfterViewInit {
     this.inventoryService.stockItems$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((items) => {
-        this.stockItems = items;
-        this.ensurePageWithinBounds();
-        this.schedulePageSizeCalculation();
+        this.ngZone.run(() => {
+          this.stockItems = items;
+          this.ensurePageWithinBounds();
+          this.schedulePageSizeCalculation();
+          this.requestViewRefresh();
+        });
+      });
+
+    this.inventoryService.loadStatus$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((status) => {
+        this.ngZone.run(() => {
+          this.loadStatus = status;
+          this.requestViewRefresh();
+        });
       });
   }
 
@@ -369,6 +392,10 @@ export class InventoryStockComponent implements AfterViewInit {
 
   get canManageInventory() {
     return this.state.hasPermission('inventory.stock.manage');
+  }
+
+  get showInitialLoadingOverlay() {
+    return this.loadStatus.state === 'loading' && this.stockItems.length === 0 && !this.isLoading;
   }
 
   get filteredItems() {
@@ -619,5 +646,15 @@ export class InventoryStockComponent implements AfterViewInit {
     if (this.currentPage < 1) {
       this.currentPage = 1;
     }
+  }
+
+  private requestViewRefresh() {
+    this.ngZone.runOutsideAngular(() => {
+      window.requestAnimationFrame(() => {
+        this.ngZone.run(() => {
+          this.cdr.detectChanges();
+        });
+      });
+    });
   }
 }

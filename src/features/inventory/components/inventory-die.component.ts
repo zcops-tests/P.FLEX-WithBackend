@@ -3,7 +3,7 @@ import { Component, inject, NgZone, ChangeDetectorRef, OnDestroy, DestroyRef, El
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { InventoryService } from '../services/inventory.service';
+import { InventoryLoadStatus, InventoryService } from '../services/inventory.service';
 import { DieItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
 import { FileExportService } from '../../../services/file-export.service';
@@ -104,6 +104,12 @@ import { StateService } from '../../../services/state.service';
 
           <!-- TABLE -->
           <div class="bg-[#1A222C] rounded-xl border border-[#2D3748] overflow-hidden shadow-xl flex-1 flex flex-col relative">
+              <div *ngIf="showInitialLoadingOverlay" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#1A222C]/88 backdrop-blur-sm">
+                  <div class="w-12 h-12 rounded-full border-4 border-[#2D3748] border-t-[#3B82F6] animate-spin mb-4"></div>
+                  <h3 class="text-lg font-bold text-white">Cargando inventario de troqueles...</h3>
+                  <p class="text-sm text-[#94A3B8] mt-1">Obteniendo registros y preparando la tabla.</p>
+              </div>
+
               <div *ngIf="isLoading" class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#1A222C]/85 backdrop-blur-sm">
                   <div class="w-14 h-14 rounded-full border-4 border-[#2D3748] border-t-[#3B82F6] animate-spin mb-4"></div>
                   <h3 class="text-lg font-bold text-white">Analizando archivo de troqueles...</h3>
@@ -200,9 +206,18 @@ import { StateService } from '../../../services/state.service';
                   <div class="text-xs text-[#94A3B8]">
                       Mostrando <span class="font-medium text-white">{{ showingStart }}</span> - <span class="font-medium text-white">{{ showingEnd }}</span> de <span class="font-medium text-white">{{ totalItems }}</span>
                   </div>
-                  <div class="flex gap-2">
-                      <button (click)="changePage('prev')" [disabled]="currentPage === 1" class="px-3 py-1.5 border border-[#2D3748] rounded text-xs font-medium text-[#94A3B8] hover:bg-[#2D3748] hover:text-white disabled:opacity-50">Anterior</button>
-                      <button (click)="changePage('next')" [disabled]="currentPage >= totalPages" class="px-3 py-1.5 border border-[#2D3748] rounded text-xs font-medium text-[#94A3B8] hover:bg-[#2D3748] hover:text-white disabled:opacity-50">Siguiente</button>
+                  <div class="flex items-center gap-2">
+                      <button (click)="goToPreviousPage()" [disabled]="currentPage === 1" class="px-3 py-1.5 border border-[#2D3748] rounded text-xs font-medium text-[#94A3B8] hover:bg-[#2D3748] hover:text-white disabled:opacity-50">Anterior</button>
+                      <div class="flex items-center gap-1">
+                          <button
+                            *ngFor="let page of visiblePages"
+                            (click)="goToPage(page)"
+                            class="min-w-9 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors"
+                            [ngClass]="page === currentPage ? 'bg-[#3B82F6] text-white' : 'border border-[#2D3748] text-[#94A3B8] hover:bg-[#2D3748] hover:text-white'">
+                              {{ page }}
+                          </button>
+                      </div>
+                      <button (click)="goToNextPage()" [disabled]="currentPage >= totalPages" class="px-3 py-1.5 border border-[#2D3748] rounded text-xs font-medium text-[#94A3B8] hover:bg-[#2D3748] hover:text-white disabled:opacity-50">Siguiente</button>
                   </div>
               </div>
           </div>
@@ -743,6 +758,11 @@ export class InventoryDieComponent implements OnDestroy {
 
   currentPage = 1;
   pageSize = 20;
+  loadStatus: InventoryLoadStatus = {
+      state: 'idle',
+      lastSuccessfulSync: null,
+      errorMessage: null,
+  };
 
   // Modal
   showDieForm = false;
@@ -767,12 +787,28 @@ export class InventoryDieComponent implements OnDestroy {
       return this.state.hasPermission('inventory.dies.manage');
   }
 
+  get showInitialLoadingOverlay() {
+      return this.loadStatus.state === 'loading' && this.dieItems.length === 0 && !this.isLoading;
+  }
+
   constructor() {
     this.inventoryService.dieItems$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(items => {
-        this.dieItems = items;
-        this.currentPage = Math.min(this.currentPage, this.totalPages);
+        this.ngZone.run(() => {
+          this.dieItems = items;
+          this.currentPage = Math.min(this.currentPage, this.totalPages);
+          this.requestViewRefresh();
+        });
+      });
+
+    this.inventoryService.loadStatus$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((status) => {
+        this.ngZone.run(() => {
+          this.loadStatus = status;
+          this.requestViewRefresh();
+        });
       });
   }
 
@@ -840,6 +876,16 @@ export class InventoryDieComponent implements OnDestroy {
   get totalPages() { return Math.ceil(this.totalItems / this.pageSize) || 1; }
   get showingStart() { return this.totalItems === 0 ? 0 : (this.currentPage - 1) * this.pageSize + 1; }
   get showingEnd() { return Math.min(this.currentPage * this.pageSize, this.totalItems); }
+  get visiblePages() {
+      const total = this.totalPages;
+      const start = Math.max(1, this.currentPage - 2);
+      const end = Math.min(total, start + 4);
+      const adjustedStart = Math.max(1, end - 4);
+      return Array.from(
+        { length: end - adjustedStart + 1 },
+        (_, index) => adjustedStart + index,
+      );
+  }
 
   get stats() {
       const total = this.dieItems.length;
@@ -859,9 +905,16 @@ export class InventoryDieComponent implements OnDestroy {
       }
   }
 
-  changePage(dir: 'prev' | 'next') {
-      if(dir === 'next' && this.currentPage < this.totalPages) this.currentPage++;
-      if(dir === 'prev' && this.currentPage > 1) this.currentPage--;
+  goToPreviousPage() {
+      this.goToPage(this.currentPage - 1);
+  }
+
+  goToNextPage() {
+      this.goToPage(this.currentPage + 1);
+  }
+
+  goToPage(page: number) {
+      this.currentPage = Math.min(Math.max(page, 1), this.totalPages);
   }
 
   clearFilters() {
@@ -1216,6 +1269,16 @@ export class InventoryDieComponent implements OnDestroy {
   private waitForNextPaint() {
       return new Promise<void>((resolve) => {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+  }
+
+  private requestViewRefresh() {
+      this.ngZone.runOutsideAngular(() => {
+          window.requestAnimationFrame(() => {
+              this.ngZone.run(() => {
+                  this.cdr.detectChanges();
+              });
+          });
       });
   }
 }

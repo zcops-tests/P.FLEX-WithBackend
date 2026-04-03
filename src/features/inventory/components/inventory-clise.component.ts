@@ -1,9 +1,19 @@
 
-import { Component, inject, NgZone, ChangeDetectorRef, OnDestroy, OnInit } from '@angular/core';
+import {
+  AfterViewInit,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  HostListener,
+  NgZone,
+  OnDestroy,
+  ViewChild,
+  inject,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
-import { InventoryService } from '../services/inventory.service';
+import { InventoryLoadStatus, InventoryService } from '../services/inventory.service';
 import { CliseItem, DieItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
 import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-modal.component';
@@ -14,7 +24,10 @@ import { StateService } from '../../../services/state.service';
   standalone: true,
   imports: [CommonModule, FormsModule, InventoryCliseDetailModalComponent],
   template: `
-    <div class="flex-1 min-h-full flex flex-col bg-[#0b1326] text-[#dae2fd]">
+    <div
+      #viewportRoot
+      class="flex-1 min-h-0 flex flex-col overflow-hidden bg-[#0b1326] text-[#dae2fd]"
+      [style.height.px]="viewportHeight">
       <header class="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[#424754]/30 bg-[#0b1326] px-8">
         <div>
           <h1 class="text-xl font-extrabold tracking-tight text-[#dae2fd]">Inventario de Clisés</h1>
@@ -43,9 +56,9 @@ import { StateService } from '../../../services/state.service';
         </div>
       </header>
 
-      <div class="flex-1 space-y-8 p-8">
+      <div class="flex-1 min-h-0 flex flex-col gap-8 overflow-hidden p-8">
 
-        <section class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <section class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 shrink-0">
           <div class="relative flex items-center rounded-lg border border-[#424754]/25 bg-[#171f33] p-6">
             <div class="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-[#448aff]"></div>
             <div class="flex items-center gap-5">
@@ -116,7 +129,7 @@ import { StateService } from '../../../services/state.service';
           </div>
         </section>
 
-        <section class="rounded-xl border border-[#424754]/25 bg-[#131b2e] p-4">
+        <section class="rounded-xl border border-[#424754]/25 bg-[#131b2e] p-4 shrink-0">
           <div class="flex flex-wrap items-end gap-4">
             <div class="min-w-[240px] flex-1 space-y-1.5">
               <label class="px-1 text-[10px] font-bold uppercase tracking-[0.28em] text-[#c2c6d6]">Buscar</label>
@@ -170,7 +183,13 @@ import { StateService } from '../../../services/state.service';
           </div>
         </section>
 
-        <section class="relative rounded-xl border border-[#424754]/20 bg-[#171f33] shadow-2xl shadow-[#060e20]/40">
+        <section class="relative min-h-0 flex-1 rounded-xl border border-[#424754]/20 bg-[#171f33] shadow-2xl shadow-[#060e20]/40 flex flex-col overflow-hidden">
+          <div *ngIf="showInitialLoadingOverlay" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#171f33]/88 backdrop-blur-sm">
+            <div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-[#2d3449] border-t-[#448aff]"></div>
+            <h3 class="text-lg font-bold text-[#dae2fd]">Cargando inventario de clisés...</h3>
+            <p class="mt-1 text-sm text-[#c2c6d6]">Obteniendo registros y preparando la tabla.</p>
+          </div>
+
           <div *ngIf="isLoading" class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#171f33]/90 backdrop-blur-sm">
             <div class="mb-4 h-14 w-14 animate-spin rounded-full border-4 border-[#2d3449] border-t-[#448aff]"></div>
             <h3 class="text-lg font-bold text-[#dae2fd]">Analizando archivo de clisés...</h3>
@@ -183,7 +202,7 @@ import { StateService } from '../../../services/state.service';
             </div>
           </div>
 
-          <div class="overflow-x-auto">
+          <div #tableScroll class="overflow-x-auto overflow-y-hidden flex-1 min-h-0">
             <table class="w-full min-w-[980px] border-collapse text-left">
               <thead>
                 <tr class="border-b border-[#424754]/20 bg-[#222a3d]/50">
@@ -256,18 +275,17 @@ import { StateService } from '../../../services/state.service';
           <div class="flex items-center justify-between border-t border-[#424754]/10 bg-[#131b2e]/30 px-6 py-4">
             <span class="text-xs text-[#c2c6d6]">{{ showingStart }} - {{ showingEnd }} de {{ totalItems | number }} items</span>
             <div class="flex items-center gap-1">
-              <button (click)="changePage('prev')" [disabled]="currentPage === 1" class="flex h-8 w-8 items-center justify-center rounded-lg text-[#c2c6d6] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-40">
+              <button (click)="goToPreviousPage()" [disabled]="currentPage === 1" class="flex h-8 w-8 items-center justify-center rounded-lg text-[#c2c6d6] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-40">
                 <span class="material-icons text-lg">chevron_left</span>
               </button>
 
-              <ng-container *ngFor="let page of paginationSequence">
-                <span *ngIf="page === 'ellipsis'" class="flex h-8 w-8 items-center justify-center text-[#c2c6d6]">...</span>
-                <button *ngIf="page !== 'ellipsis'" (click)="goToPage(page)" class="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold transition-all" [ngClass]="page === currentPage ? 'bg-[#448aff] text-white' : 'text-[#c2c6d6] hover:bg-[#2d3449]'">
+              <ng-container *ngFor="let page of visiblePages">
+                <button (click)="goToPage(page)" class="flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-xs font-bold transition-all" [ngClass]="page === currentPage ? 'bg-[#448aff] text-white' : 'text-[#c2c6d6] hover:bg-[#2d3449]'">
                   {{ page }}
                 </button>
               </ng-container>
 
-              <button (click)="changePage('next')" [disabled]="currentPage >= totalPages" class="flex h-8 w-8 items-center justify-center rounded-lg text-[#c2c6d6] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-40">
+              <button (click)="goToNextPage()" [disabled]="currentPage >= totalPages" class="flex h-8 w-8 items-center justify-center rounded-lg text-[#c2c6d6] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-40">
                 <span class="material-icons text-lg">chevron_right</span>
               </button>
             </div>
@@ -892,6 +910,7 @@ import { StateService } from '../../../services/state.service';
     </div>
   `,
   styles: [`
+    :host { display: block; height: 100%; min-height: 0; }
     .gauge-svg { transform: rotate(-90deg); }
     .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #131b2e; }
@@ -900,13 +919,16 @@ import { StateService } from '../../../services/state.service';
     .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
   `]
 })
-export class InventoryCliseComponent implements OnInit, OnDestroy {
+export class InventoryCliseComponent implements AfterViewInit, OnDestroy {
   inventoryService = inject(InventoryService);
   excelService = inject(ExcelService);
   state = inject(StateService);
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
   Math = Math;
+
+  @ViewChild('viewportRoot') viewportRootRef?: ElementRef<HTMLDivElement>;
+  @ViewChild('tableScroll') tableScrollRef?: ElementRef<HTMLDivElement>;
 
   cliseItems: CliseItem[] = [];
   searchInput = '';
@@ -920,7 +942,13 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
   filterMeasureInput = '';
   filterMeasure = '';
   currentPage = 1;
-  pageSize = 20;
+  pageSize = 10;
+  viewportHeight: number | null = null;
+  loadStatus: InventoryLoadStatus = {
+    state: 'idle',
+    lastSuccessfulSync: null,
+    errorMessage: null,
+  };
   
   // Modal State
   showCliseForm = false;
@@ -944,34 +972,50 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
   dieSearchTerm = '';
   dieSearchResults: DieItem[] = [];
   private cliseItemsSubscription?: Subscription;
+  private loadStatusSubscription?: Subscription;
   private loadingProgressInterval?: number;
+  private readonly minimumRowsPerPage = 4;
+  private readonly compactRowHeight = 72;
 
   get canManageInventory() {
     return this.state.hasPermission('inventory.clises.manage');
   }
 
-  async ngOnInit() {
+  get showInitialLoadingOverlay() {
+    return this.loadStatus.state === 'loading' && this.cliseItems.length === 0 && !this.isLoading;
+  }
+
+  constructor() {
     this.cliseItemsSubscription = this.inventoryService.cliseItems$.subscribe((items) => {
       this.ngZone.run(() => {
         this.cliseItems = items;
         this.currentPage = Math.min(this.currentPage, this.totalPages || 1);
+        this.schedulePageSizeCalculation();
+        this.requestViewRefresh();
       });
     });
 
-    this.isLoading = true;
-    this.cdr.detectChanges();
+    this.loadStatusSubscription = this.inventoryService.loadStatus$.subscribe((status) => {
+      this.ngZone.run(() => {
+        this.loadStatus = status;
+        this.requestViewRefresh();
+      });
+    });
+  }
 
-    try {
-      await this.inventoryService.reload();
-    } finally {
-      this.isLoading = false;
-      this.cdr.detectChanges();
-    }
+  ngAfterViewInit() {
+    this.schedulePageSizeCalculation();
   }
 
   ngOnDestroy() {
     this.cliseItemsSubscription?.unsubscribe();
+    this.loadStatusSubscription?.unsubscribe();
     this.stopLoadingProgressSimulation();
+  }
+
+  @HostListener('window:resize')
+  onWindowResize() {
+    this.schedulePageSizeCalculation();
   }
 
   get paginatedCliseList() {
@@ -1019,23 +1063,15 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
       ];
   }
 
-  get paginationSequence(): Array<number | 'ellipsis'> {
-      if (this.totalPages <= 5) {
-          return Array.from({ length: this.totalPages }, (_, index) => index + 1);
-      }
-
-      const pages = new Set<number>([1, this.totalPages, this.currentPage - 1, this.currentPage, this.currentPage + 1]);
-      const orderedPages = [...pages].filter((page) => page >= 1 && page <= this.totalPages).sort((a, b) => a - b);
-      const sequence: Array<number | 'ellipsis'> = [];
-
-      orderedPages.forEach((page, index) => {
-          if (index > 0 && page - orderedPages[index - 1] > 1) {
-              sequence.push('ellipsis');
-          }
-          sequence.push(page);
-      });
-
-      return sequence;
+  get visiblePages() {
+      const total = this.totalPages;
+      const start = Math.max(1, this.currentPage - 2);
+      const end = Math.min(total, start + 4);
+      const adjustedStart = Math.max(1, end - 4);
+      return Array.from(
+        { length: end - adjustedStart + 1 },
+        (_, index) => adjustedStart + index,
+      );
   }
 
   get stats() {
@@ -1138,13 +1174,16 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
       this.currentPage = 1;
   }
 
-  changePage(dir: 'prev' | 'next') {
-      if(dir === 'next' && this.currentPage < this.totalPages) this.currentPage++;
-      if(dir === 'prev' && this.currentPage > 1) this.currentPage--;
-  }
-
   goToPage(page: number) {
       this.currentPage = Math.min(Math.max(page, 1), this.totalPages);
+  }
+
+  goToPreviousPage() {
+      this.goToPage(this.currentPage - 1);
+  }
+
+  goToNextPage() {
+      this.goToPage(this.currentPage + 1);
   }
 
   // --- CRUD ---
@@ -1369,6 +1408,66 @@ export class InventoryCliseComponent implements OnInit, OnDestroy {
   private waitForNextPaint() {
       return new Promise<void>((resolve) => {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+  }
+
+  private schedulePageSizeCalculation() {
+      this.ngZone.runOutsideAngular(() => {
+          window.requestAnimationFrame(() => {
+              const nextViewportHeight = this.calculateViewportHeight();
+              const nextPageSize = this.calculatePageSize();
+              const viewportChanged = nextViewportHeight !== this.viewportHeight;
+              const pageSizeChanged = nextPageSize !== this.pageSize;
+
+              if (!viewportChanged && !pageSizeChanged) return;
+
+              this.ngZone.run(() => {
+                  this.viewportHeight = nextViewportHeight;
+                  this.pageSize = nextPageSize;
+                  this.currentPage = Math.min(this.currentPage, this.totalPages || 1);
+                  this.cdr.detectChanges();
+              });
+          });
+      });
+  }
+
+  private calculateViewportHeight() {
+      const viewportRootElement = this.viewportRootRef?.nativeElement;
+      if (!viewportRootElement) {
+          return this.viewportHeight;
+      }
+
+      const rootRect = viewportRootElement.getBoundingClientRect();
+      const availableHeight = Math.floor(window.innerHeight - rootRect.top);
+      return availableHeight > 0 ? availableHeight : this.viewportHeight;
+  }
+
+  private calculatePageSize() {
+      const tableScrollElement = this.tableScrollRef?.nativeElement;
+      if (!tableScrollElement) {
+          return this.pageSize;
+      }
+
+      const tableHeadElement = tableScrollElement.querySelector('thead');
+      const scrollAreaHeight = tableScrollElement.clientHeight;
+      const tableHeadHeight = tableHeadElement?.getBoundingClientRect().height ?? 0;
+      const availableRowsHeight = scrollAreaHeight - tableHeadHeight;
+
+      if (!scrollAreaHeight || !availableRowsHeight) {
+          return this.pageSize;
+      }
+
+      const rowsThatFit = Math.floor(availableRowsHeight / this.compactRowHeight);
+      return Math.max(this.minimumRowsPerPage, rowsThatFit || this.minimumRowsPerPage);
+  }
+
+  private requestViewRefresh() {
+      this.ngZone.runOutsideAngular(() => {
+          window.requestAnimationFrame(() => {
+              this.ngZone.run(() => {
+                  this.cdr.detectChanges();
+              });
+          });
       });
   }
 
