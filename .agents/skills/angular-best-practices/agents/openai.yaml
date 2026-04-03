@@ -1,4 +1,0 @@
-interface:
-  display_name: "Angular 21 Frontend Architect"
-  short_description: "Guide for senior Angular architecture, performance, and security"
-  default_prompt: "Use $frontend-best-practices to design, review, refactor, or harden this Angular 21 frontend change."
