@@ -23,12 +23,49 @@ import {
 
 @Injectable()
 export class QualityService {
+  private static readonly INCIDENT_SEQUENCE_PREFIX = 'incident_code';
+
   constructor(private prisma: PrismaService) {}
 
+  private async reserveIncidentSequence(year: number) {
+    const sequenceName = `${QualityService.INCIDENT_SEQUENCE_PREFIX}_${year}`;
+
+    await this.prisma.$executeRaw`
+      INSERT INTO sequence_counters (name, next_value, created_at, updated_at)
+      VALUES (${sequenceName}, 0, NOW(3), NOW(3))
+      ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
+    `;
+
+    await this.prisma.$executeRaw`
+      UPDATE sequence_counters
+      SET next_value = LAST_INSERT_ID(next_value + 1), updated_at = NOW(3)
+      WHERE name = ${sequenceName}
+    `;
+
+    const rows =
+      await this.prisma.$queryRaw<Array<{ reserved_end: bigint | number }>>`
+        SELECT LAST_INSERT_ID() AS reserved_end
+      `;
+
+    return Number(rows[0]?.reserved_end ?? 1);
+  }
+
+  private async resolveIncidentCode(preferredCode?: string | null) {
+    const normalized = String(preferredCode || '').trim();
+    if (normalized) return normalized;
+
+    const year = new Date().getFullYear();
+    const nextSequence = await this.reserveIncidentSequence(year);
+    return `INC-${year}-${String(nextSequence).padStart(4, '0')}`;
+  }
+
   async createIncident(dto: CreateIncidentDto, userId: string) {
+    const code = await this.resolveIncidentCode(dto.code);
+
     const incident = await this.prisma.incident.create({
       data: {
         ...dto,
+        code,
         status: IncidentStatus.OPEN,
         reported_by_user_id: userId,
       },

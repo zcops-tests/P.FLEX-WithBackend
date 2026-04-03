@@ -6,6 +6,7 @@ import { InventoryService } from '../services/inventory.service';
 import { StockItem } from '../models/inventory.models';
 import { ExcelService } from '../../../services/excel.service';
 import { StateService } from '../../../services/state.service';
+import { NotificationService } from '../../../services/notification.service';
 
 @Component({
   selector: 'app-inventory-stock',
@@ -251,6 +252,7 @@ export class InventoryStockComponent {
   inventoryService = inject(InventoryService);
   excelService = inject(ExcelService);
   state = inject(StateService);
+  notifications = inject(NotificationService);
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
   destroyRef = inject(DestroyRef);
@@ -358,7 +360,7 @@ export class InventoryStockComponent {
   async saveItem() {
     if (this.isReadOnly || !this.canManageInventory) return;
     if (!String(this.tempItem.caja || '').trim()) {
-      alert('Complete la CAJA antes de guardar.');
+      this.notifications.showWarning('Complete la CAJA antes de guardar.');
       return;
     }
 
@@ -373,7 +375,9 @@ export class InventoryStockComponent {
       }
       this.showModal = false;
     } catch (error: any) {
-      alert(`Error al guardar: ${error?.message || 'No se pudo persistir el producto terminado.'}`);
+      this.notifications.showError(
+        error?.message || 'No se pudo persistir el producto terminado.',
+      );
     }
   }
 
@@ -400,7 +404,9 @@ export class InventoryStockComponent {
         });
       } catch (error: any) {
         this.ngZone.run(() => {
-          alert(`Error al leer el archivo: ${error.message}`);
+          this.notifications.showError(
+            error?.message || 'No se pudo leer el archivo de stock.',
+          );
           this.isLoading = false;
           event.target.value = '';
         });
@@ -416,12 +422,16 @@ export class InventoryStockComponent {
     try {
       await this.inventoryService.addStocks(this.previewData);
       const skipped = this.conflictsData.length;
-      alert(skipped > 0
-        ? `Se importaron ${this.previewData.length} registros válidos. Quedaron ${skipped} registros pendientes por falta de CAJA.`
-        : `Se importaron ${this.previewData.length} registros.`);
+      this.notifications.showSuccess(
+        skipped > 0
+          ? `Se importaron ${this.previewData.length} registros válidos. Quedaron ${skipped} pendientes por falta de CAJA.`
+          : `Se importaron ${this.previewData.length} registros.`,
+      );
       this.cancelImport();
     } catch (error: any) {
-      alert(`Error al importar: ${error?.message || 'No se pudo completar la importación.'}`);
+      this.notifications.showError(
+        error?.message || 'No se pudo completar la importación.',
+      );
     } finally {
       this.isImporting = false;
       this.cdr.detectChanges();

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import {
@@ -15,6 +19,8 @@ import { toFrontendStockItem } from '../../../common/utils/frontend-entity.util'
 
 @Injectable()
 export class StockService {
+  private static readonly BOX_SEQUENCE_NAME = 'stock_box_id';
+
   constructor(private prisma: PrismaService) {}
 
   private normalizeCaja(value: string | null | undefined) {
@@ -29,38 +35,50 @@ export class StockService {
     return text || undefined;
   }
 
-  private extractBoxSequence(value: string | null | undefined) {
-    const match = String(value || '')
-      .trim()
-      .match(/(\d+)$/);
-
-    if (!match) return null;
-    const parsed = Number(match[1]);
-    return Number.isFinite(parsed) ? parsed : null;
+  private assertCaja(value: string | null | undefined) {
+    const normalized = this.normalizeCaja(value);
+    if (!normalized) {
+      throw new BadRequestException(
+        'La columna CAJA es obligatoria para registrar producto terminado.',
+      );
+    }
+    return normalized;
   }
 
-  private async getNextBoxSequence(tx: PrismaService | Prisma.TransactionClient) {
-    const existingBoxes = await tx.stockItem.findMany({
-      where: {
-        box_id: {
-          startsWith: 'C',
-        },
-      },
-      select: {
-        box_id: true,
-      },
-    });
+  private async reserveBoxSequenceRange(
+    tx: PrismaService | Prisma.TransactionClient,
+    count: number,
+  ) {
+    if (!Number.isInteger(count) || count <= 0) {
+      throw new BadRequestException(
+        'La reserva de correlativos requiere al menos un registro.',
+      );
+    }
 
-    const maxSequence = existingBoxes.reduce((currentMax, item) => {
-      const sequence = this.extractBoxSequence(item.box_id);
-      return sequence !== null && sequence > currentMax ? sequence : currentMax;
-    }, -1);
+    await tx.$executeRaw`
+      INSERT INTO sequence_counters (name, next_value, created_at, updated_at)
+      VALUES (${StockService.BOX_SEQUENCE_NAME}, 0, NOW(3), NOW(3))
+      ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
+    `;
 
-    return maxSequence + 1;
+    await tx.$executeRaw`
+      UPDATE sequence_counters
+      SET next_value = LAST_INSERT_ID(next_value + ${count}), updated_at = NOW(3)
+      WHERE name = ${StockService.BOX_SEQUENCE_NAME}
+    `;
+
+    const rows =
+      await tx.$queryRaw<Array<{ reserved_end: bigint | number }>>`
+        SELECT LAST_INSERT_ID() AS reserved_end
+      `;
+
+    const reservedEnd = Number(rows[0]?.reserved_end ?? 0);
+    const start = reservedEnd - count;
+    return Array.from({ length: count }, (_, index) => start + index);
   }
 
   private buildGeneratedBoxId(caja: string | null | undefined, sequence: number) {
-    const normalizedCaja = this.normalizeCaja(caja) || '0000';
+    const normalizedCaja = this.assertCaja(caja);
     return `C${normalizedCaja}-${String(sequence).padStart(4, '0')}`;
   }
 
@@ -81,7 +99,7 @@ export class StockService {
       etiqueta: this.normalizeText(dto.etiqueta),
       forma: this.normalizeText(dto.forma),
       tipo_producto: this.normalizeText(dto.tipo_producto),
-      caja: this.normalizeCaja(dto.caja) || '0000',
+      caja: this.assertCaja(dto.caja),
       location: this.normalizeText(dto.ubicacion),
       status: dto.status || StockStatus.QUARANTINE,
       entry_date: dto.entry_date,
@@ -99,7 +117,7 @@ export class StockService {
   async create(dto: CreateStockItemDto) {
     const normalizedDto = this.normalizeCreateData(dto);
     const created = await this.prisma.$transaction(async (tx) => {
-      const nextSequence = await this.getNextBoxSequence(tx);
+      const [nextSequence] = await this.reserveBoxSequenceRange(tx, 1);
 
       return tx.stockItem.create({
         data: {
@@ -118,22 +136,23 @@ export class StockService {
     }
 
     const normalizedItems = dtos.map((dto) => this.normalizeCreateData(dto));
-    let nextSequence = await this.getNextBoxSequence(this.prisma);
-    const data = normalizedItems.map((item) => {
-      const generated = {
+    await this.prisma.$transaction(async (tx) => {
+      const reservedSequences = await this.reserveBoxSequenceRange(
+        tx,
+        normalizedItems.length,
+      );
+      const data = normalizedItems.map((item, index) => ({
         ...item,
-        box_id: this.buildGeneratedBoxId(item.caja, nextSequence),
-      };
-      nextSequence += 1;
-      return generated;
-    });
+        box_id: this.buildGeneratedBoxId(item.caja, reservedSequences[index]),
+      }));
 
-    const chunkSize = 500;
-    for (let index = 0; index < data.length; index += chunkSize) {
-      await this.prisma.stockItem.createMany({
-        data: data.slice(index, index + chunkSize),
-      });
-    }
+      const chunkSize = 500;
+      for (let index = 0; index < data.length; index += chunkSize) {
+        await tx.stockItem.createMany({
+          data: data.slice(index, index + chunkSize),
+        });
+      }
+    });
 
     return {
       processed: normalizedItems.length,
@@ -163,7 +182,7 @@ export class StockService {
         { caja: { contains: q } },
         { box_id: { contains: q } },
         { location: { contains: q } },
-      ] as any;
+      ];
     }
 
     const [total, items] = await Promise.all([

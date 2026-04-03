@@ -79,6 +79,23 @@ describe('DiecuttingService', () => {
 
   describe('createReport', () => {
     it('should create a diecutting report and automatic stock entry', async () => {
+      mockPrisma.workOrder.findUnique.mockResolvedValue({
+        id: 'wo-1',
+        ot_number: 'OT-1',
+        cliente_razon_social: 'Cliente',
+        descripcion: 'Etiqueta premium',
+        material: 'Papel',
+        ancho_mm: 100,
+        avance_mm: 200,
+        columnas: 4,
+        raw_payload: {
+          CAJA: '1',
+          Medida: '100 x 200',
+          forma: 'Rectangular',
+          tipoimpre1: 'Autoadhesivo',
+          cant_etq_xrollohojas: '500',
+        },
+      });
       mockPrisma.diecutReport.create.mockResolvedValue({
         id: 'rep-1',
         good_units: 500,
@@ -88,6 +105,7 @@ describe('DiecuttingService', () => {
       const result = await service.createReport(
         {
           reported_at: new Date().toISOString(),
+          work_order_id: 'wo-1',
           machine_id: 'mach-1',
           activities: [
             {
@@ -105,10 +123,44 @@ describe('DiecuttingService', () => {
       expect(prisma.diecutReport.create).toHaveBeenCalled();
       expect(mockStockService.create).toHaveBeenCalledWith(
         expect.objectContaining({
+          caja: '1',
+          medida: '100 x 200',
           quantity: 500,
         }),
       );
       expect(result.id).toBe('rep-1');
+    });
+
+    it('should skip automatic stock creation when work order lacks CAJA', async () => {
+      mockPrisma.workOrder.findUnique.mockResolvedValue({
+        id: 'wo-2',
+        ot_number: 'OT-2',
+        cliente_razon_social: 'Cliente',
+        descripcion: 'Sin caja',
+        raw_payload: {},
+      });
+      mockPrisma.diecutReport.create.mockResolvedValue({
+        id: 'rep-2',
+        good_units: 800,
+      });
+
+      await service.createReport(
+        {
+          reported_at: new Date().toISOString(),
+          work_order_id: 'wo-2',
+          machine_id: 'mach-1',
+          activities: [
+            {
+              activity_type: DiecutActivityType.RUN,
+              quantity: 800,
+              start_time: '08:00',
+            },
+          ],
+        },
+        'op-1',
+      );
+
+      expect(mockStockService.create).not.toHaveBeenCalled();
     });
 
     it('should throw ConflictException if overlaps exist', async () => {

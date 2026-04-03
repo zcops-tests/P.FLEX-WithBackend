@@ -9,6 +9,8 @@ describe('QualityService', () => {
   let prisma: PrismaService;
 
   const mockPrisma = {
+    $executeRaw: jest.fn(),
+    $queryRaw: jest.fn(),
     incident: {
       create: jest.fn(),
       findUnique: jest.fn(),
@@ -24,6 +26,7 @@ describe('QualityService', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         QualityService,
@@ -65,6 +68,43 @@ describe('QualityService', () => {
       await expect(
         service.updateIncidentStatus('1', IncidentStatus.CORRECTIVE_ACTION),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('createIncident', () => {
+    it('generates the incident code in backend when not provided', async () => {
+      const currentYear = new Date().getFullYear();
+      mockPrisma.$queryRaw.mockResolvedValue([{ reserved_end: 12 }]);
+      mockPrisma.incident.create.mockResolvedValue({
+        id: 'inc-1',
+        code: `INC-${currentYear}-0012`,
+        status: IncidentStatus.OPEN,
+        reportedBy: { name: 'Tester' },
+        assignedTo: null,
+        capaActions: [],
+        work_order: null,
+        machine: null,
+      });
+
+      const result = await service.createIncident(
+        {
+          title: 'Falla',
+          priority: 'MEDIUM' as any,
+          type: 'QUALITY' as any,
+          reported_at: '2026-04-03T10:00:00.000Z',
+        },
+        'user-1',
+      );
+
+      expect(mockPrisma.incident.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            code: `INC-${currentYear}-0012`,
+            reported_by_user_id: 'user-1',
+          }),
+        }),
+      );
+      expect(result.code).toBe(`INC-${currentYear}-0012`);
     });
   });
 });

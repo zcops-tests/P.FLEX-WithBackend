@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { QualityService } from '../services/quality.service';
 import { Incident, IncidentPriority, IncidentType, IncidentStatus, CapaAction } from '../models/quality.models';
 import { StateService } from '../../../services/state.service';
+import { NotificationService } from '../../../services/notification.service';
 
 @Component({
   selector: 'app-incidents',
@@ -359,6 +360,7 @@ import { StateService } from '../../../services/state.service';
 export class IncidentsComponent {
   service = inject(QualityService);
   state = inject(StateService);
+  notifications = inject(NotificationService);
 
   activeFilter: 'active' | 'closed' = 'active';
   
@@ -407,7 +409,7 @@ export class IncidentsComponent {
   async createIncident() {
      if (!this.canCreateIncidents) return;
      if (!this.newIncidentData.title || !this.newIncidentData.description) {
-        alert('Complete el título y la descripción.');
+        this.notifications.showWarning('Complete el título y la descripción.');
         return;
      }
      await this.service.addIncident(this.newIncidentData);
@@ -453,11 +455,20 @@ export class IncidentsComponent {
      const pendingActions = incident?.actions.some(a => !a.completed);
 
      if (pendingActions) {
-        if (!confirm('Hay acciones pendientes. ¿Desea cerrar la incidencia de todos modos?')) return;
+        const accepted = await this.notifications.confirm(
+          'Hay acciones pendientes. ¿Desea cerrar la incidencia de todos modos?',
+          {
+            title: 'Cerrar incidencia',
+            confirmLabel: 'Cerrar de todos modos',
+            cancelLabel: 'Volver',
+            tone: 'danger',
+          },
+        );
+        if (!accepted) return;
      }
 
      if (!incident?.rootCause) {
-        alert('Debe ingresar un Análisis de Causa Raíz antes de cerrar.');
+        this.notifications.showWarning('Debe ingresar un Análisis de Causa Raíz antes de cerrar.');
         return;
      }
 

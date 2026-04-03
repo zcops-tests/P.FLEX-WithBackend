@@ -4,18 +4,36 @@ import { StateService } from '../../../services/state.service';
 import { AuditService } from '../../../services/audit.service';
 import { Incident, CapaAction } from '../models/quality.models';
 import { BackendApiService } from '../../../services/backend-api.service';
+import { NotificationService } from '../../../services/notification.service';
+
+export type DataLoadState = 'idle' | 'loading' | 'loaded' | 'error' | 'stale';
+
+export interface QualityLoadStatus {
+  state: DataLoadState;
+  lastSuccessfulSync: string | null;
+  errorMessage: string | null;
+}
 
 @Injectable({ providedIn: 'root' })
 export class QualityService {
   private state = inject(StateService);
   private audit = inject(AuditService);
   private backend = inject(BackendApiService);
+  private notifications = inject(NotificationService);
   
   private _incidents = new BehaviorSubject<Incident[]>([]);
+  private _loadStatus = new BehaviorSubject<QualityLoadStatus>({
+    state: 'idle',
+    lastSuccessfulSync: null,
+    errorMessage: null,
+  });
 
   get incidents() { return this._incidents.value; }
   get activeIncidents() { return this.incidents.filter(i => i.status !== 'Cerrada'); }
   get closedIncidents() { return this.incidents.filter(i => i.status === 'Cerrada'); }
+  get loadStatus() { return this._loadStatus.value; }
+  get incidents$() { return this._incidents.asObservable(); }
+  get loadStatus$() { return this._loadStatus.asObservable(); }
   
   constructor() {
     effect(() => {
@@ -31,12 +49,31 @@ export class QualityService {
   }
 
   async reload() {
+    this._loadStatus.next({
+      state: 'loading',
+      lastSuccessfulSync: this.loadStatus.lastSuccessfulSync,
+      errorMessage: null,
+    });
     try {
       const response = await this.backend.getIncidents({ page: 1, pageSize: 100 });
       const items = response.items || [];
       this._incidents.next(items.map((item: any) => this.mapIncident(item)));
-    } catch {
-      // Preserve current state on failure.
+      this._loadStatus.next({
+        state: 'loaded',
+        lastSuccessfulSync: new Date().toISOString(),
+        errorMessage: null,
+      });
+    } catch (error: any) {
+      const stale = this.loadStatus.lastSuccessfulSync !== null;
+      const message = error?.message || 'No fue posible cargar las incidencias.';
+      this._loadStatus.next({
+        state: stale ? 'stale' : 'error',
+        lastSuccessfulSync: this.loadStatus.lastSuccessfulSync,
+        errorMessage: message,
+      });
+      this.notifications.showWarning(
+        stale ? `${message} Se mantienen los últimos datos cargados.` : message,
+      );
     }
   }
 
@@ -45,7 +82,7 @@ export class QualityService {
     const workOrder = incident.otRef ? await this.tryFindWorkOrderByOt(incident.otRef) : null;
 
     const created = await this.backend.createIncident({
-      code: incident.code || `INC-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+      code: incident.code || undefined,
       title: incident.title || 'Sin Titulo',
       description: incident.description || '',
       priority: this.mapPriorityToApi(incident.priority || 'Media'),
@@ -198,7 +235,20 @@ export class QualityService {
   private async tryFindWorkOrderByOt(otNumber: string) {
     try {
       const response = await this.backend.getWorkOrders({ q: otNumber, page: 1, pageSize: 10 });
-      return (response.items || []).find((item: any) => item.ot_number === otNumber) || null;
+      const normalizedTarget = String(otNumber || '').trim();
+      return (
+        (response.items || []).find((item: any) => {
+          const candidates = [
+            item?.ot_number,
+            item?.OT,
+            item?.ot,
+          ]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean);
+
+          return candidates.includes(normalizedTarget);
+        }) || null
+      );
     } catch {
       return null;
     }

@@ -36,10 +36,10 @@ export enum CapaActionType {
 }
 
 export class CreateIncidentDto {
-  @ApiProperty({ example: 'INC-2026-001' })
+  @ApiProperty({ example: 'INC-2026-001', required: false })
   @IsString()
-  @IsNotEmpty()
-  code: string;
+  @IsOptional()
+  code?: string;
 
   @ApiProperty({ example: 'Color deviation in OT-12345' })
   @IsString()

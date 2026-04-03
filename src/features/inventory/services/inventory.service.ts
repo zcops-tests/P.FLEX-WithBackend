@@ -5,8 +5,17 @@ import { ExcelService } from '../../../services/excel.service';
 import { AuditService } from '../../../services/audit.service';
 import { StateService } from '../../../services/state.service';
 import { BackendApiService } from '../../../services/backend-api.service';
+import { NotificationService } from '../../../services/notification.service';
 
 const CLISE_IMPORT_BATCH_SIZE = 200;
+
+export type DataLoadState = 'idle' | 'loading' | 'loaded' | 'error' | 'stale';
+
+export interface InventoryLoadStatus {
+  state: DataLoadState;
+  lastSuccessfulSync: string | null;
+  errorMessage: string | null;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -16,11 +25,17 @@ export class InventoryService {
   audit = inject(AuditService);
   state = inject(StateService);
   backend = inject(BackendApiService);
+  notifications = inject(NotificationService);
 
   private _cliseItems = new BehaviorSubject<CliseItem[]>([]);
   private _dieItems = new BehaviorSubject<DieItem[]>([]);
   private _stockItems = new BehaviorSubject<StockItem[]>([]);
   private _layoutData = new BehaviorSubject<RackConfig[]>(this.buildFallbackLayout());
+  private _loadStatus = new BehaviorSubject<InventoryLoadStatus>({
+    state: 'idle',
+    lastSuccessfulSync: null,
+    errorMessage: null,
+  });
 
   readonly CLISE_MAPPING = {
     item: ['ITEM', 'ITEM CODE', 'CODIGO', 'CODIGO ITEM', 'COD ITEM', 'CODIGO CLISE', 'CODIGO CLICHE', 'CLISE', 'CLICHE', 'ID', 'CODE'],
@@ -105,11 +120,13 @@ export class InventoryService {
   get dieItems() { return this._dieItems.value; }
   get stockItems() { return this._stockItems.value; }
   get layoutData() { return this._layoutData.value; }
+  get loadStatus() { return this._loadStatus.value; }
 
   get cliseItems$() { return this._cliseItems.asObservable(); }
   get dieItems$() { return this._dieItems.asObservable(); }
   get stockItems$() { return this._stockItems.asObservable(); }
   get layoutData$() { return this._layoutData.asObservable(); }
+  get loadStatus$() { return this._loadStatus.asObservable(); }
 
   private async fetchAllPages<T>(fetchPage: (query: { page: number; pageSize: number }) => Promise<{ items?: T[]; meta?: { totalPages?: number } }>) {
     const pageSize = 500;
@@ -133,21 +150,87 @@ export class InventoryService {
   }
 
   async reload() {
-    try {
-      const [clises, dies, stock, racks] = await Promise.all([
+    this._loadStatus.next({
+      state: 'loading',
+      lastSuccessfulSync: this.loadStatus.lastSuccessfulSync,
+      errorMessage: null,
+    });
+
+    const toErrorMessage = (error: unknown, fallback: string) => {
+      const message = String((error as any)?.message || '').trim();
+      return message || fallback;
+    };
+
+    const [clisesResult, diesResult, stockResult, racksResult] =
+      await Promise.allSettled([
         this.fetchAllPages((query) => this.backend.getClises(query)),
         this.fetchAllPages((query) => this.backend.getDies(query)),
         this.fetchAllPages((query) => this.backend.getStockItems(query)),
         this.backend.getRackConfigs(),
       ]);
 
-      this._cliseItems.next(clises.map((item: any) => this.mapClise(item)));
-      this._dieItems.next(dies.map((item: any) => this.mapDie(item)));
-      this._stockItems.next(stock.map((item: any) => this.mapStock(item)));
-      this._layoutData.next(Array.isArray(racks) && racks.length ? racks.map((rack: any) => this.mapRack(rack)) : this.buildFallbackLayout());
+    const errors: string[] = [];
+
+    try {
+      if (clisesResult.status === 'fulfilled') {
+        this._cliseItems.next(clisesResult.value.map((item: any) => this.mapClise(item)));
+      } else {
+        errors.push(toErrorMessage(clisesResult.reason, 'No fue posible cargar los clisés.'));
+      }
+
+      if (diesResult.status === 'fulfilled') {
+        this._dieItems.next(diesResult.value.map((item: any) => this.mapDie(item)));
+      } else {
+        errors.push(toErrorMessage(diesResult.reason, 'No fue posible cargar los troqueles.'));
+      }
+
+      if (stockResult.status === 'fulfilled') {
+        this._stockItems.next(stockResult.value.map((item: any) => this.mapStock(item)));
+      } else {
+        errors.push(toErrorMessage(stockResult.reason, 'No fue posible cargar el stock de PT.'));
+      }
+
+      if (racksResult.status === 'fulfilled') {
+        const racks = racksResult.value;
+        this._layoutData.next(Array.isArray(racks) && racks.length ? racks.map((rack: any) => this.mapRack(rack)) : this.buildFallbackLayout());
+      } else {
+        errors.push(toErrorMessage(racksResult.reason, 'No fue posible cargar el layout del inventario.'));
+      }
+
       this.mapItemsToLayout();
-    } catch {
+
+      if (errors.length > 0) {
+        const stale = this.loadStatus.lastSuccessfulSync !== null;
+        this._loadStatus.next({
+          state: stale ? 'stale' : 'error',
+          lastSuccessfulSync: this.loadStatus.lastSuccessfulSync,
+          errorMessage: errors[0],
+        });
+        this.notifications.showWarning(
+          stale
+            ? `${errors[0]} Se mantienen los últimos datos cargados.`
+            : errors[0],
+        );
+        return;
+      }
+
+      this._loadStatus.next({
+        state: 'loaded',
+        lastSuccessfulSync: new Date().toISOString(),
+        errorMessage: null,
+      });
+    } catch (error: any) {
       this.mapItemsToLayout();
+      const stale = this.loadStatus.lastSuccessfulSync !== null;
+      const message = toErrorMessage(error, 'No fue posible actualizar el inventario.');
+      this._loadStatus.next({
+        state: stale ? 'stale' : 'error',
+        lastSuccessfulSync: this.loadStatus.lastSuccessfulSync,
+        errorMessage: message,
+      });
+      this.notifications.showWarning(
+        stale ? `${message} Se mantienen los últimos datos cargados.` : message,
+      );
     }
   }
 
@@ -313,8 +396,9 @@ export class InventoryService {
   }
 
   async updateStock(item: StockItem) {
-    await this.backend.updateStockItem(item.id, this.mapStockToPayload(item));
-    const persisted = this.mapStock(await this.backend.updateStockStatus(item.id, { status: this.mapStockStatusToApi(item.status) }));
+    const persisted = this.mapStock(
+      await this.backend.updateStockItem(item.id, this.mapStockToPayload(item)),
+    );
     this._stockItems.next(this.stockItems.map(entry => entry.id === item.id ? persisted : entry));
     this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Ajuste PT', `Ajuste en caja ${persisted.caja} - ${persisted.status}`);
     return persisted;
@@ -392,8 +476,8 @@ export class InventoryService {
     const normalized = this.excelService.normalizeData(rawData, this.STOCK_MAPPING);
     const mapped: StockItem[] = normalized
       .filter((row) => !this.isStockRowEmpty(row))
-      .map((row) => ({
-        id: Math.random().toString(36).slice(2, 11),
+      .map((row, index) => ({
+        id: `stock-import-${index + 1}`,
         medida: this.excelService.toDisplayString(row.medida),
         anchoMm: this.excelService.parseNumber(row.anchoMm),
         avanceMm: this.excelService.parseNumber(row.avanceMm),
@@ -726,10 +810,6 @@ export class InventoryService {
 
   private normalizeStockStatus(val: string): any {
     const v = String(val || '').toLowerCase();
-    if (v.includes('cuarentena')) return 'Cuarentena';
-    if (v.includes('retenido')) return 'Retenido';
-    if (v.includes('despachado')) return 'Despachado';
-    if (v.includes('liberado')) return 'Liberado';
     if (v.includes('liberado') || v.includes('liberated') || v.includes('ok') || v.includes('aprobado')) return 'Liberado';
     if (v.includes('retenido') || v.includes('retained') || v.includes('hold') || v.includes('rechazado')) return 'Retenido';
     if (v.includes('despachado') || v.includes('dispatched') || v.includes('enviado') || v.includes('salida')) return 'Despachado';

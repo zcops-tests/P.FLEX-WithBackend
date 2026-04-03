@@ -11,10 +11,11 @@ describe('StockService', () => {
       create: jest.fn(),
       createMany: jest.fn(),
       findUnique: jest.fn(),
-      findMany: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
     },
+    $executeRaw: jest.fn(),
+    $queryRaw: jest.fn(),
     $transaction: jest.fn(),
   };
 
@@ -38,8 +39,9 @@ describe('StockService', () => {
     it('generates box_id as C + caja + 4-digit sequence', async () => {
       mockPrisma.$transaction.mockImplementation(async (callback: any) =>
         callback({
+          $executeRaw: jest.fn(),
+          $queryRaw: jest.fn().mockResolvedValue([{ reserved_end: 8 }]),
           stockItem: {
-            findMany: jest.fn().mockResolvedValue([{ box_id: 'C0002-0007' }]),
             create: jest.fn().mockResolvedValue({
               id: '1',
               caja: '0001',
@@ -66,15 +68,23 @@ describe('StockService', () => {
 
   describe('bulkCreate', () => {
     it('creates a full batch transactionally with consecutive ids', async () => {
-      mockPrisma.stockItem.findMany.mockResolvedValue([{ box_id: 'C0003-0009' }]);
-      mockPrisma.stockItem.createMany.mockResolvedValue({ count: 2 });
+      const txCreateMany = jest.fn().mockResolvedValue({ count: 2 });
+      mockPrisma.$transaction.mockImplementation(async (callback: any) =>
+        callback({
+          $executeRaw: jest.fn(),
+          $queryRaw: jest.fn().mockResolvedValue([{ reserved_end: 12 }]),
+          stockItem: {
+            createMany: txCreateMany,
+          },
+        }),
+      );
 
       const result = await service.bulkCreate([
         { caja: '1', medida: 'A', entry_date: '2026-04-01T10:00:00.000Z' } as any,
         { caja: '1', medida: 'B', entry_date: '2026-04-01T10:05:00.000Z' } as any,
       ]);
 
-      expect(mockPrisma.stockItem.createMany).toHaveBeenCalledWith(
+      expect(txCreateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: [
             expect.objectContaining({ box_id: 'C0001-0010', caja: '0001' }),

@@ -28,6 +28,98 @@ export class DiecuttingService {
     private stock: StockService,
   ) {}
 
+  private readWorkOrderRawValue(
+    payload: Record<string, unknown> | null | undefined,
+    key: string,
+  ) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return '';
+    }
+    return String(payload[key] ?? '').trim();
+  }
+
+  private parseNumericRawValue(
+    payload: Record<string, unknown> | null | undefined,
+    ...keys: string[]
+  ) {
+    for (const key of keys) {
+      const raw = this.readWorkOrderRawValue(payload, key);
+      if (!raw) continue;
+      const normalized = raw.replace(',', '.');
+      const parsed = Number(normalized);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
+  private buildAutomaticStockPayload(
+    workOrder: any,
+    reportId: string,
+    producedUnits: number,
+  ) {
+    const rawPayload =
+      workOrder?.raw_payload &&
+      typeof workOrder.raw_payload === 'object' &&
+      !Array.isArray(workOrder.raw_payload)
+        ? (workOrder.raw_payload as Record<string, unknown>)
+        : null;
+
+    const caja =
+      this.readWorkOrderRawValue(rawPayload, 'CAJA') ||
+      this.readWorkOrderRawValue(rawPayload, 'Caja');
+
+    if (!caja) {
+      return null;
+    }
+
+    const prepicadoHorizontal = this.readWorkOrderRawValue(
+      rawPayload,
+      'prepicado_h',
+    );
+    const prepicadoVertical = this.readWorkOrderRawValue(
+      rawPayload,
+      'prepicado_v',
+    );
+    const prepicado = [prepicadoHorizontal, prepicadoVertical]
+      .filter(Boolean)
+      .join(' / ');
+
+    return {
+      work_order_id: workOrder?.id,
+      ot_number_snapshot: workOrder?.ot_number || undefined,
+      client_snapshot: workOrder?.cliente_razon_social || undefined,
+      product_snapshot: workOrder?.descripcion || undefined,
+      medida:
+        this.readWorkOrderRawValue(rawPayload, 'Medida') ||
+        workOrder?.descripcion ||
+        undefined,
+      ancho_mm: workOrder?.ancho_mm ? Number(workOrder.ancho_mm) : undefined,
+      avance_mm: workOrder?.avance_mm
+        ? Number(workOrder.avance_mm)
+        : undefined,
+      material: workOrder?.material || undefined,
+      columnas: workOrder?.columnas ?? undefined,
+      prepicado: prepicado || undefined,
+      cantidad_x_rollo: this.parseNumericRawValue(
+        rawPayload,
+        'cant_etq_xrollohojas',
+        'p_cant_rollo_ficha',
+      ),
+      cantidad_millares: Number((producedUnits / 1000).toFixed(3)),
+      etiqueta: workOrder?.descripcion || undefined,
+      forma: this.readWorkOrderRawValue(rawPayload, 'forma') || undefined,
+      tipo_producto:
+        this.readWorkOrderRawValue(rawPayload, 'tipoimpre1') || undefined,
+      caja,
+      ubicacion: 'PRODUCCION',
+      quantity: producedUnits,
+      entry_date: new Date().toISOString(),
+      notes: `Auto-generated from Die-cutting Report ${reportId}`,
+    };
+  }
+
   async createReport(dto: CreateDiecutReportDto, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       const effectiveOperatorId = dto.operator_id || actorUserId;
@@ -37,14 +129,15 @@ export class DiecuttingService {
       let client: string | null = null;
       let product: string | null = null;
 
+      let workOrder: any = null;
       if (dto.work_order_id) {
-        const wo = await tx.workOrder.findUnique({
+        workOrder = await tx.workOrder.findUnique({
           where: { id: dto.work_order_id },
         });
-        if (wo) {
-          woNumber = wo.ot_number;
-          client = wo.cliente_razon_social;
-          product = wo.descripcion;
+        if (workOrder) {
+          woNumber = workOrder.ot_number;
+          client = workOrder.cliente_razon_social;
+          product = workOrder.descripcion;
         }
       }
 
@@ -163,16 +256,14 @@ export class DiecuttingService {
 
       // 4. Automatic Stock Entry (if units produced)
       const totalUnits = Number(report.good_units);
-      if (totalUnits > 0) {
-        await this.stock.create({
-          work_order_id: dto.work_order_id,
-          ot_number_snapshot: woNumber || undefined,
-          client_snapshot: client || undefined,
-          product_snapshot: product || undefined,
-          quantity: totalUnits,
-          entry_date: new Date().toISOString(),
-          notes: `Auto-generated from Die-cutting Report ${report.id}`,
-        });
+      const automaticStockPayload = this.buildAutomaticStockPayload(
+        workOrder,
+        report.id,
+        totalUnits,
+      );
+
+      if (totalUnits > 0 && automaticStockPayload) {
+        await this.stock.create(automaticStockPayload);
       }
 
       const fullReport = await tx.diecutReport.findUnique({
