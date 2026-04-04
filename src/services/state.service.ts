@@ -104,8 +104,10 @@ export class StateService {
   readonly config = signal<SystemConfig>({
     shiftName1: 'Turno Dia',
     shiftTime1: '06:00',
+    shiftEndTime1: '14:00',
     shiftName2: 'Turno Noche',
     shiftTime2: '18:00',
+    shiftEndTime2: '06:00',
     passwordExpiryWarningDays: 15,
     passwordPolicyDays: 90,
     plantName: 'Planta Central - Zona Industrial',
@@ -170,6 +172,7 @@ export class StateService {
 
   constructor() {
     this.restoreSession();
+    void this.loadPublicConfig();
 
     effect(() => {
       const user = this.currentUser();
@@ -557,14 +560,25 @@ export class StateService {
     }
   }
 
+  private async loadPublicConfig() {
+    try {
+      const contract = await this.backend.getPublicSystemConfigContract();
+      this.applySystemConfigContract(contract);
+    } catch {
+      // Keep defaults when public bootstrap is unavailable.
+    }
+  }
+
   private applyShiftConfigFromShifts(shifts: PlantShift[]) {
     if (!shifts.length) return;
     this.config.update((current) => ({
       ...current,
       shiftName1: shifts[0]?.name || current.shiftName1,
       shiftTime1: shifts[0]?.startTime || current.shiftTime1,
+      shiftEndTime1: shifts[0]?.endTime || current.shiftEndTime1,
       shiftName2: shifts[1]?.name || current.shiftName2,
       shiftTime2: shifts[1]?.startTime || current.shiftTime2,
+      shiftEndTime2: shifts[1]?.endTime || current.shiftEndTime2,
     }));
   }
 
@@ -743,8 +757,10 @@ export class StateService {
         otForcedCloseRequiresReason: rawConfig.ot_forced_close_requires_reason ?? rawConfig.otForcedCloseRequiresReason ?? current.otForcedCloseRequiresReason,
         shiftName1: normalizedShifts[0]?.name || current.shiftName1,
         shiftTime1: normalizedShifts[0]?.startTime || current.shiftTime1,
+        shiftEndTime1: normalizedShifts[0]?.endTime || current.shiftEndTime1,
         shiftName2: normalizedShifts[1]?.name || current.shiftName2,
         shiftTime2: normalizedShifts[1]?.startTime || current.shiftTime2,
+        shiftEndTime2: normalizedShifts[1]?.endTime || current.shiftEndTime2,
       },
       shifts: normalizedShifts,
       audit_preview: Array.isArray(contract?.audit_preview) ? contract.audit_preview : [],

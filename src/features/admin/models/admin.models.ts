@@ -38,8 +38,10 @@ export interface RoleDefinition {
 export interface SystemConfig {
   shiftName1: string;
   shiftTime1: string;
+  shiftEndTime1: string;
   shiftName2: string;
   shiftTime2: string;
+  shiftEndTime2: string;
   passwordExpiryWarningDays: number;
   passwordPolicyDays: number;
   plantName: string;

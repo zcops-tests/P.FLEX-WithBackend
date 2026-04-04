@@ -52,6 +52,19 @@ export class SystemConfigService {
     };
   }
 
+  async getPublicContract() {
+    const [config, shifts] = await Promise.all([
+      this.findOrCreateConfig(),
+      this.ensureBaselineShifts(),
+    ]);
+
+    return {
+      system_config: toFrontendSystemConfig(config),
+      shifts: shifts.map((shift) => toFrontendShift(shift)),
+      audit_preview: [],
+    };
+  }
+
   async updateContract(dto: UpdateSystemConfigContractDto) {
     const existing = await this.findOrCreateConfig();
     const normalizedShifts = this.normalizeContractShifts(dto.shifts);

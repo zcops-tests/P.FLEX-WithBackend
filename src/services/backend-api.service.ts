@@ -56,6 +56,7 @@ export class BackendApiService {
   updateSystemConfig(body: any) { return this.api.put<any>('/system-config', body); }
   getSystemConfigContract() { return this.api.get<any>('/system-config/contract'); }
   updateSystemConfigContract(body: any) { return this.api.put<any>('/system-config/contract', body); }
+  getPublicSystemConfigContract() { return this.api.get<any>('/system-config/public-contract', { auth: false }); }
 
   getWorkOrders(query?: any) { return this.api.get<any>('/work-orders', { query }); }
   getManagementWorkOrders() { return this.api.get<any[]>('/work-orders/management'); }

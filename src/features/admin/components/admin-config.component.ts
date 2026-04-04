@@ -31,14 +31,32 @@ import { SystemConfig } from '../models/admin.models';
               <div class="bg-[#111827] p-3 rounded-xl border border-white/10">
                 <span class="text-[10px] text-slate-500 block mb-2 uppercase font-bold">Mañana</span>
                 <div class="space-y-2">
-                  <input [(ngModel)]="tempConfig.shiftTime1" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
+                  <div class="grid grid-cols-2 gap-2">
+                    <label class="space-y-1">
+                      <span class="block text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Inicio</span>
+                      <input [(ngModel)]="tempConfig.shiftTime1" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
+                    </label>
+                    <label class="space-y-1">
+                      <span class="block text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Fin</span>
+                      <input [(ngModel)]="tempConfig.shiftEndTime1" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
+                    </label>
+                  </div>
                   <input class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white px-3 py-1.5 outline-none" type="text" [(ngModel)]="tempConfig.shiftName1"/>
                 </div>
               </div>
               <div class="bg-[#111827] p-3 rounded-xl border border-white/10">
                 <span class="text-[10px] text-slate-500 block mb-2 uppercase font-bold">Tarde</span>
                 <div class="space-y-2">
-                  <input [(ngModel)]="tempConfig.shiftTime2" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
+                  <div class="grid grid-cols-2 gap-2">
+                    <label class="space-y-1">
+                      <span class="block text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Inicio</span>
+                      <input [(ngModel)]="tempConfig.shiftTime2" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
+                    </label>
+                    <label class="space-y-1">
+                      <span class="block text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Fin</span>
+                      <input [(ngModel)]="tempConfig.shiftEndTime2" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
+                    </label>
+                  </div>
                   <input class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white px-3 py-1.5 outline-none" type="text" [(ngModel)]="tempConfig.shiftName2"/>
                 </div>
               </div>

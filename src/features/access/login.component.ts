@@ -272,14 +272,14 @@ export class LoginComponent {
         code: 'T1' as const,
         name: t1?.name || this.state.config().shiftName1,
         start: t1?.startTime || this.state.config().shiftTime1,
-        end: t1?.endTime || '',
+        end: t1?.endTime || this.state.config().shiftEndTime1,
         icon: 'wb_sunny',
       },
       {
         code: 'T2' as const,
         name: t2?.name || this.state.config().shiftName2,
         start: t2?.startTime || this.state.config().shiftTime2,
-        end: t2?.endTime || '',
+        end: t2?.endTime || this.state.config().shiftEndTime2,
         icon: 'nights_stay',
       },
     ];

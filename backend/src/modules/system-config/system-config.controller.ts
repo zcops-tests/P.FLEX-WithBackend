@@ -11,21 +11,28 @@ import { Permissions } from '../auth/decorators/permissions.decorator';
 
 @ApiTags('System Configuration')
 @Controller('system-config')
-@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class SystemConfigController {
   constructor(private readonly configService: SystemConfigService) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get current system configuration' })
   async get() {
     return this.configService.get();
   }
 
   @Get('contract')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get current system configuration contract' })
   async getContract() {
     return this.configService.getContract();
+  }
+
+  @Get('public-contract')
+  @ApiOperation({ summary: 'Get public system configuration contract for unauthenticated views' })
+  async getPublicContract() {
+    return this.configService.getPublicContract();
   }
 
   @Put()
