@@ -2,7 +2,13 @@ import { Injectable, effect, inject, untracked } from '@angular/core';
 import { StateService, Machine } from '../../../services/state.service';
 import { AuditService } from '../../../services/audit.service';
 import { BackendApiService } from '../../../services/backend-api.service';
-import { AppUser, PermissionDefinition, RoleDefinition, SystemConfig } from '../models/admin.models';
+import {
+  AppUser,
+  PermissionDefinition,
+  RoleDefinition,
+  SystemConfig,
+  SystemConfigContract,
+} from '../models/admin.models';
 import {
   isOperatorAreaMatch,
   OPERATOR_PRODUCTION_AREAS,
@@ -33,15 +39,17 @@ export class AdminService {
   get machines() { return this.state.adminMachines; }
   get config() { return this.state.config; }
   get permissions() { return this.state.permissions; }
+  get configContract() { return this.state.systemConfigContract; }
 
   async refresh() {
     try {
-      const [users, roles, machines, permissions, areas] = await Promise.all([
+      const [users, roles, machines, permissions, areas, configContract] = await Promise.all([
         this.backend.getUsers(),
         this.backend.getRoles(),
         this.backend.getMachines(),
         this.backend.getPermissions(),
         this.backend.getAreas(),
+        this.backend.getSystemConfigContract(),
       ]);
 
       this.state.setAdminUsers(users.map((user: any) => this.mapUser(user)));
@@ -55,6 +63,21 @@ export class AdminService {
           name: area.name,
           active: area.active !== false,
         })),
+      );
+      this.state.systemConfigContract.set(
+        this.normalizeSystemConfigContract(configContract),
+      );
+      this.state.setPlantShifts(
+        (this.state.systemConfigContract()?.shifts || []).map((shift) => ({
+          id: shift.id || shift.code,
+          code: shift.code,
+          name: shift.name,
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+        })),
+      );
+      this.state.config.set(
+        this.state.systemConfigContract()?.system_config || this.state.config(),
       );
     } catch {
       // Preserve current local state as fallback.
@@ -215,15 +238,31 @@ export class AdminService {
   }
 
   async updateConfig(newConfig: SystemConfig) {
-    await this.backend.updateSystemConfig({
-      plant_name: newConfig.plantName,
-      auto_logout_minutes: newConfig.autoLogoutMinutes,
-      password_expiry_warning_days: newConfig.passwordExpiryWarningDays,
-      password_policy_days: newConfig.passwordPolicyDays,
-      operator_message: newConfig.operatorMessage,
-    });
-    this.state.config.set(newConfig);
-    this.audit.log(this.state.userName(), this.state.userRole(), 'ADMIN', 'Configuracion', 'Se actualizaron los parametros globales del sistema.');
+    const previousContract = this.state.systemConfigContract();
+    const request = this.buildConfigContractRequest(newConfig);
+
+    try {
+      const savedContract = await this.backend.updateSystemConfigContract(request);
+      this.applySystemConfigContract(savedContract);
+      this.audit.log(
+        this.state.userName(),
+        this.state.userRole(),
+        'ADMIN',
+        'Configuracion',
+        'Se actualizaron los parametros globales del sistema.',
+      );
+    } catch (error) {
+      try {
+        const reloadedContract = await this.backend.getSystemConfigContract();
+        this.applySystemConfigContract(reloadedContract);
+      } catch {
+        if (previousContract) {
+          this.applySystemConfigContract(previousContract);
+        }
+      }
+
+      throw error;
+    }
   }
 
   private resolveRole(roleName?: string, roleId?: string | null) {
@@ -458,5 +497,172 @@ export class AdminService {
     }
 
     return normalized;
+  }
+
+  private buildConfigContractRequest(newConfig: SystemConfig) {
+    const existingShifts =
+      this.state.systemConfigContract()?.shifts?.length
+        ? this.state.systemConfigContract()!.shifts
+        : this.state.plantShifts().map((shift) => ({
+            id: shift.id,
+            code: shift.code,
+            name: shift.name,
+            startTime: shift.startTime,
+            endTime: shift.endTime,
+          }));
+
+    const normalizedShifts = this.ensureContractShiftDefaults(existingShifts);
+
+    return {
+      system_config: {
+        plant_name: newConfig.plantName,
+        auto_logout_minutes: newConfig.autoLogoutMinutes,
+        password_expiry_warning_days: newConfig.passwordExpiryWarningDays,
+        password_policy_days: newConfig.passwordPolicyDays,
+        operator_message: newConfig.operatorMessage,
+        timezone_name: newConfig.timezoneName,
+        maintenance_mode_enabled: newConfig.maintenanceModeEnabled,
+        maintenance_message: newConfig.maintenanceMessage,
+        offline_retention_days: newConfig.offlineRetentionDays,
+        backup_frequency: newConfig.backupFrequency,
+        conflict_resolution_policy: newConfig.conflictResolutionPolicy,
+        production_assistant_message: newConfig.productionAssistantMessage,
+        finishing_manager_message: newConfig.finishingManagerMessage,
+        management_message: newConfig.managementMessage,
+        failed_login_alert_mode: newConfig.failedLoginAlertMode,
+        failed_login_max_attempts: newConfig.failedLoginMaxAttempts,
+        ot_allow_partial_close: newConfig.otAllowPartialClose,
+        ot_allow_close_with_waste: newConfig.otAllowCloseWithWaste,
+        ot_allow_forced_close: newConfig.otAllowForcedClose,
+        ot_forced_close_requires_reason: newConfig.otForcedCloseRequiresReason,
+      },
+      shifts: [
+        {
+          code: 'T1',
+          name: newConfig.shiftName1,
+          start_time: this.normalizeContractTime(newConfig.shiftTime1, normalizedShifts[0]?.startTime || '06:00'),
+          end_time: this.normalizeContractTime(normalizedShifts[0]?.endTime || '14:00', '14:00'),
+          crosses_midnight: false,
+          active: true,
+        },
+        {
+          code: 'T2',
+          name: newConfig.shiftName2,
+          start_time: this.normalizeContractTime(newConfig.shiftTime2, normalizedShifts[1]?.startTime || '14:00'),
+          end_time: this.normalizeContractTime(normalizedShifts[1]?.endTime || '22:00', '22:00'),
+          crosses_midnight: false,
+          active: true,
+        },
+      ],
+    };
+  }
+
+  private normalizeSystemConfigContract(contract: any): SystemConfigContract {
+    const currentConfig = this.state.config();
+    const normalizedShifts = Array.isArray(contract?.shifts)
+      ? contract.shifts
+          .map((shift: any) => ({
+            id: shift.id,
+            code: shift.code,
+            name: shift.name,
+            startTime: String(shift.startTime || shift.start_time || '').slice(0, 5),
+            endTime: String(shift.endTime || shift.end_time || '').slice(0, 5),
+            start_time: shift.start_time,
+            end_time: shift.end_time,
+            crosses_midnight: shift.crosses_midnight,
+            active: shift.active,
+          }))
+          .sort((left, right) => String(left.code || '').localeCompare(String(right.code || '')))
+      : [];
+
+    const config = contract?.system_config || {};
+
+    return {
+      system_config: {
+        ...currentConfig,
+        ...config,
+        plantName: config.plant_name || config.plantName || currentConfig.plantName,
+        autoLogoutMinutes: config.auto_logout_minutes ?? config.autoLogoutMinutes ?? currentConfig.autoLogoutMinutes,
+        passwordExpiryWarningDays: config.password_expiry_warning_days ?? config.passwordExpiryWarningDays ?? currentConfig.passwordExpiryWarningDays,
+        passwordPolicyDays: config.password_policy_days ?? config.passwordPolicyDays ?? currentConfig.passwordPolicyDays,
+        operatorMessage: config.operator_message || config.operatorMessage || currentConfig.operatorMessage,
+        timezoneName: config.timezone_name || config.timezoneName || currentConfig.timezoneName,
+        maintenanceModeEnabled: config.maintenance_mode_enabled ?? config.maintenanceModeEnabled ?? currentConfig.maintenanceModeEnabled,
+        maintenanceMessage: config.maintenance_message || config.maintenanceMessage || currentConfig.maintenanceMessage,
+        offlineRetentionDays: config.offline_retention_days ?? config.offlineRetentionDays ?? currentConfig.offlineRetentionDays,
+        backupFrequency: config.backup_frequency || config.backupFrequency || currentConfig.backupFrequency,
+        conflictResolutionPolicy: config.conflict_resolution_policy || config.conflictResolutionPolicy || currentConfig.conflictResolutionPolicy,
+        productionAssistantMessage: config.production_assistant_message || config.productionAssistantMessage || currentConfig.productionAssistantMessage,
+        finishingManagerMessage: config.finishing_manager_message || config.finishingManagerMessage || currentConfig.finishingManagerMessage,
+        managementMessage: config.management_message || config.managementMessage || currentConfig.managementMessage,
+        failedLoginAlertMode: config.failed_login_alert_mode || config.failedLoginAlertMode || currentConfig.failedLoginAlertMode,
+        failedLoginMaxAttempts: config.failed_login_max_attempts ?? config.failedLoginMaxAttempts ?? currentConfig.failedLoginMaxAttempts,
+        otAllowPartialClose: config.ot_allow_partial_close ?? config.otAllowPartialClose ?? currentConfig.otAllowPartialClose,
+        otAllowCloseWithWaste: config.ot_allow_close_with_waste ?? config.otAllowCloseWithWaste ?? currentConfig.otAllowCloseWithWaste,
+        otAllowForcedClose: config.ot_allow_forced_close ?? config.otAllowForcedClose ?? currentConfig.otAllowForcedClose,
+        otForcedCloseRequiresReason: config.ot_forced_close_requires_reason ?? config.otForcedCloseRequiresReason ?? currentConfig.otForcedCloseRequiresReason,
+        shiftName1: normalizedShifts[0]?.name || currentConfig.shiftName1,
+        shiftTime1: normalizedShifts[0]?.startTime || currentConfig.shiftTime1,
+        shiftName2: normalizedShifts[1]?.name || currentConfig.shiftName2,
+        shiftTime2: normalizedShifts[1]?.startTime || currentConfig.shiftTime2,
+      },
+      shifts: normalizedShifts,
+      audit_preview: Array.isArray(contract?.audit_preview) ? contract.audit_preview : [],
+    };
+  }
+
+  private applySystemConfigContract(contract: any) {
+    const normalizedContract = this.normalizeSystemConfigContract(contract);
+    this.state.systemConfigContract.set(normalizedContract);
+    this.state.setPlantShifts(
+      normalizedContract.shifts.map((shift) => ({
+        id: shift.id || shift.code,
+        code: shift.code,
+        name: shift.name,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+      })),
+    );
+    this.state.config.set(normalizedContract.system_config);
+  }
+
+  private ensureContractShiftDefaults(shifts: Array<{
+    id?: string;
+    code: string;
+    name: string;
+    startTime: string;
+    endTime: string;
+  }>) {
+    const shiftMap = new Map(
+      shifts.map((shift) => [String(shift.code || '').toUpperCase(), shift]),
+    );
+
+    return [
+      shiftMap.get('T1') || {
+        code: 'T1',
+        name: 'Turno 1',
+        startTime: '06:00',
+        endTime: '14:00',
+      },
+      shiftMap.get('T2') || {
+        code: 'T2',
+        name: 'Turno 2',
+        startTime: '14:00',
+        endTime: '22:00',
+      },
+    ];
+  }
+
+  private normalizeContractTime(value: string | undefined, fallback: string) {
+    const normalized = String(value || fallback || '').trim();
+    if (/^\d{2}:\d{2}$/.test(normalized)) {
+      return `${normalized}:00`;
+    }
+
+    if (/^\d{2}:\d{2}:\d{2}$/.test(normalized)) {
+      return normalized;
+    }
+
+    return `${fallback}:00`;
   }
 }

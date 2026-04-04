@@ -327,7 +327,11 @@ export function toFrontendArea(area: any) {
 }
 
 export function toFrontendShift(shift: any) {
-  return { ...shift };
+  return {
+    ...shift,
+    startTime: String(shift.start_time || '').slice(0, 5),
+    endTime: String(shift.end_time || '').slice(0, 5),
+  };
 }
 
 export function toFrontendSystemConfig(config: any) {
@@ -342,6 +346,20 @@ export function toFrontendSystemConfig(config: any) {
     passwordExpiryWarningDays: config.password_expiry_warning_days,
     passwordPolicyDays: config.password_policy_days,
     operatorMessage: config.operator_message || '',
+    maintenanceModeEnabled: Boolean(config.maintenance_mode_enabled),
+    maintenanceMessage: config.maintenance_message || '',
+    offlineRetentionDays: config.offline_retention_days,
+    backupFrequency: config.backup_frequency,
+    conflictResolutionPolicy: config.conflict_resolution_policy,
+    productionAssistantMessage: config.production_assistant_message || '',
+    finishingManagerMessage: config.finishing_manager_message || '',
+    managementMessage: config.management_message || '',
+    failedLoginAlertMode: config.failed_login_alert_mode,
+    failedLoginMaxAttempts: config.failed_login_max_attempts,
+    otAllowPartialClose: Boolean(config.ot_allow_partial_close),
+    otAllowCloseWithWaste: Boolean(config.ot_allow_close_with_waste),
+    otAllowForcedClose: Boolean(config.ot_allow_forced_close),
+    otForcedCloseRequiresReason: Boolean(config.ot_forced_close_requires_reason),
   };
 }
 

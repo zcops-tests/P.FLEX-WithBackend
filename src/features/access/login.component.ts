@@ -117,22 +117,22 @@ import { NotificationService } from '../../services/notification.service';
                   <span class="w-1 h-1 rounded-full bg-red-500"></span>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
-                  <button type="button" (click)="selectedShift = state.config().shiftName1"
-                          [ngClass]="selectedShift === state.config().shiftName1 ? 'active-shift' : 'inactive-shift'"
+                  <button type="button" (click)="selectedShiftCode = 'T1'"
+                          [ngClass]="selectedShiftCode === 'T1' ? 'active-shift' : 'inactive-shift'"
                           class="rounded-xl p-4 flex flex-col items-center justify-center text-center relative group transition-all">
-                    <div *ngIf="selectedShift === state.config().shiftName1" class="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_5px_rgba(59,130,246,0.8)]"></div>
-                    <span class="material-icons text-blue-400 mb-2 text-xl" [class.text-slate-500]="selectedShift !== state.config().shiftName1">wb_sunny</span>
-                    <span class="text-sm font-semibold" [ngClass]="selectedShift === state.config().shiftName1 ? 'text-blue-100' : 'text-slate-400 group-hover:text-slate-200'">{{ state.config().shiftName1 }}</span>
-                    <span class="text-xs font-mono mt-1" [ngClass]="selectedShift === state.config().shiftName1 ? 'text-blue-300/60' : 'text-slate-600 group-hover:text-slate-500'">{{ state.config().shiftTime1 }} - {{ state.config().shiftTime2 }}</span>
+                    <div *ngIf="selectedShiftCode === 'T1'" class="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_5px_rgba(59,130,246,0.8)]"></div>
+                    <span class="material-icons text-blue-400 mb-2 text-xl" [class.text-slate-500]="selectedShiftCode !== 'T1'">{{ loginShifts[0].icon }}</span>
+                    <span class="text-sm font-semibold" [ngClass]="selectedShiftCode === 'T1' ? 'text-blue-100' : 'text-slate-400 group-hover:text-slate-200'">{{ loginShifts[0].name }}</span>
+                    <span class="text-xs font-mono mt-1" [ngClass]="selectedShiftCode === 'T1' ? 'text-blue-300/60' : 'text-slate-600 group-hover:text-slate-500'">{{ loginShifts[0].start }}<ng-container *ngIf="loginShifts[0].end"> - {{ loginShifts[0].end }}</ng-container></span>
                   </button>
 
-                  <button type="button" (click)="selectedShift = state.config().shiftName2"
-                          [ngClass]="selectedShift === state.config().shiftName2 ? 'active-shift' : 'inactive-shift'"
+                  <button type="button" (click)="selectedShiftCode = 'T2'"
+                          [ngClass]="selectedShiftCode === 'T2' ? 'active-shift' : 'inactive-shift'"
                           class="rounded-xl p-4 flex flex-col items-center justify-center text-center relative group transition-all">
-                    <div *ngIf="selectedShift === state.config().shiftName2" class="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_5px_rgba(59,130,246,0.8)]"></div>
-                    <span class="material-icons text-blue-400 mb-2 text-xl" [class.text-slate-500]="selectedShift !== state.config().shiftName2">nights_stay</span>
-                    <span class="text-sm font-semibold" [ngClass]="selectedShift === state.config().shiftName2 ? 'text-blue-100' : 'text-slate-400 group-hover:text-slate-200'">{{ state.config().shiftName2 }}</span>
-                    <span class="text-xs font-mono mt-1" [ngClass]="selectedShift === state.config().shiftName2 ? 'text-blue-300/60' : 'text-slate-600 group-hover:text-slate-500'">{{ state.config().shiftTime2 }} - {{ state.config().shiftTime1 }}</span>
+                    <div *ngIf="selectedShiftCode === 'T2'" class="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_5px_rgba(59,130,246,0.8)]"></div>
+                    <span class="material-icons text-blue-400 mb-2 text-xl" [class.text-slate-500]="selectedShiftCode !== 'T2'">{{ loginShifts[1].icon }}</span>
+                    <span class="text-sm font-semibold" [ngClass]="selectedShiftCode === 'T2' ? 'text-blue-100' : 'text-slate-400 group-hover:text-slate-200'">{{ loginShifts[1].name }}</span>
+                    <span class="text-xs font-mono mt-1" [ngClass]="selectedShiftCode === 'T2' ? 'text-blue-300/60' : 'text-slate-600 group-hover:text-slate-500'">{{ loginShifts[1].start }}<ng-container *ngIf="loginShifts[1].end"> - {{ loginShifts[1].end }}</ng-container></span>
                   </button>
                 </div>
               </div>
@@ -235,12 +235,8 @@ export class LoginComponent {
   
   username = '';
   password = '';
-  selectedShift: Shift = null;
+  selectedShiftCode: 'T1' | 'T2' = 'T1';
   showPassword = false;
-
-  constructor() {
-    this.selectedShift = this.state.config().shiftName1;
-  }
 
   get regionCode(): string {
     try {
@@ -260,6 +256,37 @@ export class LoginComponent {
     } catch {
         return 'UNKNOWN-REGION';
     }
+  }
+
+  get loginShifts() {
+    const contractShifts = this.state.systemConfigContract()?.shifts || [];
+    const byCode = new Map(
+      contractShifts.map((shift) => [String(shift.code || '').toUpperCase(), shift]),
+    );
+
+    const t1 = byCode.get('T1');
+    const t2 = byCode.get('T2');
+
+    return [
+      {
+        code: 'T1' as const,
+        name: t1?.name || this.state.config().shiftName1,
+        start: t1?.startTime || this.state.config().shiftTime1,
+        end: t1?.endTime || '',
+        icon: 'wb_sunny',
+      },
+      {
+        code: 'T2' as const,
+        name: t2?.name || this.state.config().shiftName2,
+        start: t2?.startTime || this.state.config().shiftTime2,
+        end: t2?.endTime || '',
+        icon: 'nights_stay',
+      },
+    ];
+  }
+
+  get selectedShift(): Shift {
+    return this.loginShifts.find((shift) => shift.code === this.selectedShiftCode)?.name || null;
   }
 
   async onLogin() {

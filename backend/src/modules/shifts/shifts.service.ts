@@ -12,6 +12,8 @@ export class ShiftsService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateShiftDto) {
+    this.assertContractShiftCode(dto.code);
+
     const existing = await this.prisma.shift.findUnique({
       where: { code: dto.code },
     });
@@ -28,7 +30,12 @@ export class ShiftsService {
 
   async findAll() {
     const shifts = await this.prisma.shift.findMany({
-      where: { deleted_at: null },
+      where: {
+        deleted_at: null,
+        active: true,
+        code: { in: ['T1', 'T2'] },
+      },
+      orderBy: { code: 'asc' },
     });
 
     return shifts.map((shift) => toFrontendShift(shift));
@@ -46,7 +53,9 @@ export class ShiftsService {
   }
 
   async update(id: string, dto: UpdateShiftDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    this.assertContractShiftCode(existing.code);
+
     const shift = await this.prisma.shift.update({
       where: { id },
       data: dto,
@@ -56,14 +65,11 @@ export class ShiftsService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
-    return this.prisma.shift.update({
-      where: { id },
-      data: {
-        deleted_at: new Date(),
-        active: false,
-      },
-    });
+    const shift = await this.findOne(id);
+    this.assertContractShiftCode(shift.code);
+    throw new ConflictException(
+      'La configuración vigente requiere mantener exactamente los turnos T1 y T2 activos.',
+    );
   }
 
   async getCurrentShift(targetTime: Date = new Date()) {
@@ -93,5 +99,16 @@ export class ShiftsService {
     }
 
     return null; // No shift found (should not happen in 24/7)
+  }
+
+  private assertContractShiftCode(code: string) {
+    const normalized = String(code || '').trim().toUpperCase();
+    if (normalized === 'T1' || normalized === 'T2') {
+      return;
+    }
+
+    throw new ConflictException(
+      'La configuración vigente solo permite los turnos T1 y T2.',
+    );
   }
 }

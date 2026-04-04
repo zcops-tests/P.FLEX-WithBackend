@@ -169,12 +169,41 @@ async function main() {
   // 4. Shifts
   await prisma.shift.upsert({
     where: { code: 'T1' },
-    update: {},
+    update: {
+      name: 'Turno 1',
+      start_time: '06:00:00',
+      end_time: '14:00:00',
+      crosses_midnight: false,
+      active: true,
+      deleted_at: null,
+    },
     create: {
       code: 'T1',
       name: 'Turno 1',
       start_time: '06:00:00',
       end_time: '14:00:00',
+      crosses_midnight: false,
+      active: true,
+    },
+  });
+
+  await prisma.shift.upsert({
+    where: { code: 'T2' },
+    update: {
+      name: 'Turno 2',
+      start_time: '14:00:00',
+      end_time: '22:00:00',
+      crosses_midnight: false,
+      active: true,
+      deleted_at: null,
+    },
+    create: {
+      code: 'T2',
+      name: 'Turno 2',
+      start_time: '14:00:00',
+      end_time: '22:00:00',
+      crosses_midnight: false,
+      active: true,
     },
   });
 

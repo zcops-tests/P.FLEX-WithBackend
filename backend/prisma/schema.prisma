@@ -168,6 +168,20 @@ model SystemConfig {
   password_policy_days         Int      @default(90)
   operator_message             String?  @db.Text
   timezone_name                String   @default("UTC") @db.VarChar(100)
+  maintenance_mode_enabled     Boolean  @default(false)
+  maintenance_message          String?  @db.Text
+  offline_retention_days       Int      @default(30)
+  backup_frequency             String   @default("DAILY") @db.VarChar(30)
+  conflict_resolution_policy   String   @default("MANUAL_REVIEW") @db.VarChar(50)
+  production_assistant_message String?  @db.Text
+  finishing_manager_message    String?  @db.Text
+  management_message           String?  @db.Text
+  failed_login_alert_mode      String   @default("AUDIT_ONLY") @db.VarChar(30)
+  failed_login_max_attempts    Int      @default(5)
+  ot_allow_partial_close       Boolean  @default(false)
+  ot_allow_close_with_waste    Boolean  @default(false)
+  ot_allow_forced_close        Boolean  @default(false)
+  ot_forced_close_requires_reason Boolean @default(true)
   row_version                  BigInt   @default(1)
   created_at                   DateTime @default(now()) @db.DateTime(3)
   updated_at                   DateTime @updatedAt @db.DateTime(3)

@@ -1,6 +1,12 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { AuditService } from './audit.service';
-import { AppUser, PermissionDefinition, RoleDefinition, SystemConfig } from '../features/admin/models/admin.models';
+import {
+  AppUser,
+  PermissionDefinition,
+  RoleDefinition,
+  SystemConfig,
+  SystemConfigContract,
+} from '../features/admin/models/admin.models';
 import { BackendApiService } from './backend-api.service';
 import { ApiClientService } from './api-client.service';
 import { BrowserStorageService } from './browser-storage.service';
@@ -105,6 +111,21 @@ export class StateService {
     plantName: 'Planta Central - Zona Industrial',
     autoLogoutMinutes: 30,
     operatorMessage: 'Recordar verificar el estado de los clises y troqueles al finalizar el turno.',
+    timezoneName: 'America/Lima',
+    maintenanceModeEnabled: false,
+    maintenanceMessage: '',
+    offlineRetentionDays: 30,
+    backupFrequency: 'DAILY',
+    conflictResolutionPolicy: 'MANUAL_REVIEW',
+    productionAssistantMessage: '',
+    finishingManagerMessage: '',
+    managementMessage: '',
+    failedLoginAlertMode: 'AUDIT_ONLY',
+    failedLoginMaxAttempts: 5,
+    otAllowPartialClose: false,
+    otAllowCloseWithWaste: false,
+    otAllowForcedClose: false,
+    otForcedCloseRequiresReason: true,
   });
 
   readonly currentUser = signal<User | null>(null);
@@ -121,6 +142,7 @@ export class StateService {
   readonly plantAreas = signal<PlantArea[]>([]);
   readonly plantShifts = signal<PlantShift[]>([]);
   readonly permissions = signal<PermissionDefinition[]>([]);
+  readonly systemConfigContract = signal<SystemConfigContract | null>(null);
 
   readonly isLoggedIn = computed(() => !!this.currentUser() && this.canUseInteractiveSession(this.currentUser()));
   readonly userName = computed(() => this.currentUser()?.name || 'Invitado');
@@ -474,12 +496,11 @@ export class StateService {
       this.backend.getMachines(),
       this.backend.getUsers(),
       this.backend.getAreas(),
-      this.backend.getShifts(),
       this.backend.getPermissions(),
-      this.backend.getSystemConfig(),
+      this.backend.getSystemConfigContract(),
     ]);
 
-    const [me, roles, machines, users, areas, shifts, permissions, config] = tasks;
+    const [me, roles, machines, users, areas, permissions, configContract] = tasks;
 
     if (me.status === 'fulfilled') {
       const refreshedUser = this.mapAuthUser(me.value);
@@ -520,18 +541,6 @@ export class StateService {
       this.adminUsers.set(users.value.map((user: any) => this.mapAdminUser(user)));
     }
 
-    if (shifts.status === 'fulfilled') {
-      this.setPlantShifts(
-        shifts.value.map((shift: any) => ({
-          id: shift.id,
-          code: shift.code,
-          name: shift.name,
-          startTime: this.normalizeTime(shift.start_time),
-          endTime: this.normalizeTime(shift.end_time),
-        })),
-      );
-    }
-
     if (permissions.status === 'fulfilled') {
       this.permissions.set(
         permissions.value.map((permission: any) => ({
@@ -543,15 +552,8 @@ export class StateService {
       );
     }
 
-    if (config.status === 'fulfilled') {
-      this.config.update((current) => ({
-        ...current,
-        plantName: config.value.plant_name || config.value.plantName || current.plantName,
-        autoLogoutMinutes: config.value.auto_logout_minutes ?? config.value.autoLogoutMinutes ?? current.autoLogoutMinutes,
-        passwordExpiryWarningDays: config.value.password_expiry_warning_days ?? config.value.passwordExpiryWarningDays ?? current.passwordExpiryWarningDays,
-        passwordPolicyDays: config.value.password_policy_days ?? config.value.passwordPolicyDays ?? current.passwordPolicyDays,
-        operatorMessage: config.value.operator_message || config.value.operatorMessage || current.operatorMessage,
-      }));
+    if (configContract.status === 'fulfilled') {
+      this.applySystemConfigContract(configContract.value);
     }
   }
 
@@ -684,6 +686,69 @@ export class StateService {
   private normalizeTime(value: string | undefined): string {
     if (!value) return '';
     return String(value).slice(0, 5);
+  }
+
+  private applySystemConfigContract(contract: any) {
+    const normalizedContract = this.normalizeSystemConfigContract(contract);
+    this.systemConfigContract.set(normalizedContract);
+    this.setPlantShifts(
+      normalizedContract.shifts.map((shift) => ({
+        id: shift.id || shift.code,
+        code: shift.code,
+        name: shift.name,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+      })),
+    );
+    this.config.set(normalizedContract.system_config);
+  }
+
+  private normalizeSystemConfigContract(contract: any): SystemConfigContract {
+    const current = this.config();
+    const rawConfig = contract?.system_config || {};
+    const shifts = Array.isArray(contract?.shifts) ? contract.shifts : [];
+
+    const normalizedShifts = shifts
+      .map((shift: any) => ({
+        id: shift.id,
+        code: shift.code,
+        name: shift.name,
+        startTime: this.normalizeTime(shift.startTime || shift.start_time),
+        endTime: this.normalizeTime(shift.endTime || shift.end_time),
+      }))
+      .sort((left, right) => String(left.code || '').localeCompare(String(right.code || '')));
+
+    return {
+      system_config: {
+        ...current,
+        plantName: rawConfig.plant_name || rawConfig.plantName || current.plantName,
+        autoLogoutMinutes: rawConfig.auto_logout_minutes ?? rawConfig.autoLogoutMinutes ?? current.autoLogoutMinutes,
+        passwordExpiryWarningDays: rawConfig.password_expiry_warning_days ?? rawConfig.passwordExpiryWarningDays ?? current.passwordExpiryWarningDays,
+        passwordPolicyDays: rawConfig.password_policy_days ?? rawConfig.passwordPolicyDays ?? current.passwordPolicyDays,
+        operatorMessage: rawConfig.operator_message || rawConfig.operatorMessage || current.operatorMessage,
+        timezoneName: rawConfig.timezone_name || rawConfig.timezoneName || current.timezoneName,
+        maintenanceModeEnabled: rawConfig.maintenance_mode_enabled ?? rawConfig.maintenanceModeEnabled ?? current.maintenanceModeEnabled,
+        maintenanceMessage: rawConfig.maintenance_message || rawConfig.maintenanceMessage || current.maintenanceMessage,
+        offlineRetentionDays: rawConfig.offline_retention_days ?? rawConfig.offlineRetentionDays ?? current.offlineRetentionDays,
+        backupFrequency: rawConfig.backup_frequency || rawConfig.backupFrequency || current.backupFrequency,
+        conflictResolutionPolicy: rawConfig.conflict_resolution_policy || rawConfig.conflictResolutionPolicy || current.conflictResolutionPolicy,
+        productionAssistantMessage: rawConfig.production_assistant_message || rawConfig.productionAssistantMessage || current.productionAssistantMessage,
+        finishingManagerMessage: rawConfig.finishing_manager_message || rawConfig.finishingManagerMessage || current.finishingManagerMessage,
+        managementMessage: rawConfig.management_message || rawConfig.managementMessage || current.managementMessage,
+        failedLoginAlertMode: rawConfig.failed_login_alert_mode || rawConfig.failedLoginAlertMode || current.failedLoginAlertMode,
+        failedLoginMaxAttempts: rawConfig.failed_login_max_attempts ?? rawConfig.failedLoginMaxAttempts ?? current.failedLoginMaxAttempts,
+        otAllowPartialClose: rawConfig.ot_allow_partial_close ?? rawConfig.otAllowPartialClose ?? current.otAllowPartialClose,
+        otAllowCloseWithWaste: rawConfig.ot_allow_close_with_waste ?? rawConfig.otAllowCloseWithWaste ?? current.otAllowCloseWithWaste,
+        otAllowForcedClose: rawConfig.ot_allow_forced_close ?? rawConfig.otAllowForcedClose ?? current.otAllowForcedClose,
+        otForcedCloseRequiresReason: rawConfig.ot_forced_close_requires_reason ?? rawConfig.otForcedCloseRequiresReason ?? current.otForcedCloseRequiresReason,
+        shiftName1: normalizedShifts[0]?.name || current.shiftName1,
+        shiftTime1: normalizedShifts[0]?.startTime || current.shiftTime1,
+        shiftName2: normalizedShifts[1]?.name || current.shiftName2,
+        shiftTime2: normalizedShifts[1]?.startTime || current.shiftTime2,
+      },
+      shifts: normalizedShifts,
+      audit_preview: Array.isArray(contract?.audit_preview) ? contract.audit_preview : [],
+    };
   }
 
   private persistSession(session: PersistedUserSession) {

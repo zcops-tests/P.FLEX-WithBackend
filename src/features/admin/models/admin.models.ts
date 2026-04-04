@@ -45,4 +45,49 @@ export interface SystemConfig {
   plantName: string;
   autoLogoutMinutes: number;
   operatorMessage: string;
+  timezoneName?: string;
+  maintenanceModeEnabled: boolean;
+  maintenanceMessage: string;
+  offlineRetentionDays: number;
+  backupFrequency: string;
+  conflictResolutionPolicy: string;
+  productionAssistantMessage: string;
+  finishingManagerMessage: string;
+  managementMessage: string;
+  failedLoginAlertMode: string;
+  failedLoginMaxAttempts: number;
+  otAllowPartialClose: boolean;
+  otAllowCloseWithWaste: boolean;
+  otAllowForcedClose: boolean;
+  otForcedCloseRequiresReason: boolean;
+}
+
+export interface ConfigShiftContract {
+  id?: string;
+  code: 'T1' | 'T2' | string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  start_time?: string;
+  end_time?: string;
+  crosses_midnight?: boolean;
+  active?: boolean;
+}
+
+export interface ConfigAuditPreviewItem {
+  id: string | number;
+  user_name_snapshot?: string | null;
+  role_code_snapshot?: string | null;
+  entity: string;
+  entity_id?: string | null;
+  action: string;
+  old_values?: unknown;
+  new_values?: unknown;
+  created_at: string;
+}
+
+export interface SystemConfigContract {
+  system_config: SystemConfig;
+  shifts: ConfigShiftContract[];
+  audit_preview: ConfigAuditPreviewItem[];
 }

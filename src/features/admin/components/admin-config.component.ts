@@ -214,13 +214,25 @@ export class AdminConfigComponent {
   state = inject(StateService);
   adminService = inject(AdminService);
   tempConfig: SystemConfig;
+  isSaving = false;
 
   constructor() {
     this.tempConfig = { ...this.adminService.config() };
   }
 
-  saveConfig() {
-    this.adminService.updateConfig(this.tempConfig);
-    alert('Configuración guardada correctamente.');
+  async saveConfig() {
+    if (this.isSaving) return;
+
+    this.isSaving = true;
+    try {
+      await this.adminService.updateConfig(this.tempConfig);
+      this.tempConfig = { ...this.adminService.config() };
+      alert('Configuración guardada correctamente.');
+    } catch {
+      this.tempConfig = { ...this.adminService.config() };
+      alert('No se pudo guardar la configuración. Se recargó el estado real desde backend.');
+    } finally {
+      this.isSaving = false;
+    }
   }
 }
