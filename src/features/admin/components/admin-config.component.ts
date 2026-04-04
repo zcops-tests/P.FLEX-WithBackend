@@ -1,242 +1,420 @@
-
-import { Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DatePipe } from '@angular/common';
+import { Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { NotificationService } from '../../../services/notification.service';
 import { StateService } from '../../../services/state.service';
+import { ConfigAuditPreviewItem, SystemConfig } from '../models/admin.models';
 import { AdminService } from '../services/admin.service';
-import { SystemConfig } from '../models/admin.models';
 
 @Component({
   selector: 'app-admin-config',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DatePipe],
   template: `
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      
-      <!-- Plant Params Card -->
-      <div class="glassmorphism-card rounded-2xl overflow-hidden flex flex-col bg-white/5 border border-white/10 shadow-lg backdrop-blur-md">
-        <div class="px-6 py-5 border-b border-white/5 flex items-center justify-between bg-white/5">
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+      <section class="glassmorphism-card rounded-3xl overflow-hidden bg-white/5 border border-white/10 shadow-lg backdrop-blur-md">
+        <div class="px-6 py-5 border-b border-white/10 bg-white/5 flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <div class="p-2 rounded-lg bg-industrial-orange/10 border border-industrial-orange/20">
+            <div class="p-2 rounded-xl bg-industrial-orange/10 border border-industrial-orange/20">
               <span class="material-symbols-outlined text-industrial-orange">factory</span>
             </div>
-            <h3 class="text-lg font-semibold text-white">Parámetros de Planta</h3>
-          </div>
-          <span class="px-3 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">Planta A</span>
-        </div>
-        <div class="p-6 space-y-6 flex-grow">
-          <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Horarios de Turnos</label>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="bg-[#111827] p-3 rounded-xl border border-white/10">
-                <span class="text-[10px] text-slate-500 block mb-2 uppercase font-bold">Mañana</span>
-                <div class="space-y-2">
-                  <div class="grid grid-cols-2 gap-2">
-                    <label class="space-y-1">
-                      <span class="block text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Inicio</span>
-                      <input [(ngModel)]="tempConfig.shiftTime1" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
-                    </label>
-                    <label class="space-y-1">
-                      <span class="block text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Fin</span>
-                      <input [(ngModel)]="tempConfig.shiftEndTime1" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
-                    </label>
-                  </div>
-                  <input class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white px-3 py-1.5 outline-none" type="text" [(ngModel)]="tempConfig.shiftName1"/>
-                </div>
-              </div>
-              <div class="bg-[#111827] p-3 rounded-xl border border-white/10">
-                <span class="text-[10px] text-slate-500 block mb-2 uppercase font-bold">Tarde</span>
-                <div class="space-y-2">
-                  <div class="grid grid-cols-2 gap-2">
-                    <label class="space-y-1">
-                      <span class="block text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Inicio</span>
-                      <input [(ngModel)]="tempConfig.shiftTime2" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
-                    </label>
-                    <label class="space-y-1">
-                      <span class="block text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Fin</span>
-                      <input [(ngModel)]="tempConfig.shiftEndTime2" class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white focus:ring-1 focus:ring-primary px-3 py-1.5 outline-none" type="time"/>
-                    </label>
-                  </div>
-                  <input class="block w-full bg-[#1f2937] border border-white/10 rounded-lg text-sm text-white px-3 py-1.5 outline-none" type="text" [(ngModel)]="tempConfig.shiftName2"/>
-                </div>
-              </div>
+            <div>
+              <h3 class="text-lg font-semibold text-white">Configuración de Planta</h3>
+              <p class="text-xs text-slate-400 uppercase tracking-[0.24em] mt-1">Contrato operativo</p>
             </div>
           </div>
-          <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Áreas Activas</label>
-            <textarea class="block w-full bg-[#111827] text-sm text-white rounded-xl font-mono p-4 outline-none focus:ring-1 focus:ring-primary resize-none border border-white/10" rows="3">Inyección; Ensamblaje; Pintura; Control de Calidad; Logística</textarea>
-            <p class="mt-2 text-[11px] text-slate-500 italic">Separe las áreas con punto y coma (;).</p>
-          </div>
-          <div class="flex items-center justify-between pt-4 border-t border-white/5">
-            <span class="text-sm font-medium text-slate-300">Modo Mantenimiento Global</span>
-            <div class="relative inline-block w-12 align-middle select-none transition duration-200 ease-in">
-              <input type="checkbox" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-600 transition-transform"/>
-              <label class="toggle-label block overflow-hidden h-6 rounded-full bg-white/10 cursor-pointer"></label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- PWA & Sync Card -->
-      <div class="glassmorphism-card rounded-2xl overflow-hidden flex flex-col bg-white/5 border border-white/10 shadow-lg backdrop-blur-md">
-        <div class="px-6 py-5 border-b border-white/5 flex items-center justify-between bg-white/5">
-          <div class="flex items-center gap-3">
-            <div class="p-2 rounded-lg bg-primary/10 border border-primary/20">
-              <span class="material-symbols-outlined text-primary">cloud_sync</span>
-            </div>
-            <h3 class="text-lg font-semibold text-white">PWA & Sincronización</h3>
-          </div>
-          <span class="px-3 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold bg-neon-green/10 text-neon-green border border-neon-green/20 flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-neon-green animate-pulse"></span> Online
+          <span class="px-3 py-1 rounded-full text-[10px] uppercase tracking-wider font-bold bg-blue-500/10 text-blue-300 border border-blue-500/20">
+            {{ tempConfig.plantName || 'Planta configurada' }}
           </span>
         </div>
-        <div class="p-6 space-y-8 flex-grow">
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Frecuencia de Backup</label>
-              <select class="block w-full bg-[#111827] px-4 py-2.5 text-sm text-white rounded-xl outline-none focus:ring-1 focus:ring-primary border border-white/10">
-                <option class="bg-[#111827]">Cada 1 Hora</option>
-                <option class="bg-[#111827]" selected="">Cada 4 Horas</option>
-                <option class="bg-[#111827]">Diario (00:00)</option>
-              </select>
+
+        <div class="p-6 space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="space-y-2">
+              <span class="field-label">Nombre de Planta</span>
+              <input
+                [(ngModel)]="tempConfig.plantName"
+                class="field-input"
+                type="text"
+                placeholder="Nombre visible de planta"
+              />
+            </label>
+            <label class="space-y-2">
+              <span class="field-label">Zona Horaria</span>
+              <input
+                [(ngModel)]="tempConfig.timezoneName"
+                class="field-input"
+                type="text"
+                placeholder="America/Lima"
+              />
+            </label>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="space-y-2">
+              <span class="field-label">Cierre Automático</span>
+              <div class="relative">
+                <input [(ngModel)]="tempConfig.autoLogoutMinutes" class="field-input pr-14" type="number" min="5" />
+                <span class="unit-badge">min</span>
+              </div>
+            </label>
+            <label class="space-y-2">
+              <span class="field-label">Advertencia de Expiración</span>
+              <div class="relative">
+                <input [(ngModel)]="tempConfig.passwordExpiryWarningDays" class="field-input pr-14" type="number" min="1" />
+                <span class="unit-badge">días</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="rounded-2xl border border-white/10 bg-[#0f172a]/90 p-4 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="text-sm font-semibold text-white">Turnos Activos</h4>
+                <p class="text-xs text-slate-400">Configura nombre, inicio y fin de T1 y T2.</p>
+              </div>
+              <span class="text-[10px] uppercase tracking-[0.2em] text-slate-500">2 turnos fijos</span>
             </div>
-            <div>
-              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Retención (Offline)</label>
-              <select class="block w-full bg-[#111827] px-4 py-2.5 text-sm text-white rounded-xl outline-none focus:ring-1 focus:ring-primary border border-white/10">
-                <option class="bg-[#111827]">3 Días</option>
-                <option class="bg-[#111827]" selected="">7 Días</option>
-                <option class="bg-[#111827]">30 Días</option>
-              </select>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="rounded-2xl border border-blue-500/10 bg-blue-500/5 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold uppercase tracking-[0.2em] text-blue-300">T1</span>
+                  <span class="text-[10px] uppercase tracking-wider text-slate-500">Turno base</span>
+                </div>
+                <input [(ngModel)]="tempConfig.shiftName1" class="field-input" type="text" placeholder="Nombre del turno" />
+                <div class="grid grid-cols-2 gap-3">
+                  <label class="space-y-1">
+                    <span class="field-mini">Inicio</span>
+                    <input [(ngModel)]="tempConfig.shiftTime1" class="field-input" type="time" />
+                  </label>
+                  <label class="space-y-1">
+                    <span class="field-mini">Fin</span>
+                    <input [(ngModel)]="tempConfig.shiftEndTime1" class="field-input" type="time" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-indigo-500/10 bg-indigo-500/5 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold uppercase tracking-[0.2em] text-indigo-300">T2</span>
+                  <span class="text-[10px] uppercase tracking-wider text-slate-500">Turno base</span>
+                </div>
+                <input [(ngModel)]="tempConfig.shiftName2" class="field-input" type="text" placeholder="Nombre del turno" />
+                <div class="grid grid-cols-2 gap-3">
+                  <label class="space-y-1">
+                    <span class="field-mini">Inicio</span>
+                    <input [(ngModel)]="tempConfig.shiftTime2" class="field-input" type="time" />
+                  </label>
+                  <label class="space-y-1">
+                    <span class="field-mini">Fin</span>
+                    <input [(ngModel)]="tempConfig.shiftEndTime2" class="field-input" type="time" />
+                  </label>
+                </div>
+              </div>
             </div>
+          </div>
+
+          <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="text-sm font-semibold text-white">Modo Mantenimiento</h4>
+                <p class="text-xs text-slate-400">Visible en el login y preparado para el bloqueo global.</p>
+              </div>
+              <button
+                type="button"
+                (click)="tempConfig.maintenanceModeEnabled = !tempConfig.maintenanceModeEnabled"
+                class="relative inline-flex h-7 w-14 items-center rounded-full border transition-all duration-200"
+                [ngClass]="tempConfig.maintenanceModeEnabled ? 'border-amber-400/40 bg-amber-500/20' : 'border-white/10 bg-white/5'"
+              >
+                <span
+                  class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-all duration-200"
+                  [ngClass]="tempConfig.maintenanceModeEnabled ? 'translate-x-8 bg-amber-300' : 'translate-x-1'"
+                ></span>
+              </button>
+            </div>
+            <textarea
+              [(ngModel)]="tempConfig.maintenanceMessage"
+              rows="3"
+              class="field-textarea"
+              placeholder="Mensaje que verán los usuarios cuando el sistema entre en mantenimiento."
+            ></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="glassmorphism-card rounded-3xl overflow-hidden bg-white/5 border border-white/10 shadow-lg backdrop-blur-md">
+        <div class="px-6 py-5 border-b border-white/10 bg-white/5 flex items-center gap-3">
+          <div class="p-2 rounded-xl bg-primary/10 border border-primary/20">
+            <span class="material-symbols-outlined text-primary">cloud_sync</span>
           </div>
           <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Reglas de Resolución de Conflictos</label>
-            <div class="space-y-3">
-              <label class="flex items-center p-3 rounded-xl bg-[#111827] border border-white/10 cursor-pointer hover:border-primary/40 transition-all group">
-                <input checked="" class="focus:ring-primary h-4 w-4 text-primary border-white/20 bg-transparent" name="conflict-rule" type="radio"/>
-                <span class="ml-3 text-sm text-slate-300 group-hover:text-white">Servidor gana (Prioridad a datos centrales)</span>
-              </label>
-              <label class="flex items-center p-3 rounded-xl bg-[#111827] border border-white/10 cursor-pointer hover:border-primary/40 transition-all group">
-                <input class="focus:ring-primary h-4 w-4 text-primary border-white/20 bg-transparent" name="conflict-rule" type="radio"/>
-                <span class="ml-3 text-sm text-slate-300 group-hover:text-white">Dispositivo gana (Prioridad local)</span>
-              </label>
-              <label class="flex items-center p-3 rounded-xl bg-[#111827] border border-white/10 cursor-pointer hover:border-primary/40 transition-all group">
-                <input class="focus:ring-primary h-4 w-4 text-primary border-white/20 bg-transparent" name="conflict-rule" type="radio"/>
-                <span class="ml-3 text-sm text-slate-300 group-hover:text-white">Manual (Requiere intervención)</span>
-              </label>
-            </div>
+            <h3 class="text-lg font-semibold text-white">Sincronización y Seguridad</h3>
+            <p class="text-xs text-slate-400 uppercase tracking-[0.24em] mt-1">Persistencia real</p>
           </div>
-          <div class="pt-4 border-t border-white/5 flex items-center justify-between">
-            <label class="flex items-center text-sm font-medium text-slate-300">
-              <span class="material-symbols-outlined text-lg mr-2 text-slate-400">wifi_off</span> Sincronización solo Wi-Fi
+        </div>
+
+        <div class="p-6 space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="space-y-2">
+              <span class="field-label">Frecuencia de Backup</span>
+              <select [(ngModel)]="tempConfig.backupFrequency" class="field-input">
+                <option value="HOURLY">Cada 1 Hora</option>
+                <option value="EVERY_4_HOURS">Cada 4 Horas</option>
+                <option value="DAILY">Diario</option>
+              </select>
             </label>
-            <div class="relative inline-block w-12 align-middle select-none">
-              <input type="checkbox" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-600 transition-transform"/>
-              <label class="toggle-label block overflow-hidden h-6 rounded-full bg-white/10 cursor-pointer"></label>
-            </div>
+            <label class="space-y-2">
+              <span class="field-label">Retención Offline</span>
+              <div class="relative">
+                <input [(ngModel)]="tempConfig.offlineRetentionDays" class="field-input pr-14" type="number" min="1" />
+                <span class="unit-badge">días</span>
+              </div>
+            </label>
           </div>
-        </div>
-      </div>
 
-      <!-- Communication Card (New) -->
-      <div class="glassmorphism-card rounded-2xl overflow-hidden flex flex-col bg-white/5 border border-white/10 shadow-lg backdrop-blur-md lg:col-span-2">
-        <div class="px-6 py-5 border-b border-white/5 flex items-center gap-3 bg-white/5">
-          <div class="p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-            <span class="material-symbols-outlined text-yellow-500">campaign</span>
-          </div>
-          <h3 class="text-lg font-semibold text-white">Comunicación a Planta</h3>
-        </div>
-        <div class="p-6">
-          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Mensaje del Supervisor (Terminal de Operadores)</label>
-          <div class="relative">
-              <textarea [(ngModel)]="tempConfig.operatorMessage" rows="2" class="block w-full bg-[#111827] px-4 py-3 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-primary resize-none border border-white/10"></textarea>
-              <div class="absolute bottom-3 right-3 text-[10px] text-slate-500 font-bold bg-black/40 px-2 py-1 rounded border border-white/10">VISIBLE EN TERMINALES</div>
-          </div>
-        </div>
-      </div>
+          <label class="space-y-2">
+            <span class="field-label">Política de Conflictos</span>
+            <select [(ngModel)]="tempConfig.conflictResolutionPolicy" class="field-input">
+              <option value="SERVER_WINS">Servidor gana</option>
+              <option value="CLIENT_WINS">Dispositivo gana</option>
+              <option value="MANUAL_REVIEW">Manual</option>
+            </select>
+          </label>
 
-      <!-- Security & Logs (Full Width) -->
-      <div class="lg:col-span-2 glassmorphism-card rounded-2xl overflow-hidden bg-white/5 border border-white/10 shadow-lg backdrop-blur-md">
-        <div class="px-6 py-5 border-b border-white/5 flex items-center justify-between bg-white/5">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="space-y-2">
+              <span class="field-label">Caducidad de Contraseñas</span>
+              <div class="relative">
+                <input [(ngModel)]="tempConfig.passwordPolicyDays" class="field-input pr-14" type="number" min="30" />
+                <span class="unit-badge">días</span>
+              </div>
+            </label>
+            <label class="space-y-2">
+              <span class="field-label">Intentos Fallidos</span>
+              <div class="relative">
+                <input [(ngModel)]="tempConfig.failedLoginMaxAttempts" class="field-input pr-14" type="number" min="1" />
+                <span class="unit-badge">max</span>
+              </div>
+            </label>
+          </div>
+
+          <label class="space-y-2">
+            <span class="field-label">Modo de Alerta por Intentos Fallidos</span>
+            <select [(ngModel)]="tempConfig.failedLoginAlertMode" class="field-input">
+              <option value="AUDIT_ONLY">Solo auditoría</option>
+              <option value="NOTIFY_AND_AUDIT">Notificar y auditar</option>
+            </select>
+          </label>
+
+          <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+            <h4 class="text-sm font-semibold text-white">Mensajes Operativos</h4>
+            <textarea [(ngModel)]="tempConfig.operatorMessage" rows="2" class="field-textarea" placeholder="Mensaje visible en terminales de operarios."></textarea>
+            <textarea [(ngModel)]="tempConfig.productionAssistantMessage" rows="2" class="field-textarea" placeholder="Mensaje global para Asistente de Producción."></textarea>
+            <textarea [(ngModel)]="tempConfig.finishingManagerMessage" rows="2" class="field-textarea" placeholder="Mensaje global para Troquelado y Rebobinado."></textarea>
+            <textarea [(ngModel)]="tempConfig.managementMessage" rows="2" class="field-textarea" placeholder="Mensaje global para Jefatura o gestión."></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="xl:col-span-2 glassmorphism-card rounded-3xl overflow-hidden bg-white/5 border border-white/10 shadow-lg backdrop-blur-md">
+        <div class="px-6 py-5 border-b border-white/10 bg-white/5 flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <div class="p-2 rounded-lg bg-red-500/10 border border-red-500/20">
-              <span class="material-symbols-outlined text-red-500">security</span>
+            <div class="p-2 rounded-xl bg-red-500/10 border border-red-500/20">
+              <span class="material-symbols-outlined text-red-400">security</span>
             </div>
-            <h3 class="text-lg font-semibold text-white">Seguridad y Logs</h3>
-          </div>
-          <button class="text-[10px] uppercase tracking-widest text-primary hover:text-blue-400 font-bold transition-colors bg-primary/10 px-4 py-2 rounded-lg border border-primary/20">Ver Logs Completos</button>
-        </div>
-        <div class="p-8">
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
-            <div class="lg:col-span-1 space-y-8">
-              <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Caducidad de Contraseñas</label>
-                <div class="flex">
-                  <input class="bg-[#111827] flex-1 min-w-0 px-4 py-2.5 rounded-l-xl text-sm text-white outline-none border border-white/10" type="number" value="90"/>
-                  <span class="inline-flex items-center px-4 rounded-r-xl border border-white/10 bg-white/5 text-slate-400 text-sm">días</span>
-                </div>
-              </div>
-              <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Intentos Fallidos</label>
-                <select class="block w-full bg-[#111827] px-4 py-2.5 text-sm text-white rounded-xl outline-none border border-white/10">
-                  <option class="bg-[#111827]">3 Intentos</option>
-                  <option class="bg-[#111827]" selected="">5 Intentos</option>
-                </select>
-              </div>
-              <div class="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5">
-                <span class="text-sm font-medium text-slate-300">2FA Obligatorio (Admin)</span>
-                <div class="relative inline-block w-12 align-middle select-none">
-                  <input checked="" type="checkbox" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-600 transition-transform"/>
-                  <label class="toggle-label block overflow-hidden h-6 rounded-full bg-white/10 cursor-pointer"></label>
-                </div>
-              </div>
-            </div>
-            <div class="lg:col-span-2">
-              <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Última Actividad de Auditoría</h4>
-              <div class="overflow-hidden bg-[#111827] rounded-xl border border-white/10">
-                <table class="min-w-full divide-y divide-white/5">
-                  <thead class="bg-white/5">
-                    <tr>
-                      <th class="py-3 px-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Usuario</th>
-                      <th class="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Acción</th>
-                      <th class="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Fecha</th>
-                      <th class="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">IP</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-white/5 bg-white/5">
-                    <tr class="hover:bg-white/5 transition-colors">
-                      <td class="whitespace-nowrap py-3 px-4 text-xs font-bold text-white">jperez</td>
-                      <td class="whitespace-nowrap px-4 py-3 text-xs text-slate-400">Exportar Reporte</td>
-                      <td class="whitespace-nowrap px-4 py-3 text-xs text-slate-400">Ayer, 16:30</td>
-                      <td class="whitespace-nowrap px-4 py-3 text-xs text-slate-400 font-mono opacity-60">192.168.1.18</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+            <div>
+              <h3 class="text-lg font-semibold text-white">Auditoría y Cierre OT</h3>
+              <p class="text-xs text-slate-400 uppercase tracking-[0.24em] mt-1">Datos reales del backend</p>
             </div>
           </div>
+          <button
+            type="button"
+            (click)="goToAudit()"
+            class="px-4 py-2 rounded-xl border border-primary/20 bg-primary/10 text-primary text-xs font-semibold uppercase tracking-[0.22em] hover:bg-primary/15 hover:text-blue-300 transition-colors"
+          >
+            Ver Logs Completos
+          </button>
         </div>
-      </div>
 
-      <!-- Global Save Action -->
-      <div class="lg:col-span-2 flex justify-end pt-4">
-         <button (click)="saveConfig()" class="flex items-center gap-2 px-8 py-3 bg-primary hover:bg-blue-600 text-white font-bold rounded-xl shadow-lg transition-all active:scale-95">
-            <span class="material-symbols-outlined">save</span> Guardar Cambios
-         </button>
-      </div>
+        <div class="p-6 space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <label class="toggle-card">
+              <span class="field-label">Permitir cierre parcial</span>
+              <input [(ngModel)]="tempConfig.otAllowPartialClose" type="checkbox" />
+            </label>
+            <label class="toggle-card">
+              <span class="field-label">Permitir cierre con merma</span>
+              <input [(ngModel)]="tempConfig.otAllowCloseWithWaste" type="checkbox" />
+            </label>
+            <label class="toggle-card">
+              <span class="field-label">Permitir cierre forzado</span>
+              <input [(ngModel)]="tempConfig.otAllowForcedClose" type="checkbox" />
+            </label>
+            <label class="toggle-card">
+              <span class="field-label">Motivo obligatorio</span>
+              <input [(ngModel)]="tempConfig.otForcedCloseRequiresReason" type="checkbox" />
+            </label>
+          </div>
 
+          <div class="rounded-2xl border border-white/10 bg-[#0f172a]/85 overflow-hidden">
+            <div class="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <h4 class="text-sm font-semibold text-white">Última Actividad de Auditoría</h4>
+              <span class="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                {{ auditPreview().length }} registros
+              </span>
+            </div>
+
+            <div *ngIf="auditPreview().length; else emptyAudit" class="divide-y divide-white/5">
+              <div *ngFor="let log of auditPreview()" class="px-4 py-3 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr_1fr] gap-3 hover:bg-white/[0.03] transition-colors">
+                <div>
+                  <p class="text-sm font-semibold text-white">{{ log.user_name_snapshot || 'Sistema' }}</p>
+                  <p class="text-xs text-slate-500 uppercase tracking-[0.18em]">{{ log.role_code_snapshot || 'N/A' }}</p>
+                </div>
+                <div>
+                  <p class="text-sm text-slate-200">{{ log.entity }} / {{ log.action }}</p>
+                  <p class="text-xs text-slate-500">{{ log.entity_id || 'Sin entidad específica' }}</p>
+                </div>
+                <div class="lg:text-right">
+                  <p class="text-sm text-slate-300">{{ log.created_at | date:'dd/MM/yyyy HH:mm' }}</p>
+                  <p class="text-xs text-slate-500">{{ describeAuditPayload(log) }}</p>
+                </div>
+              </div>
+            </div>
+
+            <ng-template #emptyAudit>
+              <div class="px-4 py-8 text-center text-sm text-slate-400">
+                No hay registros recientes disponibles para esta configuración.
+              </div>
+            </ng-template>
+          </div>
+
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+            <div>
+              <p class="text-sm font-medium text-white">
+                {{ isSaving ? 'Guardando cambios...' : 'Contrato listo para persistir' }}
+              </p>
+              <p class="text-xs text-slate-500">
+                El guardado usa system-config/contract y mantiene sincronizados system_config, T1 y T2.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              (click)="saveConfig()"
+              [disabled]="isSaving"
+              class="flex items-center justify-center gap-2 px-8 py-3 rounded-2xl bg-button-gradient text-white font-semibold shadow-glow transition-all hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <span class="material-symbols-outlined">{{ isSaving ? 'progress_activity' : 'save' }}</span>
+              {{ isSaving ? 'Guardando...' : 'Guardar Cambios' }}
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
-  `
+  `,
+  styles: [
+    `
+      .field-label {
+        display: block;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgb(148 163 184);
+      }
+
+      .field-mini {
+        display: block;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgb(100 116 139);
+      }
+
+      .field-input,
+      .field-textarea {
+        width: 100%;
+        border-radius: 0.95rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(15, 23, 42, 0.92);
+        color: white;
+        outline: none;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      }
+
+      .field-input {
+        padding: 0.78rem 0.95rem;
+        font-size: 0.9rem;
+      }
+
+      .field-textarea {
+        min-height: 4.5rem;
+        padding: 0.9rem 1rem;
+        font-size: 0.9rem;
+        resize: vertical;
+      }
+
+      .field-input:focus,
+      .field-textarea:focus {
+        border-color: rgba(59, 130, 246, 0.5);
+        box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18), 0 0 24px rgba(59, 130, 246, 0.08);
+        background: rgba(15, 23, 42, 1);
+      }
+
+      .unit-badge {
+        position: absolute;
+        right: 0.85rem;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 0.72rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgb(148 163 184);
+      }
+
+      .toggle-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem;
+        border-radius: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .toggle-card input[type='checkbox'] {
+        width: 1rem;
+        height: 1rem;
+        accent-color: #3b82f6;
+      }
+
+      .bg-button-gradient {
+        background-image: linear-gradient(135deg, #0ea5e9, #3b82f6 55%, #2563eb);
+      }
+
+      .shadow-glow {
+        box-shadow: 0 0 24px rgba(59, 130, 246, 0.22);
+      }
+    `,
+  ],
 })
 export class AdminConfigComponent {
-  state = inject(StateService);
-  adminService = inject(AdminService);
-  tempConfig: SystemConfig;
+  private readonly router = inject(Router);
+  private readonly notifications = inject(NotificationService);
+
+  readonly state = inject(StateService);
+  readonly adminService = inject(AdminService);
+
+  tempConfig: SystemConfig = { ...this.adminService.config() };
   isSaving = false;
 
-  constructor() {
-    this.tempConfig = { ...this.adminService.config() };
-  }
+  readonly auditPreview = computed<ConfigAuditPreviewItem[]>(() =>
+    this.state.systemConfigContract()?.audit_preview || [],
+  );
 
   async saveConfig() {
     if (this.isSaving) return;
@@ -245,12 +423,24 @@ export class AdminConfigComponent {
     try {
       await this.adminService.updateConfig(this.tempConfig);
       this.tempConfig = { ...this.adminService.config() };
-      alert('Configuración guardada correctamente.');
-    } catch {
+      this.notifications.showSuccess('La configuración se guardó correctamente.');
+    } catch (error: any) {
       this.tempConfig = { ...this.adminService.config() };
-      alert('No se pudo guardar la configuración. Se recargó el estado real desde backend.');
+      this.notifications.showError(
+        error?.message || 'No se pudo guardar la configuración. Se recargó el estado real.',
+      );
     } finally {
       this.isSaving = false;
     }
+  }
+
+  goToAudit() {
+    void this.router.navigate(['/audit']);
+  }
+
+  describeAuditPayload(log: ConfigAuditPreviewItem) {
+    if (log.new_values) return 'Cambios aplicados';
+    if (log.old_values) return 'Estado previo disponible';
+    return 'Sin payload detallado';
   }
 }
