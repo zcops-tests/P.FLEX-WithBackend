@@ -1,0 +1,348 @@
+Implementación de Configuración como Contrato Real, con Respaldo Inicial, Pausas de Validación y Criterio de Código Limpio
+
+Resumen
+- La pestaña `Configuración` se tomará como contrato funcional y adaptaremos frontend, backend y base de datos a esa UI depurada.
+- Antes de cualquier cambio de código, la primera acción de ejecución será crear un respaldo del plan en un archivo `.txt` en la raíz del proyecto.
+- La implementación se hará por etapas secuenciales, y después de cada cambio mayor habrá una pausa obligatoria para validación manual antes de continuar.
+- Se eliminan del contrato: `Áreas activas`, `Sincronización solo Wi‑Fi` y `2FA Obligatorio`.
+- Decisiones ya cerradas:
+  - `Modo Mantenimiento Global`: bloqueo total para todo usuario no `Sistemas`, mostrando mensaje de mantenimiento.
+  - `Turnos`: exactamente 2 turnos configurables, con inicio y fin editables.
+  - `Estados OT`: solo se editan etiquetas visibles, no la máquina de estados.
+  - `Intentos fallidos`: registrar evento auditable y dejar backend listo para notificación in-app futura.
+- Criterio de implementación:
+  - mantener código limpio, cohesivo y predecible
+  - evitar atajos o duplicaciones
+  - no forzar cambios sobre modelos existentes si antes no se valida su impacto
+  - preferir refactor pequeño y correcto sobre parche rápido
+
+Principios obligatorios durante la implementación
+- Analizar primero el flujo actual antes de tocar cada etapa.
+- Cambiar solo la responsabilidad necesaria en cada capa:
+  - frontend para bindings, estado y orquestación
+  - backend para contratos, validación y reglas de negocio
+  - base de datos para persistencia real
+- No duplicar lógica entre frontend y backend cuando una sola capa pueda ser la fuente de verdad.
+- No mezclar persistencia de `turnos` dentro de `system_config`; `shifts` seguirá siendo entidad separada.
+- No hardcodear nuevas reglas si pueden modelarse de forma explícita y clara.
+- Mantener nombres y tipos consistentes entre Prisma, DTOs, adapters, estado frontend y componentes.
+- Si aparece una inconsistencia estructural durante una etapa, corregirla antes de seguir, aunque eso implique refinar el diseño de esa etapa.
+- Cada etapa debe cerrar con código ordenado, sin deuda nueva evidente y con pruebas acordes al cambio.
+
+Orden de ejecución con pausas obligatorias
+
+0. Respaldo inicial del plan
+1. Crear un archivo `.txt` en la raíz del proyecto con este plan completo como referencia de trabajo.
+Skills:
+- No requiere skill específica de dominio; es una acción operativa previa.
+
+Pausa de validación manual
+- Confirmar que el archivo quedó en la raíz y contiene el plan acordado.
+- No continuar hasta tu confirmación.
+
+1. Redefinir el contrato persistente de Configuración
+1. Ampliar `system_config` para cubrir todos los campos globales mantenidos y agregados, solo después de validar que no corresponden mejor a otra entidad.
+Skills:
+- `nodejs-backend-patterns`
+- `typescript-advanced-types`
+
+2. Mantener `shifts` como fuente de verdad de nombres y horarios, restringiendo la lógica a exactamente 2 turnos activos.
+Skills:
+- `nodejs-backend-patterns`
+- `nodejs-best-practices`
+
+3. Crear tabla nueva para asignación de supervisor por turno, preparada para futura extensión a otros responsables, sin acoplarla indebidamente a usuarios o roles legacy.
+Skills:
+- `nodejs-backend-patterns`
+- `nodejs-best-practices`
+
+4. Reutilizar `audit_logs` para la tabla real de actividad y para eventos de seguridad/configuración, evitando inventar un subsistema paralelo.
+Skills:
+- `nodejs-backend-patterns`
+- `nodejs-best-practices`
+
+Pausa de validación manual
+- Validar esquema final de tablas y columnas antes de seguir con endpoints y frontend.
+- Revisar especialmente:
+  - nuevos campos de `system_config`
+  - tabla de asignación por turno
+  - permanencia de `shifts` como tabla separada
+- No continuar hasta tu confirmación.
+
+2. Implementar Modo Mantenimiento Global
+1. Agregar a `system_config`:
+  - `maintenance_mode_enabled`
+  - `maintenance_message`
+Skills:
+- `nodejs-backend-patterns`
+- `typescript-advanced-types`
+
+2. Implementar guard/interceptor backend que:
+  - deje pasar autenticación, logout y configuración mínima a `Sistemas`
+  - bloquee acceso y mutaciones del resto
+  - devuelva contexto de mantenimiento consumible por frontend
+Skills:
+- `nodejs-backend-patterns`
+- `nodejs-best-practices`
+
+3. Hacer que frontend consuma ese estado desde bootstrap y redirija a pantalla de mantenimiento sin introducir navegación frágil o lógica duplicada.
+Skills:
+- `angular-developer`
+- `typescript-advanced-types`
+
+4. Registrar en auditoría activación, desactivación y cambios de mensaje de mantenimiento.
+Skills:
+- `nodejs-backend-patterns`
+
+Pausa de validación manual
+- Validar con distintos roles:
+  - `Sistemas` entra normalmente
+  - otros usuarios quedan bloqueados
+  - el mensaje de mantenimiento se muestra bien
+- No continuar hasta tu confirmación.
+
+3. Persistencia coordinada de la pestaña Configuración
+1. Reemplazar el guardado actual por una operación compuesta real:
+  - guardar `system-config`
+  - guardar turno 1
+  - guardar turno 2
+  - guardar supervisor por turno
+Skills:
+- `angular-developer`
+- `nodejs-backend-patterns`
+
+2. Hacer que `saveConfig()` espere el resultado completo y solo muestre éxito si toda la persistencia terminó bien.
+Skills:
+- `angular-developer`
+
+3. Si una parte falla, refrescar desde backend para evitar estado local stale o éxito falso, sin introducir estados intermedios confusos.
+Skills:
+- `angular-developer`
+- `nodejs-best-practices`
+
+4. Ajustar `StateService` para que el bootstrap combine `system-config`, `shifts` y asignaciones por turno como fuente de verdad unificada.
+Skills:
+- `angular-developer`
+- `typescript-advanced-types`
+
+Pausa de validación manual
+- Validar guardado real de:
+  - turnos
+  - supervisor por turno
+  - mensajes
+  - parámetros globales
+- Recargar la app y confirmar que todo persiste.
+- No continuar hasta tu confirmación.
+
+4. Depurar y completar el modelo visible de la pestaña
+1. Eliminar del template y del modelo:
+  - `Áreas Activas`
+  - `Sincronización solo Wi‑Fi`
+  - `2FA Obligatorio`
+Skills:
+- `angular-developer`
+
+2. Convertir en bindings reales todos los controles que se mantienen, respetando el diseño actual y sin agregar complejidad innecesaria en el componente.
+Skills:
+- `angular-developer`
+- `typescript-advanced-types`
+
+3. Agregar bindings y persistencia para:
+  - mensaje de la asistente de producción
+  - mensaje del encargado de rebobinado y troquelado
+  - mensaje de jefatura
+  - asignación de supervisor por turno
+  - etiquetas visibles de estados OT
+  - política de cierre de OT
+Skills:
+- `angular-developer`
+- `typescript-advanced-types`
+- `nodejs-backend-patterns`
+
+4. Separar claramente en frontend:
+  - datos globales
+  - turnos
+  - responsables por turno
+  - auditoría
+  para evitar que el componente vuelva a crecer sin estructura.
+Skills:
+- `angular-developer`
+
+Pausa de validación manual
+- Validar visual y funcionalmente la pestaña completa ya depurada.
+- Confirmar que ya no existan controles descartados.
+- Verificar que todo lo visible sí tenga persistencia real.
+- No continuar hasta tu confirmación.
+
+5. Estados OT y política de cierre
+1. Mantener estados internos del backend como catálogo canónico fijo.
+Skills:
+- `nodejs-best-practices`
+
+2. Agregar en `system_config` solo etiquetas visibles para:
+  - creada
+  - liberada
+  - en proceso
+  - pausada
+  - cerrada
+  - bloqueada
+Skills:
+- `nodejs-backend-patterns`
+- `typescript-advanced-types`
+
+3. Reemplazar textos hardcodeados de OT en frontend para que consuman etiquetas desde `StateService`, sin romper el flujo actual de órdenes.
+Skills:
+- `angular-developer`
+- `typescript-advanced-types`
+
+4. Modelar política de cierre OT en `system_config` con flags:
+  - permitir cierre parcial
+  - permitir cierre con merma
+  - permitir cierre forzado
+  - motivo obligatorio para cierre forzado
+Skills:
+- `nodejs-backend-patterns`
+- `nodejs-best-practices`
+
+5. Validar esa política en backend dentro de los flujos reales de cierre/estado de OT, manteniendo una sola fuente de verdad para las reglas.
+Skills:
+- `nodejs-backend-patterns`
+- `nodejs-best-practices`
+
+Pausa de validación manual
+- Validar desde el flujo real de OTs:
+  - nuevas etiquetas visibles
+  - cierre parcial
+  - cierre con merma
+  - cierre forzado con motivo obligatorio
+- No continuar hasta tu confirmación.
+
+6. Seguridad, contraseñas e intentos fallidos
+1. Mantener `password_policy_days` y `password_expiry_warning_days`, pero enlazarlos de verdad en la pestaña.
+Skills:
+- `angular-developer`
+- `nodejs-backend-patterns`
+
+2. Añadir `failed_login_max_attempts` a `system_config` como umbral configurable.
+Skills:
+- `nodejs-backend-patterns`
+- `typescript-advanced-types`
+
+3. Ajustar autenticación para leer ese umbral desde configuración y no desde valores implícitos.
+Skills:
+- `nodejs-backend-patterns`
+- `nodejs-best-practices`
+
+4. Cuando se supere el umbral:
+  - registrar evento en auditoría
+  - almacenar payload listo para futura notificación in-app a `Supervisor`, `Asistente de Producción` y `Sistemas`
+Skills:
+- `nodejs-backend-patterns`
+- `nodejs-best-practices`
+
+Pausa de validación manual
+- Validar umbral configurable de intentos fallidos.
+- Confirmar registro en auditoría y consistencia del evento.
+- No continuar hasta tu confirmación.
+
+7. Auditoría real en la pestaña
+1. Reemplazar la tabla estática por consumo real de `GET /audit/logs`.
+Skills:
+- `angular-developer`
+- `nodejs-backend-patterns`
+
+2. Mostrar últimos registros reales en la tarjeta de Configuración.
+Skills:
+- `angular-developer`
+
+3. Hacer que `Ver Logs Completos` abra el flujo real de auditoría ya existente.
+Skills:
+- `angular-developer`
+
+4. Garantizar que cambios de configuración, turnos, supervisores por turno, mantenimiento e intentos fallidos generen trazabilidad before/after.
+Skills:
+- `nodejs-backend-patterns`
+- `nodejs-best-practices`
+
+Pausa de validación manual
+- Validar que la pestaña muestre logs reales.
+- Confirmar que “Ver Logs Completos” abre el flujo correcto.
+- Confirmar que los cambios recién hechos aparecen auditados.
+- Esta pausa cierra la implementación.
+
+Cambios en base de datos, APIs y tipos
+
+Base de datos
+- `system_config`:
+  - mantener: `plant_name`, `auto_logout_minutes`, `password_expiry_warning_days`, `password_policy_days`, `operator_message`, `timezone_name`
+  - agregar:
+    - `maintenance_mode_enabled`
+    - `maintenance_message`
+    - `offline_retention_days`
+    - `backup_frequency`
+    - `conflict_resolution_policy`
+    - `production_assistant_message`
+    - `finishing_manager_message`
+    - `management_message`
+    - `failed_login_alert_mode`
+    - `failed_login_max_attempts`
+    - `ot_allow_partial_close`
+    - `ot_allow_close_with_waste`
+    - `ot_allow_forced_close`
+    - `ot_forced_close_requires_reason`
+    - `ot_label_created`
+    - `ot_label_released`
+    - `ot_label_in_process`
+    - `ot_label_paused`
+    - `ot_label_closed`
+    - `ot_label_blocked`
+- `shifts`:
+  - mantener tabla actual
+  - seguir usando `name`, `start_time`, `end_time`, `crosses_midnight`, `active`
+- nueva tabla:
+  - `shift_supervisor_assignments`
+  - campos: `id`, `shift_id`, `user_id`, `role_scope`, `active`, `created_at`, `updated_at`
+
+APIs
+- ampliar `GET /system-config` y `PUT /system-config`
+- mantener `GET /shifts` y `PUT /shifts/:id`
+- agregar:
+  - `GET /shift-supervisors`
+  - `PUT /shift-supervisors/:shiftId`
+- reutilizar `GET /audit/logs` para la tabla de auditoría
+- agregar protección backend para mantenimiento global sobre rutas y mutaciones
+
+Tipos frontend/backend
+- ampliar `SystemConfig`
+- crear `ShiftSupervisorAssignment`
+- crear un view-model combinado para la pestaña Configuración
+- extender el estado global para:
+  - mensajes por rol
+  - mantenimiento
+  - etiquetas OT
+  - política de cierre
+
+Plan de pruebas por etapa
+- Cada etapa debe cerrar con:
+  - pruebas técnicas del módulo tocado
+  - build si el cambio es transversal
+  - revisión rápida de limpieza estructural del código modificado
+  - validación manual tuya antes de continuar
+- Validaciones mínimas acumuladas:
+  - persistencia real de configuración
+  - guardado coordinado sin éxito falso
+  - mantenimiento global funcionando por rol
+  - etiquetas OT reflejadas en UI
+  - política de cierre respetada por backend
+  - intentos fallidos auditados
+  - auditoría real visible en la pestaña
+
+Supuestos y defaults
+- Los tres mensajes nuevos son globales por rol, no por turno.
+- “Encargado de rebobinado y troquelado” se mapeará al grupo de roles operativos de finishing ya existentes.
+- Las etiquetas OT son solo de presentación; el backend sigue usando estados internos fijos.
+- La primera fase deja lista la base para notificación in-app por intentos fallidos, pero no obliga a implementar un centro de notificaciones completo.
+- Skills a usar por defecto durante la implementación:
+  - frontend: `angular-developer`
+  - backend: `nodejs-backend-patterns` + `nodejs-best-practices`
+  - contratos/tipos: `typescript-advanced-types`
