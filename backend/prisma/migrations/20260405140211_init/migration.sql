@@ -122,6 +122,20 @@ CREATE TABLE `system_config` (
     `password_policy_days` INTEGER NOT NULL DEFAULT 90,
     `operator_message` TEXT NULL,
     `timezone_name` VARCHAR(100) NOT NULL DEFAULT 'UTC',
+    `maintenance_mode_enabled` BOOLEAN NOT NULL DEFAULT false,
+    `maintenance_message` TEXT NULL,
+    `offline_retention_days` INTEGER NOT NULL DEFAULT 30,
+    `backup_frequency` VARCHAR(30) NOT NULL DEFAULT 'DAILY',
+    `conflict_resolution_policy` VARCHAR(50) NOT NULL DEFAULT 'MANUAL_REVIEW',
+    `production_assistant_message` TEXT NULL,
+    `finishing_manager_message` TEXT NULL,
+    `management_message` TEXT NULL,
+    `failed_login_alert_mode` VARCHAR(30) NOT NULL DEFAULT 'AUDIT_ONLY',
+    `failed_login_max_attempts` INTEGER NOT NULL DEFAULT 5,
+    `ot_allow_partial_close` BOOLEAN NOT NULL DEFAULT false,
+    `ot_allow_close_with_waste` BOOLEAN NOT NULL DEFAULT false,
+    `ot_allow_forced_close` BOOLEAN NOT NULL DEFAULT false,
+    `ot_forced_close_requires_reason` BOOLEAN NOT NULL DEFAULT true,
     `row_version` BIGINT NOT NULL DEFAULT 1,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updated_at` DATETIME(3) NOT NULL,
@@ -244,6 +258,16 @@ CREATE TABLE `sync_mutation_log` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
+CREATE TABLE `sequence_counters` (
+    `name` VARCHAR(100) NOT NULL,
+    `next_value` BIGINT NOT NULL DEFAULT 0,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updated_at` DATETIME(3) NOT NULL,
+
+    PRIMARY KEY (`name`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
 CREATE TABLE `import_jobs` (
     `id` VARCHAR(36) NOT NULL,
     `entity_name` VARCHAR(100) NOT NULL,
@@ -345,6 +369,48 @@ CREATE TABLE `work_order_management_entries` (
     INDEX `work_order_management_entries_entered_at_idx`(`entered_at`),
     INDEX `work_order_management_entries_entered_by_user_id_idx`(`entered_by_user_id`),
     INDEX `work_order_management_entries_exited_by_user_id_idx`(`exited_by_user_id`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `production_schedule_entries` (
+    `id` VARCHAR(36) NOT NULL,
+    `schedule_date` DATE NOT NULL,
+    `shift` VARCHAR(20) NOT NULL,
+    `area` VARCHAR(50) NOT NULL,
+    `machine_id` VARCHAR(36) NOT NULL,
+    `work_order_id` VARCHAR(36) NOT NULL,
+    `start_time` VARCHAR(8) NOT NULL,
+    `duration_minutes` INTEGER NOT NULL,
+    `operator_name` VARCHAR(100) NULL,
+    `notes` TEXT NULL,
+    `snapshot_payload` JSON NOT NULL,
+    `created_by_user_id` VARCHAR(36) NULL,
+    `updated_by_user_id` VARCHAR(36) NULL,
+    `row_version` BIGINT NOT NULL DEFAULT 1,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updated_at` DATETIME(3) NOT NULL,
+    `deleted_at` DATETIME(3) NULL,
+
+    INDEX `idx_pse_date_shift_area_del`(`schedule_date`, `shift`, `area`, `deleted_at`),
+    INDEX `idx_pse_machine_date_del`(`machine_id`, `schedule_date`, `deleted_at`),
+    INDEX `idx_pse_wo_date_del`(`work_order_id`, `schedule_date`, `deleted_at`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `production_schedule_revisions` (
+    `id` VARCHAR(36) NOT NULL,
+    `schedule_entry_id` VARCHAR(36) NOT NULL,
+    `revision_number` INTEGER NOT NULL,
+    `changed_by_user_id` VARCHAR(36) NULL,
+    `change_reason` TEXT NULL,
+    `before_payload` JSON NOT NULL,
+    `after_payload` JSON NOT NULL,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    INDEX `idx_psr_entry_created`(`schedule_entry_id`, `created_at`),
+    UNIQUE INDEX `uq_psr_entry_revision`(`schedule_entry_id`, `revision_number`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -560,6 +626,18 @@ CREATE TABLE `stock_items` (
     `ot_number_snapshot` VARCHAR(50) NULL,
     `client_snapshot` VARCHAR(150) NULL,
     `product_snapshot` VARCHAR(255) NULL,
+    `medida` VARCHAR(100) NULL,
+    `ancho_mm` DECIMAL(12, 3) NULL,
+    `avance_mm` DECIMAL(12, 3) NULL,
+    `material` VARCHAR(150) NULL,
+    `columnas` INTEGER NULL,
+    `prepicado` VARCHAR(100) NULL,
+    `cantidad_x_rollo` DECIMAL(14, 3) NULL,
+    `cantidad_millares` DECIMAL(14, 3) NULL,
+    `etiqueta` VARCHAR(255) NULL,
+    `forma` VARCHAR(100) NULL,
+    `tipo_producto` VARCHAR(100) NULL,
+    `caja` VARCHAR(100) NULL,
     `quantity` DECIMAL(14, 3) NULL,
     `unit` VARCHAR(50) NULL,
     `rolls` INTEGER NULL,
@@ -568,16 +646,19 @@ CREATE TABLE `stock_items` (
     `status` VARCHAR(50) NOT NULL DEFAULT 'LIBERATED',
     `entry_date` DATETIME(3) NOT NULL,
     `notes` TEXT NULL,
-    `pallet_id` VARCHAR(100) NULL,
+    `box_id` VARCHAR(100) NULL,
     `row_version` BIGINT NOT NULL DEFAULT 1,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updated_at` DATETIME(3) NOT NULL,
     `deleted_at` DATETIME(3) NULL,
 
-    UNIQUE INDEX `stock_items_pallet_id_key`(`pallet_id`),
+    UNIQUE INDEX `stock_items_box_id_key`(`box_id`),
     INDEX `stock_items_updated_at_idx`(`updated_at`),
     INDEX `stock_items_deleted_at_idx`(`deleted_at`),
     INDEX `stock_items_status_idx`(`status`),
+    INDEX `stock_items_entry_date_idx`(`entry_date`),
+    INDEX `stock_items_caja_idx`(`caja`),
+    INDEX `stock_items_location_idx`(`location`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -907,6 +988,24 @@ ALTER TABLE `work_order_management_entries` ADD CONSTRAINT `work_order_managemen
 
 -- AddForeignKey
 ALTER TABLE `work_order_management_entries` ADD CONSTRAINT `work_order_management_entries_exited_by_user_id_fkey` FOREIGN KEY (`exited_by_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `production_schedule_entries` ADD CONSTRAINT `production_schedule_entries_machine_id_fkey` FOREIGN KEY (`machine_id`) REFERENCES `machines`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `production_schedule_entries` ADD CONSTRAINT `production_schedule_entries_work_order_id_fkey` FOREIGN KEY (`work_order_id`) REFERENCES `work_orders`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `production_schedule_entries` ADD CONSTRAINT `production_schedule_entries_created_by_user_id_fkey` FOREIGN KEY (`created_by_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `production_schedule_entries` ADD CONSTRAINT `production_schedule_entries_updated_by_user_id_fkey` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `production_schedule_revisions` ADD CONSTRAINT `production_schedule_revisions_schedule_entry_id_fkey` FOREIGN KEY (`schedule_entry_id`) REFERENCES `production_schedule_entries`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `production_schedule_revisions` ADD CONSTRAINT `production_schedule_revisions_changed_by_user_id_fkey` FOREIGN KEY (`changed_by_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `work_order_import_rows` ADD CONSTRAINT `work_order_import_rows_import_job_id_fkey` FOREIGN KEY (`import_job_id`) REFERENCES `import_jobs`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
