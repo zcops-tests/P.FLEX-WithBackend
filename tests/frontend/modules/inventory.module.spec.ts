@@ -14,6 +14,7 @@ const inventorySource = readFileSync(resolve(process.cwd(), 'src/features/invent
 const cliseSource = readFileSync(resolve(process.cwd(), 'src/features/inventory/components/inventory-clise.component.ts'), 'utf8');
 const dieSource = readFileSync(resolve(process.cwd(), 'src/features/inventory/components/inventory-die.component.ts'), 'utf8');
 const stockSource = readFileSync(resolve(process.cwd(), 'src/features/inventory/components/inventory-stock.component.ts'), 'utf8');
+const importFlowSource = readFileSync(resolve(process.cwd(), 'src/features/inventory/components/inventory-import-preview.component.ts'), 'utf8');
 
 test('inventory module smoke imports all inventory surfaces', () => {
   assert.equal(typeof InventoryComponent, 'function');
@@ -30,9 +31,15 @@ test('inventory module keeps dynamic subtype navigation and layout map support',
 });
 
 test('inventory module exposes import workflows for clises, dies and stock', () => {
-  assert.match(cliseSource, /accept="\.xlsx, \.xls, \.csv"/);
-  assert.match(dieSource, /accept="\.xlsx, \.xls, \.csv"/);
-  assert.match(stockSource, /accept="\.xlsx, \.xls, \.csv"/);
+  assert.match(cliseSource, /InventoryImportPreviewComponent/);
+  assert.match(dieSource, /InventoryImportPreviewComponent/);
+  assert.match(stockSource, /InventoryImportPreviewComponent/);
+  assert.match(cliseSource, /InventoryImportFlowService/);
+  assert.match(dieSource, /InventoryImportFlowService/);
+  assert.match(stockSource, /InventoryImportFlowService/);
+  assert.match(importFlowSource, /accept]="\.xlsx, \.xls, \.csv"|accept = '\.xlsx, \.xls, \.csv'/);
+  assert.match(importFlowSource, /step === 'upload'/);
+  assert.match(importFlowSource, /step === 'preview'/);
 });
 
 function createStockComponent(overrides: Record<string, unknown> = {}) {
@@ -50,6 +57,11 @@ function createStockComponent(overrides: Record<string, unknown> = {}) {
   Object.assign(component, {
     state: { hasPermission: () => true },
     inventoryService: {
+      importStocks: async (items: any[], onProgress?: (progress: any) => void) => {
+        addStocksCalls.push(items);
+        onProgress?.({ currentBatch: 1, totalBatches: 1, processedItems: items.length, totalItems: items.length });
+        return { imported: items.length, conflicts: items.filter((item) => !item.caja).length, created: items.length, updated: 0 };
+      },
       addStocks: async (items: any[]) => { addStocksCalls.push(items); },
       addStock: async () => undefined,
       updateStock: async () => undefined,
@@ -67,7 +79,13 @@ function createStockComponent(overrides: Record<string, unknown> = {}) {
     previewData: [],
     conflictsData: [],
     showImportPreviewModal: false,
+    showImportModal: false,
+    importStep: 'upload',
     isImporting: false,
+    importProgressPercent: 0,
+    importProgressText: '',
+    loadingProgress: 0,
+    loadingStatusText: '',
     showModal: false,
     editingItem: false,
     isReadOnly: false,
@@ -105,12 +123,43 @@ function createDieComponent(overrides: Record<string, unknown> = {}) {
     previewData: [],
     conflictsData: [],
     showImportPreviewModal: false,
+    showImportModal: false,
+    importStep: 'upload',
     isImporting: false,
     importProgressPercent: 0,
     importProgressText: '',
     showDieForm: false,
     isReadOnly: false,
     currentDie: {},
+    ...overrides,
+  });
+
+  return { component, importCalls };
+}
+
+function createCliseComponent(overrides: Record<string, unknown> = {}) {
+  const component = Object.create(InventoryCliseComponent.prototype) as InventoryCliseComponent & Record<string, any>;
+  const importCalls: any[] = [];
+
+  Object.assign(component, {
+    state: { hasPermission: () => true },
+    inventoryService: {
+      importClises: async (items: any[], onProgress: (progress: any) => void) => {
+        importCalls.push(items);
+        onProgress({ currentBatch: 1, totalBatches: 1, processedItems: items.length, totalItems: items.length });
+        return { imported: items.length, created: 1, updated: items.length - 1, conflicts: 1 };
+      },
+    },
+    cdr: { detectChanges() {} },
+    ngZone: { run(cb: () => void) { cb(); }, runOutsideAngular(cb: () => void) { cb(); } },
+    previewData: [],
+    conflictsData: [],
+    showImportPreviewModal: false,
+    showImportModal: false,
+    importStep: 'upload',
+    isImporting: false,
+    importProgressPercent: 0,
+    importProgressText: '',
     ...overrides,
   });
 
@@ -143,24 +192,59 @@ test('inventory stock filters records, computes KPIs and paginates visible pages
   assert.deepEqual(component.visiblePages, [1, 2, 3]);
 });
 
-test('inventory stock requires box before saving and clears import preview after successful import', async () => {
+test('inventory stock requires box before saving and imports conflicts and valid rows in one batch', async () => {
   const ctx = createStockComponent({
     tempItem: { caja: '', medida: '100x50' },
-    previewData: [{ caja: 'C1' }],
-    conflictsData: [{ caja: '' }],
+    previewData: [{ caja: 'C1', id: 'valid-1' }],
+    conflictsData: [{ caja: '', id: 'conflict-1', hasConflict: true }],
     showImportPreviewModal: true,
+    showImportModal: true,
+    importStep: 'preview',
   });
   const { component, notifications, addStocksCalls } = ctx;
+  component.waitForNextPaint = async () => undefined;
 
   await component.saveItem();
   assert.match(notifications.warnings[0] || '', /complete la CAJA/i);
 
   await component.confirmImport();
   assert.equal(addStocksCalls.length, 1);
+  assert.equal(addStocksCalls[0].length, 2);
+  assert.equal(addStocksCalls[0][0].id, 'conflict-1');
+  assert.equal(component.showImportPreviewModal, false);
+  assert.equal(component.showImportModal, false);
+  assert.deepEqual(component.previewData, []);
+  assert.deepEqual(component.conflictsData, []);
+  assert.equal(component.importProgressPercent, 0);
+  assert.match(notifications.successes[0] || '', /1 quedaron marcados/i);
+});
+
+test('inventory stock keeps preview data available when import fails', async () => {
+  const { component, notifications } = createStockComponent({
+    inventoryService: {
+      importStocks: async () => {
+        throw new Error('stock backend failed');
+      },
+      addStock: async () => undefined,
+      updateStock: async () => undefined,
+      normalizeStockData: () => ({ valid: [], conflicts: [] }),
+    },
+    previewData: [{ caja: 'C1' }],
+    conflictsData: [{ caja: '' }],
+    showImportPreviewModal: true,
+    showImportModal: true,
+    importStep: 'preview',
+  });
+  component.waitForNextPaint = async () => undefined;
+
+  await component.confirmImport();
+
   assert.equal(component.showImportPreviewModal, true);
   assert.equal(component.previewData.length, 1);
   assert.equal(component.conflictsData.length, 1);
-  assert.match(notifications.successes[0] || '', /quedaron 1 pendientes/i);
+  assert.equal(component.isImporting, false);
+  assert.equal(component.importProgressPercent, 0);
+  assert.match(notifications.errors[0] || '', /stock backend failed/i);
 });
 
 test('inventory stock opens edit vs create modal with permission-aware modes', () => {
@@ -210,18 +294,117 @@ test('inventory die confirmImport reports progress and clears preview after comp
 
   try {
     const { component, importCalls } = createDieComponent({
+    previewData: [{ id: 'ok-1' }],
+    conflictsData: [{ id: 'conflict-1' }],
+    showImportPreviewModal: true,
+    showImportModal: true,
+    importStep: 'preview',
+  });
+    component.waitForNextPaint = async () => undefined;
+
+    await component.confirmImport();
+
+    assert.equal(importCalls.length, 1);
+    assert.equal(component.showImportPreviewModal, false);
+    assert.equal(component.showImportModal, false);
+    assert.deepEqual(component.previewData, []);
+    assert.deepEqual(component.conflictsData, []);
+    assert.equal(component.importProgressPercent, 0);
+    assert.match(alerts[0] || '', /Se importaron 2 registros/i);
+  } finally {
+    globalThis.alert = previousAlert;
+  }
+});
+
+test('inventory die keeps preview data available when import fails', async () => {
+  const previousAlert = globalThis.alert;
+  const alerts: string[] = [];
+  globalThis.alert = ((message: string) => { alerts.push(message); }) as typeof alert;
+
+  try {
+    const { component } = createDieComponent({
+      inventoryService: {
+        importDies: async () => {
+          throw new Error('die import failed');
+        },
+      },
       previewData: [{ id: 'ok-1' }],
       conflictsData: [{ id: 'conflict-1' }],
       showImportPreviewModal: true,
+      showImportModal: true,
+      importStep: 'preview',
+    });
+    component.waitForNextPaint = async () => undefined;
+
+    await component.confirmImport();
+
+    assert.equal(component.showImportPreviewModal, true);
+    assert.equal(component.previewData.length, 1);
+    assert.equal(component.conflictsData.length, 1);
+    assert.equal(component.isImporting, false);
+    assert.match(alerts[0] || '', /die import failed/i);
+  } finally {
+    globalThis.alert = previousAlert;
+  }
+});
+
+test('inventory clise confirmImport closes preview and clears import buffers after success', async () => {
+  const previousAlert = globalThis.alert;
+  const alerts: string[] = [];
+  globalThis.alert = ((message: string) => { alerts.push(message); }) as typeof alert;
+
+  try {
+    const { component, importCalls } = createCliseComponent({
+      previewData: [{ id: 'ok-1' }],
+      conflictsData: [{ id: 'conflict-1' }],
+      showImportPreviewModal: true,
+      showImportModal: true,
+      importStep: 'preview',
     });
     component.waitForNextPaint = async () => undefined;
 
     await component.confirmImport();
 
     assert.equal(importCalls.length, 1);
-    assert.equal(component.showImportPreviewModal, true);
+    assert.equal(component.showImportPreviewModal, false);
+    assert.equal(component.showImportModal, false);
+    assert.deepEqual(component.previewData, []);
+    assert.deepEqual(component.conflictsData, []);
     assert.equal(component.importProgressPercent, 0);
     assert.match(alerts[0] || '', /Se importaron 2 registros/i);
+  } finally {
+    globalThis.alert = previousAlert;
+  }
+});
+
+test('inventory clise confirmImport keeps preview open after backend failure', async () => {
+  const previousAlert = globalThis.alert;
+  const alerts: string[] = [];
+  globalThis.alert = ((message: string) => { alerts.push(message); }) as typeof alert;
+
+  try {
+    const { component } = createCliseComponent({
+      inventoryService: {
+        importClises: async () => {
+          throw new Error('clise import failed');
+        },
+      },
+      previewData: [{ id: 'ok-1' }],
+      conflictsData: [{ id: 'conflict-1' }],
+      showImportPreviewModal: true,
+      showImportModal: true,
+      importStep: 'preview',
+    });
+    component.waitForNextPaint = async () => undefined;
+
+    await component.confirmImport();
+
+    assert.equal(component.showImportPreviewModal, true);
+    assert.equal(component.previewData.length, 1);
+    assert.equal(component.conflictsData.length, 1);
+    assert.equal(component.isImporting, false);
+    assert.equal(component.importProgressPercent, 0);
+    assert.match(alerts[0] || '', /clise import failed/i);
   } finally {
     globalThis.alert = previousAlert;
   }

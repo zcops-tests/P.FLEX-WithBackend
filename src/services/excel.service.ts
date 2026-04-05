@@ -123,8 +123,20 @@ export class ExcelService {
     let strVal = String(normalizedValue).trim();
     if (strVal === '-' || strVal === '---') return 0;
 
-    strVal = strVal.replace(/[^0-9.\-]/g, '');
-    const num = parseFloat(strVal);
+    strVal = strVal.replace(/\s/g, '').replace(/[^0-9,.\-]/g, '');
+    const commaLooksLikeThousands = strVal.includes(',')
+      && !strVal.includes('.')
+      && /^-?\d{1,3}(,\d{3})+$/.test(strVal);
+    const normalizedText = strVal.includes(',') && strVal.includes('.')
+      ? strVal.lastIndexOf(',') > strVal.lastIndexOf('.')
+        ? strVal.replace(/\./g, '').replace(',', '.')
+        : strVal.replace(/,/g, '')
+      : commaLooksLikeThousands
+        ? strVal.replace(/,/g, '')
+        : strVal.includes(',')
+          ? strVal.replace(',', '.')
+          : strVal;
+    const num = parseFloat(normalizedText);
     return Number.isNaN(num) ? null : num;
   }
 

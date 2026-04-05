@@ -13,6 +13,7 @@ describe('StockController', () => {
   const mockStockService = {
     create: jest.fn(),
     bulkCreate: jest.fn(),
+    bulkUpsert: jest.fn(),
     findAll: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
@@ -66,6 +67,16 @@ describe('StockController', () => {
 
     expect(mockStockService.bulkCreate).toHaveBeenCalledWith(dto.items);
     expect(result).toEqual({ processed: 1 });
+  });
+
+  it('delegates bulkUpsert', async () => {
+    const dto = { items: [{ caja: '', entry_date: '2026-04-01T10:00:00.000Z' }] };
+    mockStockService.bulkUpsert.mockResolvedValue({ imported: 1, conflicts: 1, created: 1, updated: 0 });
+
+    const result = await controller.bulkUpsert(dto as any);
+
+    expect(mockStockService.bulkUpsert).toHaveBeenCalledWith(dto.items);
+    expect(result).toEqual({ imported: 1, conflicts: 1, created: 1, updated: 0 });
   });
 
   it('delegates findAll', async () => {

@@ -19,6 +19,7 @@ import {
 import { StockService } from './stock.service';
 import {
   BulkCreateStockItemsDto,
+  BulkUpsertStockItemsDto,
   CreateStockItemDto,
   UpdateStockItemDto,
   StockStatus,
@@ -48,6 +49,13 @@ export class StockController {
   @ApiOperation({ summary: 'Create stock items in a single transactional batch' })
   async bulkCreate(@Body() dto: BulkCreateStockItemsDto) {
     return this.stockService.bulkCreate(dto.items);
+  }
+
+  @Post('bulk-upsert')
+  @Permissions('inventory.stock.manage')
+  @ApiOperation({ summary: 'Create or update stock items in import batches' })
+  async bulkUpsert(@Body() dto: BulkUpsertStockItemsDto) {
+    return this.stockService.bulkUpsert(dto.items);
   }
 
   @Get()

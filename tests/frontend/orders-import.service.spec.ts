@@ -75,7 +75,7 @@ test('importWorkOrders normalizes rows before sending them to bulkUpsert', async
   assert.equal(calls[0].items[0].cliente_razon_social, 'Cliente Demo');
   assert.equal(calls[0].items[0].maquina_texto, 'IMP-01');
   assert.equal(calls[0].items[0].fecha_entrega, '2026-04-01');
-  assert.equal(calls[0].items[0].cantidad_pedida, 1.25);
+  assert.equal(calls[0].items[0].cantidad_pedida, 1250);
   assert.equal(calls[0].items[0].total_metros, 10500);
   assert.equal(calls[0].items[0].total_m2, 250.5);
   assert.equal(calls[0].items[0].raw_payload.OT, 'OT-1001');

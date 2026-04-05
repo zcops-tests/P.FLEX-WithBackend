@@ -575,12 +575,17 @@ export class OrdersService {
     if (!text) return undefined;
 
     const compact = text.replace(/\s/g, '');
+    const commaLooksLikeThousands = compact.includes(',')
+      && !compact.includes('.')
+      && /^-?\d{1,3}(,\d{3})+$/.test(compact);
     const normalizedText = compact.includes(',') && compact.includes('.')
       ? compact.lastIndexOf(',') > compact.lastIndexOf('.')
         ? compact.replace(/\./g, '').replace(',', '.')
         : compact.replace(/,/g, '')
-      : compact.includes(',')
-        ? compact.replace(',', '.')
+      : commaLooksLikeThousands
+        ? compact.replace(/,/g, '')
+        : compact.includes(',')
+          ? compact.replace(',', '.')
         : compact;
 
     const normalized = Number(normalizedText);

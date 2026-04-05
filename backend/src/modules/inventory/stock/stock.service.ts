@@ -20,6 +20,7 @@ import { toFrontendStockItem } from '../../../common/utils/frontend-entity.util'
 @Injectable()
 export class StockService {
   private static readonly BOX_SEQUENCE_NAME = 'stock_box_id';
+  private static readonly IMPORT_CONFLICT_PREFIX = '[IMPORT_CONFLICT:';
 
   constructor(private prisma: PrismaService) {}
 
@@ -33,6 +34,43 @@ export class StockService {
   private normalizeText(value: string | null | undefined) {
     const text = String(value || '').trim();
     return text || undefined;
+  }
+
+  private extractConflictReasons(notes: string | null | undefined) {
+    return String(notes || '')
+      .match(/\[IMPORT_CONFLICT:([^\]]+)\]/g)
+      ?.flatMap((entry) =>
+        String(entry)
+          .replace(StockService.IMPORT_CONFLICT_PREFIX, '')
+          .replace(']', '')
+          .split('|'),
+      )
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean) || [];
+  }
+
+  private stripConflictNotes(notes: string | null | undefined) {
+    const text = String(notes || '')
+      .replace(/\[IMPORT_CONFLICT:[^\]]+\]\s*/g, '')
+      .trim();
+    return text || undefined;
+  }
+
+  private composeNotes(
+    notes: string | null | undefined,
+    conflictReasons: string[] = [],
+  ) {
+    const cleanNotes = this.stripConflictNotes(notes);
+    const uniqueReasons = Array.from(
+      new Set(conflictReasons.map((entry) => String(entry || '').trim()).filter(Boolean)),
+    );
+
+    if (uniqueReasons.length === 0) {
+      return cleanNotes;
+    }
+
+    const marker = `${StockService.IMPORT_CONFLICT_PREFIX}${uniqueReasons.join('|')}]`;
+    return cleanNotes ? `${marker} ${cleanNotes}` : marker;
   }
 
   private assertCaja(value: string | null | undefined) {
@@ -82,7 +120,14 @@ export class StockService {
     return `C${normalizedCaja}-${String(sequence).padStart(4, '0')}`;
   }
 
-  private normalizeCreateData(dto: CreateStockItemDto) {
+  private normalizeCreateData(
+    dto: CreateStockItemDto,
+    options: { requireCaja?: boolean } = {},
+  ) {
+    const normalizedCaja = options.requireCaja === false
+      ? this.normalizeCaja(dto.caja)
+      : this.assertCaja(dto.caja);
+
     return {
       work_order_id: dto.work_order_id || undefined,
       ot_number_snapshot: this.normalizeText(dto.ot_number_snapshot),
@@ -99,11 +144,11 @@ export class StockService {
       etiqueta: this.normalizeText(dto.etiqueta),
       forma: this.normalizeText(dto.forma),
       tipo_producto: this.normalizeText(dto.tipo_producto),
-      caja: this.assertCaja(dto.caja),
+      caja: normalizedCaja,
       location: this.normalizeText(dto.ubicacion),
       status: dto.status || StockStatus.QUARANTINE,
       entry_date: dto.entry_date,
-      notes: this.normalizeText(dto.notes),
+      notes: this.stripConflictNotes(dto.notes),
       quantity:
         dto.quantity ??
         dto.cantidad_millares ??
@@ -157,6 +202,108 @@ export class StockService {
     return {
       processed: normalizedItems.length,
       created: normalizedItems.length,
+    };
+  }
+
+  async bulkUpsert(dtos: CreateStockItemDto[]) {
+    if (!Array.isArray(dtos) || dtos.length === 0) {
+      return { imported: 0, conflicts: 0, created: 0, updated: 0 };
+    }
+
+    const normalizedItems = dtos.map((dto) => {
+      const normalized = this.normalizeCreateData(dto, { requireCaja: false });
+      const conflictReasons = normalized.caja ? [] : ['MISSING_CAJA'];
+      return {
+        ...normalized,
+        conflictReasons,
+        notes: this.composeNotes(normalized.notes, conflictReasons),
+      };
+    });
+
+    const cajas = Array.from(
+      new Set(
+        normalizedItems
+          .map((item) => item.caja)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+
+    const existingItems = cajas.length
+      ? await this.prisma.stockItem.findMany({
+          where: {
+            deleted_at: null,
+            caja: { in: cajas },
+          },
+          select: {
+            id: true,
+            caja: true,
+            box_id: true,
+            notes: true,
+          },
+        })
+      : [];
+
+    const existingByCaja = new Map(
+      existingItems.map((item) => [this.normalizeCaja(item.caja) || '', item]),
+    );
+
+    const createItems = normalizedItems.filter((item) => !item.caja || !existingByCaja.has(item.caja));
+    const updateItems = normalizedItems
+      .filter((item) => item.caja && existingByCaja.has(item.caja))
+      .map((item) => ({
+        ...item,
+        current: existingByCaja.get(item.caja!),
+      }));
+
+    const createWithCaja = createItems.filter((item) => item.caja);
+    const updateNeedingBoxId = updateItems.filter((item) => item.caja && !item.current?.box_id);
+
+    await this.prisma.$transaction(async (tx) => {
+      const reservedSequences =
+        createWithCaja.length + updateNeedingBoxId.length > 0
+          ? await this.reserveBoxSequenceRange(
+              tx,
+              createWithCaja.length + updateNeedingBoxId.length,
+            )
+          : [];
+      let sequenceIndex = 0;
+
+      for (const item of createItems) {
+        const { conflictReasons, ...persistableItem } = item;
+        const boxId = item.caja
+          ? this.buildGeneratedBoxId(item.caja, reservedSequences[sequenceIndex++])
+          : null;
+
+        await tx.stockItem.create({
+          data: {
+            ...persistableItem,
+            box_id: boxId || undefined,
+          },
+        });
+      }
+
+      for (const item of updateItems) {
+        const { current, conflictReasons, ...persistableItem } = item;
+        const nextBoxId =
+          item.caja && !item.current?.box_id
+            ? this.buildGeneratedBoxId(item.caja, reservedSequences[sequenceIndex++])
+            : undefined;
+
+        await tx.stockItem.update({
+          where: { id: item.current!.id },
+          data: {
+            ...persistableItem,
+            box_id: nextBoxId,
+          },
+        });
+      }
+    });
+
+    return {
+      imported: normalizedItems.length,
+      conflicts: normalizedItems.filter((item) => item.conflictReasons.length > 0).length,
+      created: createItems.length,
+      updated: updateItems.length,
     };
   }
 
@@ -228,6 +375,8 @@ export class StockService {
       select: {
         id: true,
         box_id: true,
+        caja: true,
+        notes: true,
         deleted_at: true,
       },
     });
@@ -236,13 +385,25 @@ export class StockService {
       throw new NotFoundException(`Stock item with ID ${id} not found`);
     }
 
-    const normalizedDto = this.normalizeCreateData(dto);
+    const normalizedDto = this.normalizeCreateData(dto, { requireCaja: false });
+    const conflictReasons = normalizedDto.caja ? [] : this.extractConflictReasons(current.notes);
 
-    const updated = await this.prisma.stockItem.update({
-      where: { id },
-      data: {
-        ...normalizedDto,
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      let nextBoxId: string | undefined;
+
+      if (!current.box_id && normalizedDto.caja) {
+        const [nextSequence] = await this.reserveBoxSequenceRange(tx, 1);
+        nextBoxId = this.buildGeneratedBoxId(normalizedDto.caja, nextSequence);
+      }
+
+      return tx.stockItem.update({
+        where: { id },
+        data: {
+          ...normalizedDto,
+          notes: this.composeNotes(normalizedDto.notes, conflictReasons),
+          box_id: nextBoxId,
+        },
+      });
     });
 
     return toFrontendStockItem(updated);

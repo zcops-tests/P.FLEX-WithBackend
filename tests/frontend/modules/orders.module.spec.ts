@@ -58,7 +58,8 @@ test('orders module service preserves batching and management preservation durin
 
 test('orders module templates expose import, database browser and management operations', () => {
   assert.match(importSource, /Carga Masiva de OTs/);
-  assert.match(importSource, /Confirmar Importación/);
+  assert.match(importSource, /InventoryImportPreviewComponent/);
+  assert.match(importSource, /app-inventory-import-preview/);
   assert.match(listSource, /import/i);
   assert.match(listSource, /gestión|gestion/i);
   assert.match(listSource, /db|base de datos/i);

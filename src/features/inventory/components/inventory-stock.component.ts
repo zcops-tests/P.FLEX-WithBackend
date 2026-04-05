@@ -5,6 +5,7 @@ import {
   DestroyRef,
   ElementRef,
   HostListener,
+  OnDestroy,
   NgZone,
   ViewChild,
   inject,
@@ -14,14 +15,16 @@ import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { InventoryLoadStatus, InventoryService } from '../services/inventory.service';
 import { StockItem } from '../models/inventory.models';
-import { ExcelService } from '../../../services/excel.service';
 import { StateService } from '../../../services/state.service';
 import { NotificationService } from '../../../services/notification.service';
+import { InventoryImportPreviewComponent } from './inventory-import-preview.component';
+import { InventoryImportColumn } from '../models/inventory-import.models';
+import { InventoryImportFlowService } from '../services/inventory-import-flow.service';
 
 @Component({
   selector: 'app-inventory-stock',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InventoryImportPreviewComponent],
   template: `
     <div
       #viewportRoot
@@ -45,8 +48,7 @@ import { NotificationService } from '../../../services/notification.service';
             class="w-full sm:w-80 px-4 py-2.5 border border-slate-700 rounded-lg bg-[#1e293b] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             placeholder="Buscar medida, material, etiqueta, caja o ubicación">
           <ng-container *ngIf="canManageInventory">
-            <input #fileInputStock type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
-            <button (click)="fileInputStock.click()" [disabled]="isLoading || isImporting" class="btn-secondary">
+            <button (click)="openImportModal()" [disabled]="isLoading || isImporting" class="btn-secondary">
               {{ isLoading ? 'Analizando...' : (isImporting ? 'Importando...' : 'Importar') }}
             </button>
             <button (click)="openModal(null)" class="btn-primary">Ingreso PT</button>
@@ -68,8 +70,16 @@ import { NotificationService } from '../../../services/notification.service';
           <p class="mt-1 text-sm text-slate-400">Obteniendo registros y preparando la tabla.</p>
         </div>
 
-        <div *ngIf="isLoading" class="absolute inset-0 z-20 flex items-center justify-center bg-[#1e293b]/85 backdrop-blur-sm text-white font-bold">
-          Analizando archivo de stock...
+        <div *ngIf="isLoading" class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#1e293b]/85 backdrop-blur-sm text-white">
+          <div class="mb-4 h-14 w-14 animate-spin rounded-full border-4 border-slate-700 border-t-indigo-500"></div>
+          <h3 class="text-lg font-bold">Analizando archivo de stock...</h3>
+          <p class="mt-1 text-sm text-slate-400">{{ loadingStatusText }}</p>
+          <div class="mt-4 w-full max-w-md px-6">
+            <div class="h-2 overflow-hidden rounded-full border border-slate-700 bg-[#0f172a]">
+              <div class="h-full bg-indigo-500 transition-all duration-300" [style.width.%]="loadingProgress"></div>
+            </div>
+            <p class="mt-2 text-center text-xs text-slate-400">{{ loadingProgress }}% completado</p>
+          </div>
         </div>
 
         <div #tableScroll class="overflow-x-auto overflow-y-hidden custom-scrollbar flex-1 min-h-0">
@@ -94,7 +104,7 @@ import { NotificationService } from '../../../services/notification.service';
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-700/50 bg-[#1e293b]">
-              <tr *ngFor="let item of paginatedItems; trackBy: trackByItemId" class="hover:bg-slate-700/30 transition-colors">
+              <tr *ngFor="let item of paginatedItems; trackBy: trackByItemId" class="hover:bg-slate-700/30 transition-colors" [ngClass]="{ 'bg-red-500/5': item.hasConflict }">
                 <td class="td-cell">{{ item.medida || '---' }}</td>
                 <td class="td-cell text-right font-mono">{{ item.anchoMm ?? '---' }}</td>
                 <td class="td-cell text-right font-mono">{{ item.avanceMm ?? '---' }}</td>
@@ -114,7 +124,9 @@ import { NotificationService } from '../../../services/notification.service';
                 <td class="td-cell font-mono">{{ item.caja || '---' }}</td>
                 <td class="td-cell font-mono">{{ item.ubicacion || '---' }}</td>
                 <td class="td-cell">
-                  <span class="inline-flex items-center px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider" [ngClass]="getStatusClass(item.status)">{{ item.status }}</span>
+                  <span class="inline-flex items-center px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider" [ngClass]="item.hasConflict ? 'bg-red-500/10 text-red-400 border border-red-500/20' : getStatusClass(item.status)">
+                    {{ item.hasConflict ? 'Revisar' : item.status }}
+                  </span>
                 </td>
                 <td class="td-cell">
                   <button (click)="openModal(item)" class="text-slate-400 hover:text-indigo-400 transition-colors p-1.5 hover:bg-slate-700/50 rounded-lg">
@@ -187,6 +199,10 @@ import { NotificationService } from '../../../services/notification.service';
               </ng-template>
             </div>
 
+            <div *ngIf="tempItem.hasConflict" class="md:col-span-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              Este registro fue importado con conflicto. Completa la CAJA para resolverlo y generar su identificador interno.
+            </div>
+
             <div class="md:col-span-4">
               <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Estado Calidad</label>
               <div class="grid grid-cols-4 gap-2">
@@ -210,84 +226,38 @@ import { NotificationService } from '../../../services/notification.service';
         </div>
       </div>
 
-      <div *ngIf="showImportPreviewModal" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog">
-        <div class="bg-[#1e293b] rounded-xl shadow-2xl w-full max-w-7xl h-[85vh] flex flex-col overflow-hidden border border-slate-700">
-          <div class="bg-[#0f172a] px-6 py-4 border-b border-slate-700 flex justify-between items-center">
-            <div>
-              <h3 class="font-bold text-white text-lg">Previsualización de Importación (Stock PT)</h3>
-              <p class="text-xs text-slate-400 mt-1">Los conflictos se marcan cuando falta el valor de CAJA.</p>
-            </div>
-            <button (click)="cancelImport()" [disabled]="isImporting" class="text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800">
-              <span class="material-icons">close</span>
-            </button>
-          </div>
-
-          <div class="flex-1 overflow-auto p-6">
-            <table class="w-full text-sm text-left border-collapse">
-              <thead class="text-xs text-slate-400 uppercase bg-[#0f172a] sticky top-0 z-10 font-bold tracking-wider">
-                <tr>
-                  <th class="th-cell">#</th>
-                  <th class="th-cell">Estado Imp.</th>
-                  <th class="th-cell">MEDIDA</th>
-                  <th class="th-cell">ANCHO MM</th>
-                  <th class="th-cell">AVANCE MM</th>
-                  <th class="th-cell">MATERIAL</th>
-                  <th class="th-cell">COLUMNAS</th>
-                  <th class="th-cell">PREPICADO</th>
-                  <th class="th-cell">CANTIDAD X ROLLO</th>
-                  <th class="th-cell">CANTIDAD MILLARES</th>
-                  <th class="th-cell">ETIQUETA</th>
-                  <th class="th-cell">FORMA</th>
-                  <th class="th-cell">TIPO DE PRODUCTO</th>
-                  <th class="th-cell">CAJA</th>
-                  <th class="th-cell">UBICACIÓN</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-700">
-                <tr *ngFor="let item of conflictsData; let i = index" class="bg-red-500/5">
-                  <td class="td-cell">{{ i + 1 }}</td>
-                  <td class="td-cell text-red-400 font-bold">FALTA CAJA</td>
-                  <td class="td-cell">{{ item.medida || '---' }}</td>
-                  <td class="td-cell">{{ item.anchoMm ?? '---' }}</td>
-                  <td class="td-cell">{{ item.avanceMm ?? '---' }}</td>
-                  <td class="td-cell">{{ item.material || '---' }}</td>
-                  <td class="td-cell">{{ item.columnas ?? '---' }}</td>
-                  <td class="td-cell">{{ item.prepicado || '---' }}</td>
-                  <td class="td-cell">{{ item.cantidadXRollo ?? '---' }}</td>
-                  <td class="td-cell">{{ item.cantidadMillares ?? '---' }}</td>
-                  <td class="td-cell">{{ item.etiqueta || '---' }}</td>
-                  <td class="td-cell">{{ item.forma || '---' }}</td>
-                  <td class="td-cell">{{ item.tipoProducto || '---' }}</td>
-                  <td class="td-cell font-mono">{{ item.caja || '(VACÍO)' }}</td>
-                  <td class="td-cell">{{ item.ubicacion || '---' }}</td>
-                </tr>
-                <tr *ngFor="let item of previewData; let i = index">
-                  <td class="td-cell">{{ conflictsData.length + i + 1 }}</td>
-                  <td class="td-cell text-emerald-400 font-bold">OK</td>
-                  <td class="td-cell">{{ item.medida || '---' }}</td>
-                  <td class="td-cell">{{ item.anchoMm ?? '---' }}</td>
-                  <td class="td-cell">{{ item.avanceMm ?? '---' }}</td>
-                  <td class="td-cell">{{ item.material || '---' }}</td>
-                  <td class="td-cell">{{ item.columnas ?? '---' }}</td>
-                  <td class="td-cell">{{ item.prepicado || '---' }}</td>
-                  <td class="td-cell">{{ item.cantidadXRollo ?? '---' }}</td>
-                  <td class="td-cell">{{ item.cantidadMillares ?? '---' }}</td>
-                  <td class="td-cell">{{ item.etiqueta || '---' }}</td>
-                  <td class="td-cell">{{ item.forma || '---' }}</td>
-                  <td class="td-cell">{{ item.tipoProducto || '---' }}</td>
-                  <td class="td-cell font-mono">{{ item.caja }}</td>
-                  <td class="td-cell">{{ item.ubicacion }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div class="bg-[#0f172a] px-6 py-4 border-t border-slate-700 flex justify-end gap-4">
-            <button (click)="cancelImport()" [disabled]="isImporting" class="btn-secondary">Cancelar Importación</button>
-            <button (click)="confirmImport()" [disabled]="isImporting || previewData.length === 0" class="btn-primary">Importar Válidos</button>
-          </div>
-        </div>
-      </div>
+      <app-inventory-import-preview
+        [show]="showImportModal"
+        [step]="importStep"
+        title="Carga Masiva de Stock PT"
+        subtitle="Importe producto terminado desde Excel o CSV"
+        uploadHint="Las filas sin CAJA también se importarán y quedarán marcadas para resolverlas después."
+        [isLoading]="isLoading"
+        [validRows]="previewData"
+        [conflictRows]="conflictsData"
+        [discardedCount]="discardedRowsCount"
+        [columns]="importPreviewColumns"
+        [isImporting]="isImporting"
+        [analysisPhase]="loadingPhaseLabel"
+        [analysisPercentage]="loadingProgress"
+        [analysisProcessedItems]="analysisProcessedItems"
+        [analysisTotalItems]="analysisTotalItems"
+        [analysisDetail]="loadingStatusText"
+        importingTitle="Importando stock..."
+        confirmButtonLabel="Confirmar Importación"
+        [importProgressPercent]="importProgressPercent"
+        [importProgressText]="importProgressText"
+        [importProcessedItems]="importProcessedItems"
+        [importTotalItems]="importTotalItems"
+        [importTotalBatches]="importTotalBatches"
+        [importCurrentBatchLabel]="importCurrentBatchLabel"
+        [importStatusLabel]="importStatusLabel"
+        [previewLimit]="importPreviewLimit"
+        (closeRequested)="closeImportModal()"
+        (fileSelected)="processImportFile($event)"
+        (resetRequested)="resetImportFlow()"
+        (confirmRequested)="confirmImport()">
+      </app-inventory-import-preview>
     </div>
   `,
   styles: [`
@@ -307,9 +277,9 @@ import { NotificationService } from '../../../services/notification.service';
     .status-btn-idle { background: transparent; color: #94a3b8; border-color: #475569; }
   `],
 })
-export class InventoryStockComponent implements AfterViewInit {
+export class InventoryStockComponent implements AfterViewInit, OnDestroy {
   inventoryService = inject(InventoryService);
-  excelService = inject(ExcelService);
+  importFlow = inject(InventoryImportFlowService);
   state = inject(StateService);
   notifications = inject(NotificationService);
   cdr = inject(ChangeDetectorRef);
@@ -327,9 +297,21 @@ export class InventoryStockComponent implements AfterViewInit {
   tempItem: Record<string, any> = {};
   isLoading = false;
   isImporting = false;
+  showImportModal = false;
+  importStep: 'upload' | 'preview' = 'upload';
   showImportPreviewModal = false;
   previewData: StockItem[] = [];
   conflictsData: StockItem[] = [];
+  discardedRowsCount = 0;
+  loadingProgress = 0;
+  loadingStatusText = 'Preparando archivo...';
+  analysisTotalItems = 0;
+  analysisProcessedItems = 0;
+  importProgressPercent = 0;
+  importProgressText = '';
+  importProcessedItems = 0;
+  importTotalItems = 0;
+  importTotalBatches = 0;
   currentPage = 1;
   rowsPerPage = 8;
   viewportHeight: number | null = null;
@@ -341,6 +323,23 @@ export class InventoryStockComponent implements AfterViewInit {
 
   private readonly minimumRowsPerPage = 4;
   private readonly compactRowHeight = 42;
+  readonly importPreviewLimit = 120;
+  readonly importPreviewColumns: InventoryImportColumn<StockItem>[] = [
+    { label: 'Medida', value: (item) => item.medida },
+    { label: 'Ancho MM', value: (item) => item.anchoMm, align: 'right', mono: true },
+    { label: 'Avance MM', value: (item) => item.avanceMm, align: 'right', mono: true },
+    { label: 'Material', value: (item) => item.material },
+    { label: 'Columnas', value: (item) => item.columnas, align: 'right', mono: true },
+    { label: 'Prepicado', value: (item) => item.prepicado },
+    { label: 'Cantidad X Rollo', value: (item) => item.cantidadXRollo, align: 'right', mono: true },
+    { label: 'Cantidad Millares', value: (item) => item.cantidadMillares, align: 'right', mono: true },
+    { label: 'Etiqueta', value: (item) => item.etiqueta },
+    { label: 'Forma', value: (item) => item.forma },
+    { label: 'Tipo de Producto', value: (item) => item.tipoProducto },
+    { label: 'Caja', value: (item) => item.caja, emptyValue: '(VACÍO)', mono: true },
+    { label: 'Ubicación', value: (item) => item.ubicacion },
+  ];
+  private loadingProgressInterval?: number;
 
   readonly modalFields = [
     { key: 'medida', label: 'Medida' },
@@ -385,6 +384,10 @@ export class InventoryStockComponent implements AfterViewInit {
     this.schedulePageSizeCalculation();
   }
 
+  ngOnDestroy() {
+    this.stopLoadingProgressSimulation();
+  }
+
   @HostListener('window:resize')
   onWindowResize() {
     this.schedulePageSizeCalculation();
@@ -396,6 +399,21 @@ export class InventoryStockComponent implements AfterViewInit {
 
   get showInitialLoadingOverlay() {
     return this.loadStatus.state === 'loading' && this.stockItems.length === 0 && !this.isLoading;
+  }
+
+  get loadingPhaseLabel() {
+    return this.importStep === 'preview' ? 'Análisis completado' : 'Analizando archivo';
+  }
+
+  get importCurrentBatchLabel() {
+    if (this.importTotalBatches <= 0 || this.importProcessedItems <= 0) return '1';
+    const approxBatchSize = Math.max(1, Math.ceil(this.importTotalItems / this.importTotalBatches));
+    return String(Math.min(this.importTotalBatches, Math.max(1, Math.ceil(this.importProcessedItems / approxBatchSize))));
+  }
+
+  get importStatusLabel() {
+    if (this.importTotalBatches <= 0 || this.importProcessedItems === 0) return 'Preparando lotes...';
+    return this.importProgressPercent >= 100 ? 'Finalizando recarga...' : 'Aplicando cambios...';
   }
 
   get filteredItems() {
@@ -496,6 +514,8 @@ export class InventoryStockComponent implements AfterViewInit {
       entryDate: new Date().toISOString(),
       notes: '',
       boxId: '',
+      hasConflict: false,
+      conflictReasons: [],
     };
     this.showModal = true;
   }
@@ -524,68 +544,150 @@ export class InventoryStockComponent implements AfterViewInit {
     }
   }
 
-  async handleImport(event: any) {
+  openImportModal() {
     if (!this.canManageInventory) return;
-    const file = event.target.files[0];
-    if (!file) return;
+    this.showImportModal = true;
+    this.importStep = 'upload';
+    this.previewData = [];
+    this.conflictsData = [];
+    this.discardedRowsCount = 0;
+    this.importProgressPercent = 0;
+    this.importProgressText = '';
+  }
 
+  closeImportModal() {
+    if (this.isLoading || this.isImporting) return;
+    this.resetImportFlow();
+    this.showImportModal = false;
+  }
+
+  resetImportFlow() {
+    if (this.isImporting) return;
+    this.importStep = 'upload';
+    this.showImportPreviewModal = false;
+    this.previewData = [];
+    this.conflictsData = [];
+    this.discardedRowsCount = 0;
+    this.importProgressPercent = 0;
+    this.importProgressText = '';
+    this.importProcessedItems = 0;
+    this.importTotalItems = 0;
+    this.importTotalBatches = 0;
+  }
+
+  async processImportFile(file: File) {
+    if (!this.canManageInventory || !file) return;
     this.isLoading = true;
+    this.loadingProgress = 0;
+    this.loadingStatusText = 'Preparando archivo para análisis...';
+    this.analysisProcessedItems = 0;
+    this.analysisTotalItems = 0;
+    this.previewData = [];
+    this.conflictsData = [];
+    this.discardedRowsCount = 0;
+    this.showImportPreviewModal = false;
+    this.importStep = 'upload';
     this.cdr.detectChanges();
+    await this.waitForNextPaint();
 
-    this.ngZone.runOutsideAngular(async () => {
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        const rawData = await this.excelService.readExcel(file);
+    try {
+      const result = await this.importFlow.analyzeFile<StockItem>({
+        entityLabel: 'registros de stock',
+        file,
+        normalize: (rows) => this.inventoryService.normalizeStockData(rows),
+        onProgress: (progress) => {
+          this.loadingProgress = progress.percentage;
+          this.loadingStatusText = progress.detail;
+          this.analysisProcessedItems = progress.processedItems;
+          this.analysisTotalItems = progress.totalItems;
+          this.cdr.detectChanges();
+        },
+      });
 
-        this.ngZone.run(() => {
-          const { valid, conflicts } = this.inventoryService.normalizeStockData(rawData);
-          this.previewData = valid;
-          this.conflictsData = conflicts;
-          this.showImportPreviewModal = true;
-          this.isLoading = false;
-          event.target.value = '';
-        });
-      } catch (error: any) {
-        this.ngZone.run(() => {
-          this.notifications.showError(
-            error?.message || 'No se pudo leer el archivo de stock.',
-          );
-          this.isLoading = false;
-          event.target.value = '';
-        });
-      }
-    });
+      this.loadingProgress = 100;
+      this.loadingStatusText = 'Archivo procesado. Preparando previsualización...';
+      this.analysisProcessedItems = result.totalItems;
+      this.analysisTotalItems = result.totalItems;
+      this.previewData = result.valid;
+      this.conflictsData = result.conflicts;
+      this.discardedRowsCount = result.discarded.length;
+      this.importStep = 'preview';
+      this.showImportModal = true;
+      this.showImportPreviewModal = true;
+    } catch (error: any) {
+      this.notifications.showError(
+        error?.message || 'No se pudo leer el archivo de stock.',
+      );
+      this.loadingProgress = 0;
+      this.loadingStatusText = 'Preparando archivo...';
+    } finally {
+      this.isLoading = false;
+      this.cdr.detectChanges();
+    }
   }
 
   async confirmImport() {
     if (!this.canManageInventory || this.isImporting) return;
+    const itemsToImport = [...this.conflictsData, ...this.previewData];
+    if (itemsToImport.length === 0) return;
+
     this.isImporting = true;
+    this.importProgressPercent = 0;
+    this.importProgressText = 'Preparando lotes de importacion...';
+    this.importProcessedItems = 0;
+    this.importTotalItems = itemsToImport.length;
+    this.importTotalBatches = Math.max(1, Math.ceil(itemsToImport.length / 200));
     this.cdr.detectChanges();
+    await this.waitForNextPaint();
 
     try {
-      await this.inventoryService.addStocks(this.previewData);
-      const skipped = this.conflictsData.length;
-      this.notifications.showSuccess(
-        skipped > 0
-          ? `Se importaron ${this.previewData.length} registros válidos. Quedaron ${skipped} pendientes por falta de CAJA.`
-          : `Se importaron ${this.previewData.length} registros.`,
+      const result = await this.inventoryService.importStocks(
+        itemsToImport,
+        ({ currentBatch, totalBatches, processedItems, totalItems }) => {
+          this.importProgressPercent = Math.max(5, Math.round((processedItems / Math.max(totalItems, 1)) * 100));
+          this.importProgressText = `Lote ${currentBatch} de ${totalBatches} importado (${processedItems}/${totalItems} registros).`;
+          this.importProcessedItems = processedItems;
+          this.importTotalItems = totalItems;
+          this.importTotalBatches = totalBatches;
+          this.cdr.detectChanges();
+        },
       );
-      this.cancelImport();
+      this.importProgressPercent = 100;
+      this.importProcessedItems = itemsToImport.length;
+      this.notifications.showSuccess(
+        result.conflicts > 0
+          ? `Se importaron ${result.imported} registros. ${result.conflicts} quedaron marcados para revisión.`
+          : `Se importaron ${result.imported} registros.`,
+      );
+      this.isImporting = false;
+      this.closeImportModal();
     } catch (error: any) {
       this.notifications.showError(
         error?.message || 'No se pudo completar la importación.',
       );
     } finally {
       this.isImporting = false;
+      this.importProgressPercent = 0;
+      this.importProgressText = '';
       this.cdr.detectChanges();
     }
   }
 
   cancelImport() {
-    if (this.isImporting) return;
-    this.showImportPreviewModal = false;
-    this.previewData = [];
-    this.conflictsData = [];
+    this.closeImportModal();
+  }
+
+  private stopLoadingProgressSimulation() {
+    if (this.loadingProgressInterval !== undefined) {
+      window.clearInterval(this.loadingProgressInterval);
+      this.loadingProgressInterval = undefined;
+    }
+  }
+
+  private waitForNextPaint() {
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
   }
 
   private schedulePageSizeCalculation() {

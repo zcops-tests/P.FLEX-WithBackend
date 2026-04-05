@@ -2,6 +2,9 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
+  HttpException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
@@ -23,6 +26,14 @@ const MANAGEMENT_SNAPSHOT_KEY = '__management_snapshot';
 
 type NormalizedWorkOrderInput = CreateWorkOrderDto & { ot_number: string };
 type RawPayloadRecord = Record<string, unknown>;
+type JsonSanitizedObject = { [key: string]: JsonSanitizedValue };
+type JsonSanitizedValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonSanitizedValue[]
+  | JsonSanitizedObject;
 
 @Injectable()
 export class WorkOrdersService {
@@ -39,9 +50,14 @@ export class WorkOrdersService {
       );
     }
 
-    const created = await this.prisma.workOrder.create({
-      data: this.buildCreateData(normalizedDto),
-    });
+    let created;
+    try {
+      created = await this.prisma.workOrder.create({
+        data: this.buildCreateData(normalizedDto),
+      });
+    } catch (error) {
+      throw this.buildPersistenceException(normalizedDto.ot_number, error);
+    }
 
     return toFrontendWorkOrder(created);
   }
@@ -72,56 +88,9 @@ export class WorkOrdersService {
         index,
         index + WORK_ORDER_BULK_CHUNK_SIZE,
       );
-      const otNumbers = chunk.map((item) => item.ot_number);
-      const existing = await this.prisma.workOrder.findMany({
-        where: { ot_number: { in: otNumbers } },
-        select: {
-          id: true,
-          ot_number: true,
-          status: true,
-          fecha_ingreso_planta: true,
-          fecha_programada_produccion: true,
-          maquina_texto: true,
-          raw_payload: true,
-          management_entries: {
-            where: { exited_at: null },
-            select: { id: true },
-            take: 1,
-          },
-        },
-      });
-      const existingSet = new Set(existing.map((item) => item.ot_number));
-      const existingMap = new Map(existing.map((item) => [item.ot_number, item]));
-
-      created += chunk.filter(
-        (item) => !existingSet.has(item.ot_number),
-      ).length;
-      updated += chunk.filter((item) => existingSet.has(item.ot_number)).length;
-
-      await this.prisma.$transaction(
-        chunk.map((item) => {
-          const current = existingMap.get(item.ot_number);
-          const isActiveInManagement = Boolean(current?.management_entries?.length);
-          const updateData = this.buildUpdateData(item);
-
-          if (isActiveInManagement && current) {
-            updateData.status = current.status;
-            updateData.fecha_ingreso_planta = current.fecha_ingreso_planta;
-            updateData.fecha_programada_produccion = current.fecha_programada_produccion;
-            updateData.maquina_texto = current.maquina_texto;
-            updateData.raw_payload = this.buildBulkUpsertRawPayload(
-              current.raw_payload,
-              item.raw_payload,
-            );
-          }
-
-          return this.prisma.workOrder.upsert({
-            where: { ot_number: item.ot_number },
-            create: this.buildCreateData(item),
-            update: updateData,
-          });
-        }),
-      );
+      const result = await this.processBulkUpsertChunk(chunk);
+      created += result.created;
+      updated += result.updated;
     }
 
     return { created, updated, total: uniqueItems.length };
@@ -230,13 +199,18 @@ export class WorkOrdersService {
       );
     }
 
-    const updated = await this.prisma.workOrder.update({
-      where: { id },
-      data: {
-        ...updateData,
-        row_version: { increment: 1 },
-      },
-    });
+    let updated;
+    try {
+      updated = await this.prisma.workOrder.update({
+        where: { id },
+        data: {
+          ...updateData,
+          row_version: { increment: 1 },
+        },
+      });
+    } catch (error) {
+      throw this.buildPersistenceException(wo.ot_number, error);
+    }
 
     return toFrontendWorkOrder(updated);
   }
@@ -470,27 +444,27 @@ export class WorkOrdersService {
       ot_number: String(dto.ot_number || '').trim(),
       status: dto.status || WorkOrderStatus.IMPORTED,
       descripcion: dto.descripcion ?? undefined,
-      nro_cotizacion: dto.nro_cotizacion ?? undefined,
-      nro_ficha: dto.nro_ficha ?? undefined,
-      pedido: dto.pedido ?? undefined,
-      orden_compra: dto.orden_compra ?? undefined,
-      cliente_razon_social: dto.cliente_razon_social ?? undefined,
-      vendedor: dto.vendedor ?? undefined,
+      nro_cotizacion: this.trimToLength(dto.nro_cotizacion, 50),
+      nro_ficha: this.trimToLength(dto.nro_ficha, 50),
+      pedido: this.trimToLength(dto.pedido, 50),
+      orden_compra: this.trimToLength(dto.orden_compra, 100),
+      cliente_razon_social: this.trimToLength(dto.cliente_razon_social, 150),
+      vendedor: this.trimToLength(dto.vendedor, 100),
       fecha_pedido: this.toDate(dto.fecha_pedido),
       fecha_entrega: this.toDate(dto.fecha_entrega),
       fecha_ingreso_planta: this.toDate(dto.fecha_ingreso_planta),
       fecha_programada_produccion: this.toDate(dto.fecha_programada_produccion),
       cantidad_pedida: dto.cantidad_pedida ?? undefined,
-      unidad: dto.unidad ?? undefined,
-      material: dto.material ?? undefined,
+      unidad: this.trimToLength(dto.unidad, 20),
+      material: this.trimToLength(dto.material, 150),
       ancho_mm: dto.ancho_mm ?? undefined,
       avance_mm: dto.avance_mm ?? undefined,
       desarrollo_mm: dto.desarrollo_mm ?? undefined,
       columnas: dto.columnas ?? undefined,
-      adhesivo: dto.adhesivo ?? undefined,
-      acabado: dto.acabado ?? undefined,
-      troquel: dto.troquel ?? undefined,
-      maquina_texto: dto.maquina_texto ?? undefined,
+      adhesivo: this.trimToLength(dto.adhesivo, 100),
+      acabado: this.trimToLength(dto.acabado, 100),
+      troquel: this.trimToLength(dto.troquel, 100),
+      maquina_texto: this.trimToLength(dto.maquina_texto, 100),
       total_metros: dto.total_metros ?? undefined,
       total_m2: dto.total_m2 ?? undefined,
       observaciones_diseno: dto.observaciones_diseno ?? undefined,
@@ -507,27 +481,27 @@ export class WorkOrdersService {
     return {
       status: dto.status ?? undefined,
       descripcion: dto.descripcion ?? undefined,
-      nro_cotizacion: dto.nro_cotizacion ?? undefined,
-      nro_ficha: dto.nro_ficha ?? undefined,
-      pedido: dto.pedido ?? undefined,
-      orden_compra: dto.orden_compra ?? undefined,
-      cliente_razon_social: dto.cliente_razon_social ?? undefined,
-      vendedor: dto.vendedor ?? undefined,
+      nro_cotizacion: this.trimToLength(dto.nro_cotizacion, 50),
+      nro_ficha: this.trimToLength(dto.nro_ficha, 50),
+      pedido: this.trimToLength(dto.pedido, 50),
+      orden_compra: this.trimToLength(dto.orden_compra, 100),
+      cliente_razon_social: this.trimToLength(dto.cliente_razon_social, 150),
+      vendedor: this.trimToLength(dto.vendedor, 100),
       fecha_pedido: this.toDate(dto.fecha_pedido),
       fecha_entrega: this.toDate(dto.fecha_entrega),
       fecha_ingreso_planta: this.toDate(dto.fecha_ingreso_planta),
       fecha_programada_produccion: this.toDate(dto.fecha_programada_produccion),
       cantidad_pedida: dto.cantidad_pedida ?? undefined,
-      unidad: dto.unidad ?? undefined,
-      material: dto.material ?? undefined,
+      unidad: this.trimToLength(dto.unidad, 20),
+      material: this.trimToLength(dto.material, 150),
       ancho_mm: dto.ancho_mm ?? undefined,
       avance_mm: dto.avance_mm ?? undefined,
       desarrollo_mm: dto.desarrollo_mm ?? undefined,
       columnas: dto.columnas ?? undefined,
-      adhesivo: dto.adhesivo ?? undefined,
-      acabado: dto.acabado ?? undefined,
-      troquel: dto.troquel ?? undefined,
-      maquina_texto: dto.maquina_texto ?? undefined,
+      adhesivo: this.trimToLength(dto.adhesivo, 100),
+      acabado: this.trimToLength(dto.acabado, 100),
+      troquel: this.trimToLength(dto.troquel, 100),
+      maquina_texto: this.trimToLength(dto.maquina_texto, 100),
       total_metros: dto.total_metros ?? undefined,
       total_m2: dto.total_m2 ?? undefined,
       observaciones_diseno: dto.observaciones_diseno ?? undefined,
@@ -550,7 +524,7 @@ export class WorkOrdersService {
       dto.raw_payload &&
       typeof dto.raw_payload === 'object' &&
       !Array.isArray(dto.raw_payload)
-        ? { ...dto.raw_payload }
+        ? this.sanitizeJsonObject(dto.raw_payload)
         : {};
 
     return {
@@ -583,7 +557,52 @@ export class WorkOrdersService {
       return {};
     }
 
-    return { ...(rawPayload as RawPayloadRecord) };
+    return this.sanitizeJsonObject(rawPayload);
+  }
+
+  private sanitizeJsonObject(payload: unknown): JsonSanitizedObject {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return {};
+    }
+
+    const source = payload as Record<string, unknown>;
+    const sanitized: JsonSanitizedObject = {};
+
+    Object.entries(source).forEach(([key, value]) => {
+      const normalized = this.sanitizeJsonValue(value);
+      if (normalized !== undefined) {
+        sanitized[key] = normalized;
+      }
+    });
+
+    return sanitized;
+  }
+
+  private sanitizeJsonValue(value: unknown): JsonSanitizedValue | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value === 'string' || typeof value === 'boolean') return value;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : undefined;
+    }
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+    }
+    if (Array.isArray(value)) {
+      const items = value
+        .map((entry) => this.sanitizeJsonValue(entry))
+        .filter((entry): entry is JsonSanitizedValue => entry !== undefined);
+      return items;
+    }
+    if (typeof value === 'object') {
+      const nested = this.sanitizeJsonObject(value);
+      return nested;
+    }
+
+    return undefined;
   }
 
   private mergeRawPayload(
@@ -691,5 +710,123 @@ export class WorkOrdersService {
 
   private toDateString(value: Date | string) {
     return new Date(value).toISOString().slice(0, 10);
+  }
+
+  private trimToLength(value: unknown, maxLength: number) {
+    const text = String(value ?? '').trim();
+    return text ? text.slice(0, maxLength) : undefined;
+  }
+
+  private async processBulkUpsertChunk(items: NormalizedWorkOrderInput[]): Promise<{
+    created: number;
+    updated: number;
+  }> {
+    if (!items.length) {
+      return { created: 0, updated: 0 };
+    }
+
+    const otNumbers = items.map((item) => item.ot_number);
+    const existing = await this.prisma.workOrder.findMany({
+      where: { ot_number: { in: otNumbers } },
+      select: {
+        id: true,
+        ot_number: true,
+        status: true,
+        fecha_ingreso_planta: true,
+        fecha_programada_produccion: true,
+        maquina_texto: true,
+        raw_payload: true,
+        management_entries: {
+          where: { exited_at: null },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+    const existingSet = new Set(existing.map((item) => item.ot_number));
+    const existingMap = new Map(existing.map((item) => [item.ot_number, item]));
+
+    try {
+      await this.executeBulkUpsertChunk(items, existingMap);
+      return {
+        created: items.filter((item) => !existingSet.has(item.ot_number)).length,
+        updated: items.filter((item) => existingSet.has(item.ot_number)).length,
+      };
+    } catch (error) {
+      if (items.length > 1) {
+        const midpoint = Math.ceil(items.length / 2);
+        const left = await this.processBulkUpsertChunk(items.slice(0, midpoint));
+        const right = await this.processBulkUpsertChunk(items.slice(midpoint));
+        return {
+          created: left.created + right.created,
+          updated: left.updated + right.updated,
+        };
+      }
+
+      throw this.buildPersistenceException(
+        items[0]?.ot_number || 'desconocida',
+        error,
+      );
+    }
+  }
+
+  private async executeBulkUpsertChunk(
+    items: NormalizedWorkOrderInput[],
+    existingMap: Map<string, any>,
+  ) {
+    await this.prisma.$transaction(
+      items.map((item) => {
+        const current = existingMap.get(item.ot_number);
+        const isActiveInManagement = Boolean(current?.management_entries?.length);
+        const updateData = this.buildUpdateData(item);
+
+        if (isActiveInManagement && current) {
+          updateData.status = current.status;
+          updateData.fecha_ingreso_planta = current.fecha_ingreso_planta;
+          updateData.fecha_programada_produccion =
+            current.fecha_programada_produccion;
+          updateData.maquina_texto = current.maquina_texto;
+          updateData.raw_payload = this.buildBulkUpsertRawPayload(
+            current.raw_payload,
+            item.raw_payload,
+          );
+        }
+
+        return this.prisma.workOrder.upsert({
+          where: { ot_number: item.ot_number },
+          create: this.buildCreateData(item),
+          update: updateData,
+        });
+      }),
+    );
+  }
+
+  private buildPersistenceException(otNumber: string, error: unknown) {
+    const baseMessage = `No se pudo importar la OT ${otNumber || '(sin OT)'}`;
+
+    if (error instanceof HttpException) {
+      return error;
+    }
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      switch (error.code) {
+        case 'P2000':
+          return new BadRequestException(`${baseMessage}: uno de los campos excede el tamaño permitido.`);
+        case 'P2002':
+          return new ConflictException(`${baseMessage}: conflicto por valor único duplicado.`);
+        case 'P2003':
+          return new BadRequestException(`${baseMessage}: referencia relacionada inválida.`);
+        case 'P2020':
+          return new BadRequestException(`${baseMessage}: uno de los valores numéricos está fuera de rango.`);
+      }
+    }
+
+    if (error instanceof Error) {
+      return new InternalServerErrorException(
+        `${baseMessage}: ${error.message}`,
+      );
+    }
+
+    return new InternalServerErrorException(baseMessage);
   }
 }

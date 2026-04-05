@@ -7,7 +7,11 @@
     "dev": "ng serve",
     "build": "ng build",
     "lint": "tsc --noEmit -p tsconfig.app.json",
-    "test:frontend": "node --import tsx --test tests/frontend/modules/*.spec.ts tests/frontend/ot-import.component.spec.ts tests/frontend/orders-import.service.spec.ts tests/frontend/app-routes.spec.ts tests/frontend/feature-modules-smoke.spec.ts tests/frontend/access-admin-sidebar.behavior.spec.ts",
+    "test:frontend": "node --import tsx --test tests/frontend/modules/*.spec.ts tests/frontend/*.spec.ts",
+    "erp:ot": "node scripts/erp-ot-xlsx.mjs",
+    "erp:clises": "node scripts/erp-clises-xlsx.mjs",
+    "erp:stock": "node scripts/erp-stock-xlsx.mjs",
+    "erp:troqueles": "node scripts/erp-troqueles-xlsx.mjs",
     "preview": "ng serve --configuration=production",
     "smoke:baseline:api": "node ./scripts/smoke-baseline.mjs",
     "regression:baseline": "npm run lint && npm run build && npm --prefix backend run build && npm --prefix backend run test:baseline"

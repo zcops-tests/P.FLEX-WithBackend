@@ -7,6 +7,7 @@ const COLUMN_MAPPINGS = {
   OT: ['ot', 'orden', 'nro', 'numero', 'op', 'id', 'nro. orden', 'ot numero', 'n°', 'número'],
   'Razon Social': ['cliente', 'client', 'empresa', 'razon social', 'customer', 'nombre cliente', 'r. social', 'razón social'],
   descripcion: ['descripcion', 'descripción', 'producto', 'trabajo', 'item', 'nombre', 'detalle', 'desc', 'artículo'],
+  'MLL Pedido': ['mll pedido', 'mllpedido', 'mll', 'millares pedido', 'millares'],
   'CANT PED': ['cantidad', 'cant', 'qty', 'cantidad pedida', 'cant.', 'cant pedida', 'total', 'unidades', 'cant.'],
   'FECHA ENT': ['fecha', 'entrega', 'fecha entrega', 'date', 'delivery', 'f. entrega', 'f.entrega', 'fecha ent'],
   maquina: ['maquina', 'máquina', 'machine', 'linea', 'equipo', 'maq', 'maquina asignada'],
@@ -38,6 +39,11 @@ function createComponent(overrides: Record<string, unknown> = {}) {
     isLoading: false,
     isImporting: false,
     importedData: [],
+    analysisSummary: {
+      valid: 0,
+      conflicts: 0,
+      discarded: 0,
+    },
     analysisProgress: {
       phase: 'Esperando archivo',
       percentage: 0,
@@ -88,6 +94,8 @@ test('processFile reads the first sheet and advances to preview without truncati
   assert.equal(component.step, 'preview');
   assert.equal(component.importedData.length, 105);
   assert.equal(component.analysisProgress.percentage, 100);
+  assert.equal(component.analysisSummary.valid, 105);
+  assert.equal(component.analysisSummary.discarded, 0);
   assert.equal(component.importedData[104].OT, 'OT-105');
 });
 
@@ -111,11 +119,12 @@ test('processFile resets the component when the workbook has no sheets', async (
       },
     });
 
-    await component.processFile(createFile('empty.xlsx'));
+  await component.processFile(createFile('empty.xlsx'));
 
-    assert.equal(component.step, 'upload');
-    assert.equal(component.importedData.length, 0);
-    assert.equal(component.isLoading, false);
+  assert.equal(component.step, 'upload');
+  assert.equal(component.importedData.length, 0);
+  assert.equal(component.analysisSummary.valid, 0);
+  assert.equal(component.isLoading, false);
     assert.match(alerts[0] || '', /no contiene hojas/i);
   } finally {
     globalThis.alert = previousAlert;
@@ -160,6 +169,7 @@ test('normalizeData maps equivalent headers, cleans values and keeps the last du
       Número: ' ot-1001 ',
       'Razón Social': ' Cliente Uno ',
       Descripción: ' Etiqueta inicial ',
+      'MLL Pedido': '3,750',
       'Cantidad pedida': '1,250',
       Máquina: ' IMP-01 ',
       Estado: 'Pendiente',
@@ -180,14 +190,17 @@ test('normalizeData maps equivalent headers, cleans values and keeps the last du
     },
   ]);
 
-  assert.equal(normalized.length, 1);
-  assert.equal(normalized[0].OT, 'OT-1001');
-  assert.equal(normalized[0]['Razon Social'], 'Cliente Uno Actualizado');
-  assert.equal(normalized[0].descripcion, 'Etiqueta final');
-  assert.equal(normalized[0].maquina, 'IMP-02');
-  assert.equal(normalized[0]['CANT PED'], 2500);
-  assert.equal(normalized[0].total_mtl, 10500);
-  assert.equal(normalized[0].merma, 25);
+  assert.equal(normalized.valid.length, 1);
+  assert.equal(normalized.conflicts.length, 0);
+  assert.equal(normalized.discarded.length, 1);
+  assert.equal(normalized.valid[0].OT, 'OT-1001');
+  assert.equal(normalized.valid[0]['Razon Social'], 'Cliente Uno Actualizado');
+  assert.equal(normalized.valid[0].descripcion, 'Etiqueta final');
+  assert.equal(normalized.valid[0].maquina, 'IMP-02');
+  assert.equal(normalized.valid[0]['MLL Pedido'], 3750);
+  assert.equal(normalized.valid[0]['CANT PED'], 3750);
+  assert.equal(normalized.valid[0].total_mtl, 10500);
+  assert.equal(normalized.valid[0].merma, 25);
 });
 
 test('normalizeData discards invalid and summary rows and can end with zero valid records', async () => {
@@ -197,9 +210,11 @@ test('normalizeData discards invalid and summary rows and can end with zero vali
     { OT: '' },
     { OT: 'OT DEL MES', Cliente: 'Resumen mensual' },
     { OT: 'TOTAL', Cliente: 'Resumen' },
+    { OT: '326', Cliente: 'OT DEL MES', descripcion: 'OT DEL MES', Material: 'OT DEL MES' },
   ]);
 
-  assert.deepEqual(normalized, []);
+  assert.deepEqual(normalized.valid, []);
+  assert.equal(normalized.discarded.length, 4);
 });
 
 test('isValidNormalizedRow handles boundary values explicitly', () => {

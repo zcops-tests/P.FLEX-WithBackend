@@ -461,6 +461,67 @@ describe('WorkOrdersService', () => {
       expect(mockPrisma.workOrder.upsert).toHaveBeenCalledTimes(401);
     });
 
+    it('should retry a failing create-heavy chunk in smaller subchunks', async () => {
+      let firstLargeChunkFailed = false;
+      mockPrisma.workOrder.findMany.mockResolvedValue([]);
+      mockPrisma.workOrder.upsert.mockResolvedValue(undefined);
+      mockPrisma.$transaction.mockImplementation(async (input: any) => {
+        if (typeof input === 'function') {
+          return input(mockPrisma);
+        }
+
+        if (Array.isArray(input) && input.length === 200 && !firstLargeChunkFailed) {
+          firstLargeChunkFailed = true;
+          throw new Error('Simulated initial create pressure');
+        }
+
+        return Promise.all(input);
+      });
+
+      const items = Array.from({ length: 200 }, (_, index) => ({
+        ot_number: `OT-${index + 1}`,
+        descripcion: `Trabajo ${index + 1}`,
+        raw_payload: { OT: `OT-${index + 1}` },
+      })) as any[];
+
+      const result = await service.bulkUpsert(items);
+
+      expect(result).toEqual({
+        created: 200,
+        updated: 0,
+        total: 200,
+      });
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(3);
+      expect(mockPrisma.workOrder.findMany).toHaveBeenCalledTimes(3);
+    });
+
+    it('should isolate the failing OT and surface it in the final error message', async () => {
+      mockPrisma.workOrder.findMany.mockResolvedValue([]);
+      mockPrisma.workOrder.upsert.mockResolvedValue(undefined);
+      mockPrisma.$transaction.mockImplementation(async (input: any) => {
+        if (typeof input === 'function') {
+          return input(mockPrisma);
+        }
+
+        throw new Error('DB write failed');
+      });
+
+      await expect(
+        service.bulkUpsert([
+          {
+            ot_number: 'OT-5001',
+            descripcion: 'Primera',
+            raw_payload: { OT: 'OT-5001' },
+          } as any,
+          {
+            ot_number: 'OT-5002',
+            descripcion: 'Segunda',
+            raw_payload: { OT: 'OT-5002' },
+          } as any,
+        ]),
+      ).rejects.toThrow(/OT-5001.*DB write failed/i);
+    });
+
     it('should preserve the active management snapshot while importing internal database changes', async () => {
       mockPrisma.workOrder.findMany.mockResolvedValue([
         {
@@ -512,6 +573,46 @@ describe('WorkOrdersService', () => {
           }),
         }),
       });
+    });
+
+    it('should sanitize invalid raw_payload values before sending them to persistence', async () => {
+      mockPrisma.workOrder.findMany.mockResolvedValue([]);
+      mockPrisma.workOrder.upsert.mockResolvedValue(undefined);
+
+      await service.bulkUpsert([
+        {
+          ot_number: 'OT-3001',
+          descripcion: 'Sanitized',
+          raw_payload: {
+            OT: 'OT-3001',
+            descripcion: 'Sanitized',
+            invalidUndefined: undefined,
+            invalidInfinity: Number.POSITIVE_INFINITY,
+            createdAt: new Date('2026-04-05T00:00:00.000Z'),
+            nested: {
+              keep: 'ok',
+              drop: undefined,
+            },
+          },
+        } as any,
+      ]);
+
+      expect(mockPrisma.workOrder.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            raw_payload: expect.objectContaining({
+              OT: 'OT-3001',
+              descripcion: 'Sanitized',
+              createdAt: '2026-04-05T00:00:00.000Z',
+              nested: { keep: 'ok' },
+            }),
+          }),
+        }),
+      );
+
+      const createArg = mockPrisma.workOrder.upsert.mock.calls[0][0].create;
+      expect(createArg.raw_payload.invalidUndefined).toBeUndefined();
+      expect(createArg.raw_payload.invalidInfinity).toBeUndefined();
     });
   });
 

@@ -700,6 +700,15 @@ export function toFrontendDie(die: any) {
 }
 
 export function toFrontendStockItem(item: any) {
+  const conflictMatches = String(item.notes || '').match(/\[IMPORT_CONFLICT:([^\]]+)\]/g) || [];
+  const conflictReasons = conflictMatches
+    .flatMap((entry) => String(entry).replace('[IMPORT_CONFLICT:', '').replace(']', '').split('|'))
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean);
+  const cleanNotes = String(item.notes || '')
+    .replace(/\[IMPORT_CONFLICT:[^\]]+\]\s*/g, '')
+    .trim();
+
   return {
     ...item,
     medida: item.medida || '',
@@ -717,8 +726,10 @@ export function toFrontendStockItem(item: any) {
     ubicacion: item.location || '',
     status: normalizeStockStatus(item.status),
     entryDate: item.entry_date,
-    notes: item.notes || undefined,
+    notes: cleanNotes || undefined,
     boxId: item.box_id || undefined,
+    hasConflict: conflictReasons.length > 0,
+    conflictReasons,
   };
 }
 

@@ -41,7 +41,8 @@ export interface CliseItem {
   imagen?: string; 
   sourceRow?: Record<string, unknown>;
   history: CliseHistory[];
-  hasConflict?: boolean; 
+  hasConflict?: boolean;
+  conflictReasons?: string[];
 }
 
 export interface DieItem {
@@ -73,6 +74,7 @@ export interface DieItem {
   sourceRow?: Record<string, unknown>;
   history: CliseHistory[];
   hasConflict?: boolean;
+  conflictReasons?: string[];
 }
 
 export interface StockItem {
@@ -94,6 +96,8 @@ export interface StockItem {
   entryDate: string;
   notes?: string;
   boxId?: string;
+  hasConflict?: boolean;
+  conflictReasons?: string[];
 }
 
 export interface RackBox {

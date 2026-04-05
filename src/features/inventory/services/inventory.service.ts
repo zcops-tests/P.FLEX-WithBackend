@@ -1,6 +1,7 @@
 import { Injectable, effect, inject, untracked } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { CliseItem, DieItem, StockItem, RackConfig } from '../models/inventory.models';
+import { InventoryImportResult } from '../models/inventory-import.models';
 import { ExcelService } from '../../../services/excel.service';
 import { AuditService } from '../../../services/audit.service';
 import { StateService } from '../../../services/state.service';
@@ -8,6 +9,7 @@ import { BackendApiService } from '../../../services/backend-api.service';
 import { NotificationService } from '../../../services/notification.service';
 
 const CLISE_IMPORT_BATCH_SIZE = 200;
+const STOCK_IMPORT_CONFLICT_MARKER = '[IMPORT_CONFLICT:MISSING_CAJA]';
 
 export type DataLoadState = 'idle' | 'loading' | 'loaded' | 'error' | 'stale';
 
@@ -367,11 +369,47 @@ export class InventoryService {
   }
 
   async addStocks(items: StockItem[]) {
+    return this.importStocks(items);
+  }
+
+  async importStocks(
+    items: StockItem[],
+    onProgress?: (progress: { currentBatch: number; totalBatches: number; processedItems: number; totalItems: number }) => void,
+  ): Promise<InventoryImportResult> {
     const payloadItems = items.map((item) => this.mapStockToPayload(item));
-    const result = await this.backend.bulkCreateStockItems({ items: payloadItems });
+    const totalItems = payloadItems.length;
+
+    if (totalItems === 0) {
+      return { imported: 0, conflicts: 0, created: 0, updated: 0 };
+    }
+
+    let created = 0;
+    let updated = 0;
+    const totalBatches = Math.max(1, Math.ceil(totalItems / CLISE_IMPORT_BATCH_SIZE));
+
+    for (let index = 0; index < totalBatches; index += 1) {
+      const start = index * CLISE_IMPORT_BATCH_SIZE;
+      const end = start + CLISE_IMPORT_BATCH_SIZE;
+      const batch = payloadItems.slice(start, end);
+      const result = await this.backend.bulkUpsertStockItems({ items: batch });
+      created += Number(result?.created || 0);
+      updated += Number(result?.updated || 0);
+      onProgress?.({
+        currentBatch: index + 1,
+        totalBatches,
+        processedItems: Math.min(end, totalItems),
+        totalItems,
+      });
+    }
+
     await this.reload();
-    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Importacion Masiva', `Se importaron ${items.length} items de producto terminado.`);
-    return result;
+    this.audit.log(this.state.userName(), this.state.userRole(), 'STOCK PT', 'Importacion Masiva', `Se importaron ${totalItems} items de producto terminado.`);
+    return {
+      imported: totalItems,
+      conflicts: items.filter((item) => item.hasConflict).length,
+      created,
+      updated,
+    };
   }
 
   async updateStock(item: StockItem) {
@@ -398,87 +436,109 @@ export class InventoryService {
     this._layoutData.next(currentLayout);
   }
 
-  normalizeCliseData(rawData: any[]): { valid: CliseItem[], conflicts: CliseItem[] } {
+  normalizeCliseData(rawData: any[]): { valid: CliseItem[], conflicts: CliseItem[], discarded: Array<Record<string, unknown>> } {
     const normalized = this.excelService.normalizeData(rawData, this.CLISE_MAPPING);
-    const mapped: CliseItem[] = normalized.map((row, index) => {
+    const discarded = normalized.filter((row) => this.isImportRowJunk(row, ['item', 'cliente', 'descripcion', 'troquel', 'ancho', 'avance']));
+    const mapped: CliseItem[] = normalized
+      .filter((row) => !this.isImportRowJunk(row, ['item', 'cliente', 'descripcion', 'troquel', 'ancho', 'avance']))
+      .map((row, index) => {
       const item = this.buildImportedClise(row, index);
+      const conflictReasons = this.buildCliseConflictReasons(item);
       return {
         ...item,
-        hasConflict: this.hasCliseConflict(item),
+        hasConflict: conflictReasons.length > 0,
+        conflictReasons,
       };
     });
 
     const valid = mapped.filter((item) => !item.hasConflict);
     const conflicts = mapped.filter((item) => item.hasConflict);
-    return { valid, conflicts };
+    return { valid, conflicts, discarded };
   }
 
-  normalizeDieData(rawData: any[]): { valid: DieItem[], conflicts: DieItem[] } {
+  normalizeDieData(rawData: any[]): { valid: DieItem[], conflicts: DieItem[], discarded: Array<Record<string, unknown>> } {
     const normalized = this.excelService.normalizeData(rawData, this.DIE_MAPPING);
-    const mapped: DieItem[] = normalized.map(row => ({
-      id: Math.random().toString(36).slice(2, 11),
-      serie: this.excelService.toDisplayString(row.serie),
-      cliente: this.excelService.toDisplayString(row.cliente),
-      medida: this.excelService.toDisplayString(row.medida),
-      ubicacion: this.excelService.toDisplayString(row.ubicacion),
-      z: this.excelService.toDisplayString(row.z),
-      ancho_mm: this.excelService.parseNumber(row.ancho_mm),
-      avance_mm: this.excelService.parseNumber(row.avance_mm),
-      ancho_plg: this.excelService.parseNumber(row.ancho_plg),
-      avance_plg: this.excelService.parseNumber(row.avance_plg),
-      columnas: this.excelService.parseNumber(row.columnas),
-      repeticiones: this.excelService.parseNumber(row.repeticiones),
-      material: this.excelService.toDisplayString(row.material),
-      forma: this.excelService.toDisplayString(row.forma),
-      estado: this.excelService.toDisplayString(row.estado) || 'OK',
-      ingreso: this.normalizeExcelDate(row.ingreso),
-      pb: this.excelService.toDisplayString(row.pb),
-      sep_ava: this.excelService.toDisplayString(row.sep_ava),
-      cantidad: this.excelService.parseNumber(row.cantidad),
-      almacen: this.excelService.toDisplayString(row.almacen),
-      mtl_acum: this.excelService.parseNumber(row.mtl_acum),
-      tipo_troquel: this.excelService.toDisplayString(row.tipo_troquel),
-      observaciones: this.excelService.toDisplayString(row.observaciones),
-      sourceRow: row.__sourceRow || undefined,
-      history: [],
-      linkedClises: [],
-      hasConflict: false
-    }));
+    const discarded = normalized.filter((row) => this.isImportRowJunk(row, ['serie', 'cliente', 'medida', 'material', 'forma', 'ancho_mm', 'avance_mm']));
+    const mapped: DieItem[] = normalized
+      .filter((row) => !this.isImportRowJunk(row, ['serie', 'cliente', 'medida', 'material', 'forma', 'ancho_mm', 'avance_mm']))
+      .map(row => {
+        const item: DieItem = {
+          id: Math.random().toString(36).slice(2, 11),
+          serie: this.excelService.toDisplayString(row.serie),
+          cliente: this.excelService.toDisplayString(row.cliente),
+          medida: this.excelService.toDisplayString(row.medida),
+          ubicacion: this.excelService.toDisplayString(row.ubicacion),
+          z: this.excelService.toDisplayString(row.z),
+          ancho_mm: this.excelService.parseNumber(row.ancho_mm),
+          avance_mm: this.excelService.parseNumber(row.avance_mm),
+          ancho_plg: this.excelService.parseNumber(row.ancho_plg),
+          avance_plg: this.excelService.parseNumber(row.avance_plg),
+          columnas: this.excelService.parseNumber(row.columnas),
+          repeticiones: this.excelService.parseNumber(row.repeticiones),
+          material: this.excelService.toDisplayString(row.material),
+          forma: this.excelService.toDisplayString(row.forma),
+          estado: this.excelService.toDisplayString(row.estado) || 'OK',
+          ingreso: this.normalizeExcelDate(row.ingreso),
+          pb: this.excelService.toDisplayString(row.pb),
+          sep_ava: this.excelService.toDisplayString(row.sep_ava),
+          cantidad: this.excelService.parseNumber(row.cantidad),
+          almacen: this.excelService.toDisplayString(row.almacen),
+          mtl_acum: this.excelService.parseNumber(row.mtl_acum),
+          tipo_troquel: this.excelService.toDisplayString(row.tipo_troquel),
+          observaciones: this.excelService.toDisplayString(row.observaciones),
+          sourceRow: row.__sourceRow || undefined,
+          history: [],
+          linkedClises: [],
+          hasConflict: false,
+          conflictReasons: [],
+        };
 
-    const valid = mapped.filter(item => !this.hasDieConflict(item));
-    const conflicts = mapped.filter(item => this.hasDieConflict(item));
-    conflicts.forEach(item => item.hasConflict = true);
-    return { valid, conflicts };
+        const conflictReasons = this.buildDieConflictReasons(item);
+        item.hasConflict = conflictReasons.length > 0;
+        item.conflictReasons = conflictReasons;
+        return item;
+      });
+
+    const valid = mapped.filter(item => !item.hasConflict);
+    const conflicts = mapped.filter(item => item.hasConflict);
+    return { valid, conflicts, discarded };
   }
 
-  normalizeStockData(rawData: any[]): { valid: StockItem[], conflicts: StockItem[] } {
+  normalizeStockData(rawData: any[]): { valid: StockItem[], conflicts: StockItem[], discarded: Array<Record<string, unknown>> } {
     const normalized = this.excelService.normalizeData(rawData, this.STOCK_MAPPING);
+    const discarded = normalized.filter((row) => this.isImportRowJunk(row, ['medida', 'anchoMm', 'avanceMm', 'material', 'columnas', 'prepicado', 'cantidadXRollo', 'cantidadMillares', 'etiqueta', 'forma', 'tipoProducto', 'caja', 'ubicacion']));
     const mapped: StockItem[] = normalized
-      .filter((row) => !this.isStockRowEmpty(row))
-      .map((row, index) => ({
-        id: `stock-import-${index + 1}`,
-        medida: this.excelService.toDisplayString(row.medida),
-        anchoMm: this.excelService.parseNumber(row.anchoMm),
-        avanceMm: this.excelService.parseNumber(row.avanceMm),
-        material: this.excelService.toDisplayString(row.material),
-        columnas: this.excelService.parseNumber(row.columnas),
-        prepicado: this.excelService.toDisplayString(row.prepicado),
-        cantidadXRollo: this.excelService.parseNumber(row.cantidadXRollo),
-        cantidadMillares: this.excelService.parseNumber(row.cantidadMillares),
-        etiqueta: this.excelService.toDisplayString(row.etiqueta),
-        forma: this.excelService.toDisplayString(row.forma),
-        tipoProducto: this.excelService.toDisplayString(row.tipoProducto),
-        caja: this.excelService.toDisplayString(row.caja),
-        ubicacion: this.excelService.toDisplayString(row.ubicacion) || 'RECEPCION',
-        status: 'Cuarentena',
-        entryDate: new Date().toISOString(),
-        notes: '',
-        boxId: undefined,
-      }));
+      .filter((row) => !this.isImportRowJunk(row, ['medida', 'anchoMm', 'avanceMm', 'material', 'columnas', 'prepicado', 'cantidadXRollo', 'cantidadMillares', 'etiqueta', 'forma', 'tipoProducto', 'caja', 'ubicacion']))
+      .map((row, index) => {
+        const caja = this.excelService.toDisplayString(row.caja);
+        const hasConflict = !String(caja || '').trim();
+        return {
+          id: `stock-import-${index + 1}`,
+          medida: this.excelService.toDisplayString(row.medida),
+          anchoMm: this.excelService.parseNumber(row.anchoMm),
+          avanceMm: this.excelService.parseNumber(row.avanceMm),
+          material: this.excelService.toDisplayString(row.material),
+          columnas: this.excelService.parseNumber(row.columnas),
+          prepicado: this.excelService.toDisplayString(row.prepicado),
+          cantidadXRollo: this.excelService.parseNumber(row.cantidadXRollo),
+          cantidadMillares: this.excelService.parseNumber(row.cantidadMillares),
+          etiqueta: this.excelService.toDisplayString(row.etiqueta),
+          forma: this.excelService.toDisplayString(row.forma),
+          tipoProducto: this.excelService.toDisplayString(row.tipoProducto),
+          caja,
+          ubicacion: this.excelService.toDisplayString(row.ubicacion) || 'RECEPCION',
+          status: 'Cuarentena',
+          entryDate: new Date().toISOString(),
+          notes: '',
+          boxId: undefined,
+          hasConflict,
+          conflictReasons: hasConflict ? ['MISSING_CAJA'] : [],
+        };
+      });
 
-    const valid = mapped.filter(item => String(item.caja || '').trim());
-    const conflicts = mapped.filter(item => !String(item.caja || '').trim());
-    return { valid, conflicts };
+    const valid = mapped.filter(item => !item.hasConflict);
+    const conflicts = mapped.filter(item => item.hasConflict);
+    return { valid, conflicts, discarded };
   }
 
   private buildImportedClise(row: Record<string, unknown>, rowIndex: number): CliseItem {
@@ -615,6 +675,9 @@ export class InventoryService {
       history: Array.isArray(item.history) ? item.history : [],
       sourceRow: undefined,
       hasConflict: Boolean(item.hasConflict ?? item.has_conflict ?? item.raw_payload?.import_conflict),
+      conflictReasons: Array.isArray(item.conflictReasons ?? item.conflict_reasons ?? item.raw_payload?.conflict_reasons)
+        ? [...(item.conflictReasons ?? item.conflict_reasons ?? item.raw_payload?.conflict_reasons)]
+        : [],
     };
   }
 
@@ -649,6 +712,9 @@ export class InventoryService {
       sourceRow: item.raw_payload?.source_row || undefined,
       history: [],
       hasConflict: Boolean(item.hasConflict ?? item.has_conflict ?? item.raw_payload?.import_conflict),
+      conflictReasons: Array.isArray(item.conflictReasons ?? item.conflict_reasons ?? item.raw_payload?.conflict_reasons)
+        ? [...(item.conflictReasons ?? item.conflict_reasons ?? item.raw_payload?.conflict_reasons)]
+        : [],
     };
   }
 
@@ -672,6 +738,10 @@ export class InventoryService {
       entryDate: item.entryDate || item.entry_date || new Date().toISOString(),
       notes: item.notes || '',
       boxId: item.box_id || '',
+      hasConflict: Boolean(item.hasConflict ?? item.has_conflict),
+      conflictReasons: Array.isArray(item.conflictReasons ?? item.conflict_reasons)
+        ? [...(item.conflictReasons ?? item.conflict_reasons)]
+        : [],
     };
   }
 
@@ -767,6 +837,7 @@ export class InventoryService {
   }
 
   private mapStockToPayload(item: StockItem) {
+    const normalizedCaja = String(item.caja || '').trim();
     return {
       medida: item.medida || undefined,
       ancho_mm: item.anchoMm ?? undefined,
@@ -779,12 +850,21 @@ export class InventoryService {
       etiqueta: item.etiqueta || undefined,
       forma: item.forma || undefined,
       tipo_producto: item.tipoProducto || undefined,
-      caja: item.caja || undefined,
+      caja: normalizedCaja || undefined,
       ubicacion: item.ubicacion || undefined,
       status: this.mapStockStatusToApi(item.status),
       entry_date: item.entryDate || new Date().toISOString(),
-      notes: item.notes || undefined,
+      notes: this.buildStockNotes(item.notes, !normalizedCaja),
     };
+  }
+
+  private buildStockNotes(notes: string | undefined, hasMissingCajaConflict: boolean) {
+    const cleanedNotes = String(notes || '').replace(/\[IMPORT_CONFLICT:[^\]]+\]\s*/g, '').trim();
+    if (!hasMissingCajaConflict) {
+      return cleanedNotes || undefined;
+    }
+
+    return `${STOCK_IMPORT_CONFLICT_MARKER}${cleanedNotes ? ` ${cleanedNotes}` : ''}`;
   }
 
   private normalizeStockStatus(val: string): any {
@@ -803,22 +883,18 @@ export class InventoryService {
     return 'QUARANTINE';
   }
 
-  private isStockRowEmpty(row: Record<string, unknown>) {
-    return ![
-      row.medida,
-      row.anchoMm,
-      row.avanceMm,
-      row.material,
-      row.columnas,
-      row.prepicado,
-      row.cantidadXRollo,
-      row.cantidadMillares,
-      row.etiqueta,
-      row.forma,
-      row.tipoProducto,
-      row.caja,
-      row.ubicacion,
-    ].some((value) => String(value ?? '').trim());
+  private isImportRowJunk(row: Record<string, unknown>, relevantKeys: string[]) {
+    const placeholderTokens = new Set(['', '-', '--', '---', 'X', 'N/A', 'NA', 'NULL', 'SIN DATO']);
+
+    return !relevantKeys.some((key) => {
+      const value = row[key];
+      if (typeof value === 'number') {
+        return Number.isFinite(value) && value !== 0;
+      }
+
+      const text = String(value ?? '').trim().toUpperCase();
+      return text && !placeholderTokens.has(text);
+    });
   }
 
   private buildFallbackLayout(): RackConfig[] {

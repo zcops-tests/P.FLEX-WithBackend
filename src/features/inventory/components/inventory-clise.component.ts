@@ -15,14 +15,16 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InventoryLoadStatus, InventoryService } from '../services/inventory.service';
 import { CliseItem, DieItem } from '../models/inventory.models';
-import { ExcelService } from '../../../services/excel.service';
 import { InventoryCliseDetailModalComponent } from './inventory-clise-detail-modal.component';
 import { StateService } from '../../../services/state.service';
+import { InventoryImportPreviewComponent } from './inventory-import-preview.component';
+import { InventoryImportColumn } from '../models/inventory-import.models';
+import { InventoryImportFlowService } from '../services/inventory-import-flow.service';
 
 @Component({
   selector: 'app-inventory-clise',
   standalone: true,
-  imports: [CommonModule, FormsModule, InventoryCliseDetailModalComponent],
+  imports: [CommonModule, FormsModule, InventoryCliseDetailModalComponent, InventoryImportPreviewComponent],
   template: `
     <div
       #viewportRoot
@@ -36,9 +38,8 @@ import { StateService } from '../../../services/state.service';
 
         <div class="flex items-center gap-3">
           <ng-container *ngIf="canManageInventory">
-            <input #fileInput type="file" (change)="handleImport($event)" accept=".xlsx, .xls, .csv" class="hidden">
             <button
-              (click)="fileInput.click()"
+              (click)="openImportModal()"
               [disabled]="isLoading || isImporting"
               class="inline-flex items-center gap-2 rounded-xl border border-[#424754]/60 px-5 py-2 text-sm font-semibold text-[#adc6ff] transition-all hover:bg-[#2d3449] disabled:cursor-not-allowed disabled:opacity-50">
               <span *ngIf="!isLoading && !isImporting" class="material-icons text-lg">download</span>
@@ -311,104 +312,38 @@ import { StateService } from '../../../services/state.service';
         (dieUnlinkRequested)="removeLinkedDie($event)">
       </app-inventory-clise-detail-modal>
 
-      <!-- MODAL: IMPORT PREVIEW -->
-      <div *ngIf="showImportPreviewModal" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true">
-         <div class="bg-[#1e293b] rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden border border-slate-700 animate-fadeIn">
-            <div class="bg-[#0f172a] px-6 py-4 border-b border-slate-700 flex justify-between items-center shrink-0">
-               <div>
-                   <h3 class="font-bold text-white text-lg flex items-center gap-2">
-                       <span class="material-icons text-blue-500">upload_file</span>
-                       Previsualización de Importación
-                   </h3>
-                   <p class="text-xs text-slate-400 mt-1">
-                       Se han procesado {{ previewData.length + conflictsData.length }} registros en total.
-                   </p>
-               </div>
-               <button (click)="cancelImport()" [disabled]="isImporting" class="text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                   <span class="material-icons">close</span>
-               </button>
-            </div>
-
-            <div class="flex-1 overflow-hidden flex flex-col bg-[#1e293b]">
-                <div class="px-6 py-3 bg-[#1e293b] border-b border-slate-700 flex gap-4 items-center">
-                    <div class="px-4 py-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-bold flex items-center gap-2">
-                        <span class="material-icons text-sm">check_circle</span>
-                        {{ previewData.length }} Válidos
-                    </div>
-                    <div class="px-4 py-2 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold flex items-center gap-2" [class.animate-pulse]="conflictsData.length > 0">
-                        <span class="material-icons text-sm">warning</span>
-                        {{ conflictsData.length }} Conflictos Detectados
-                    </div>
-                    <p class="text-xs text-slate-500 ml-auto italic">
-                        Todos los registros se importarán. Los conflictos quedarán marcados para revisión manual.
-                    </p>
-                </div>
-
-                <div class="flex-1 overflow-auto custom-scrollbar p-6 relative">
-                    <div *ngIf="isImporting" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#1e293b]/80 backdrop-blur-sm">
-                        <div class="w-14 h-14 rounded-full border-4 border-slate-700 border-t-blue-500 animate-spin mb-4"></div>
-                        <h3 class="text-lg font-bold text-white">Importando clisés...</h3>
-                        <p class="text-sm text-slate-400 mt-1">{{ importProgressText || 'No cierres esta ventana hasta que finalice.' }}</p>
-                        <div class="w-full max-w-md mt-4 px-6">
-                            <div class="h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
-                                <div class="h-full bg-blue-500 transition-all duration-300" [style.width.%]="importProgressPercent"></div>
-                            </div>
-                            <p class="text-xs text-slate-500 mt-2 text-center">{{ importProgressPercent }}% completado</p>
-                        </div>
-                    </div>
-                    <table class="w-full text-sm text-left border-collapse">
-                        <thead class="text-xs text-slate-400 uppercase bg-[#0f172a] sticky top-0 z-10 font-bold tracking-wider">
-                            <tr>
-                                <th class="px-4 py-3 border-b border-slate-700 w-16 text-center">#</th>
-                                <th class="px-4 py-3 border-b border-slate-700 w-32 text-center">Estado</th>
-                                <th class="px-4 py-3 border-b border-slate-700">Código (Item)</th>
-                                <th class="px-4 py-3 border-b border-slate-700">Cliente</th>
-                                <th class="px-4 py-3 border-b border-slate-700">Descripción</th>
-                                <th class="px-4 py-3 border-b border-slate-700">Ubicación</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-700">
-                            <tr *ngFor="let item of previewConflictRows; let i = index; trackBy: trackByCliseId" class="bg-red-500/5 hover:bg-red-500/10 transition-colors">
-                                <td class="px-4 py-2 text-slate-500 font-mono text-xs text-center">{{ i + 1 }}</td>
-                                <td class="px-4 py-2 text-center">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 uppercase tracking-wide">
-                                        Falta Dato
-                                    </span>
-                                </td>
-                                <td class="px-4 py-2 font-mono font-bold" [ngClass]="item.item ? 'text-white' : 'text-red-500 italic'">{{ item.item || '(VACÍO)' }}</td>
-                                <td class="px-4 py-2" [ngClass]="item.cliente ? 'text-slate-300' : 'text-red-500 italic'">{{ item.cliente || '(VACÍO)' }}</td>
-                                <td class="px-4 py-2 text-slate-400 truncate max-w-xs">{{ item.descripcion || '---' }}</td>
-                                <td class="px-4 py-2 text-slate-400">{{ item.ubicacion || '-' }}</td>
-                            </tr>
-                            <tr *ngFor="let item of previewValidRows; let i = index; trackBy: trackByCliseId" class="hover:bg-slate-700/30 transition-colors">
-                                <td class="px-4 py-2 text-slate-500 font-mono text-xs text-center">{{ previewConflictRows.length + i + 1 }}</td>
-                                <td class="px-4 py-2 text-center">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">OK</span>
-                                </td>
-                                <td class="px-4 py-2 font-mono text-white font-bold">{{ item.item }}</td>
-                                <td class="px-4 py-2 text-slate-300">{{ item.cliente }}</td>
-                                <td class="px-4 py-2 text-slate-400 truncate max-w-xs">{{ item.descripcion }}</td>
-                                <td class="px-4 py-2 text-slate-400">{{ item.ubicacion || '-' }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div *ngIf="hasHiddenPreviewRows" class="mt-4 rounded-lg border border-slate-700 bg-[#0f172a] px-4 py-3 text-xs text-slate-400">
-                        Mostrando {{ previewConflictRows.length + previewValidRows.length }} de {{ previewData.length + conflictsData.length }} filas para mantener la importación fluida.
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-[#0f172a] px-6 py-4 border-t border-slate-700 flex justify-end gap-4 shrink-0">
-               <button (click)="cancelImport()" [disabled]="isImporting" class="px-6 py-2.5 rounded-lg border border-slate-600 text-slate-300 font-bold hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                   Cancelar Importación
-               </button>
-               <button (click)="confirmImport()" [disabled]="isImporting" class="px-6 py-2.5 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-500 shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed min-w-[260px] justify-center">
-                   <span class="material-icons text-sm">save_alt</span>
-                   Importar Todo (Resolver Conflictos Después)
-               </button>
-            </div>
-         </div>
-      </div>
+      <app-inventory-import-preview
+        [show]="showImportModal"
+        [step]="importStep"
+        title="Carga Masiva de Clisés"
+        subtitle="Importe registros de clisés desde Excel o CSV"
+        uploadHint="El sistema detectará campos faltantes y conservará los conflictos para resolverlos después."
+        [isLoading]="isLoading"
+        [validRows]="previewData"
+        [conflictRows]="conflictsData"
+        [discardedCount]="discardedRowsCount"
+        [columns]="importPreviewColumns"
+        [isImporting]="isImporting"
+        [analysisPhase]="loadingPhaseLabel"
+        [analysisPercentage]="loadingProgress"
+        [analysisProcessedItems]="analysisProcessedItems"
+        [analysisTotalItems]="analysisTotalItems"
+        [analysisDetail]="loadingStatusText"
+        importingTitle="Importando clisés..."
+        confirmButtonLabel="Confirmar Importación"
+        [importProgressPercent]="importProgressPercent"
+        [importProgressText]="importProgressText"
+        [importProcessedItems]="importProcessedItems"
+        [importTotalItems]="importTotalItems"
+        [importTotalBatches]="importTotalBatches"
+        [importCurrentBatchLabel]="importCurrentBatchLabel"
+        [importStatusLabel]="importStatusLabel"
+        [previewLimit]="importPreviewLimit"
+        (closeRequested)="closeImportModal()"
+        (fileSelected)="processImportFile($event)"
+        (resetRequested)="resetImportFlow()"
+        (confirmRequested)="confirmImport()">
+      </app-inventory-import-preview>
 
       <!-- MODAL: CLISE DETAIL (legacy inline, desactivado) -->
       <div *ngIf="false && showCliseForm" class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-[#060e20]/90 backdrop-blur-md" role="dialog" aria-modal="true">
@@ -921,7 +856,7 @@ import { StateService } from '../../../services/state.service';
 })
 export class InventoryCliseComponent implements AfterViewInit, OnDestroy {
   inventoryService = inject(InventoryService);
-  excelService = inject(ExcelService);
+  importFlow = inject(InventoryImportFlowService);
   state = inject(StateService);
   cdr = inject(ChangeDetectorRef);
   ngZone = inject(NgZone);
@@ -958,15 +893,29 @@ export class InventoryCliseComponent implements AfterViewInit, OnDestroy {
 
   // Import State
  isLoading = false;
+ showImportModal = false;
+ importStep: 'upload' | 'preview' = 'upload';
  isImporting = false;
  loadingProgress = 0;
  loadingStatusText = 'Preparando archivo...';
+ analysisTotalItems = 0;
+ analysisProcessedItems = 0;
  importProgressPercent = 0;
  importProgressText = '';
+ importProcessedItems = 0;
+ importTotalItems = 0;
+ importTotalBatches = 0;
  showImportPreviewModal = false;
   previewData: CliseItem[] = [];
-  conflictsData: CliseItem[] = [];
-  readonly importPreviewLimit = 120;
+ conflictsData: CliseItem[] = [];
+ discardedRowsCount = 0;
+ readonly importPreviewLimit = 120;
+ readonly importPreviewColumns: InventoryImportColumn<CliseItem>[] = [
+   { label: 'Código (Item)', value: (item) => item.item, emptyValue: '(VACÍO)', mono: true },
+   { label: 'Cliente', value: (item) => item.cliente, emptyValue: '(VACÍO)' },
+   { label: 'Descripción', value: (item) => item.descripcion },
+   { label: 'Ubicación', value: (item) => item.ubicacion, emptyValue: '-' },
+ ];
 
   // Die Search Logic
   dieSearchTerm = '';
@@ -983,6 +932,21 @@ export class InventoryCliseComponent implements AfterViewInit, OnDestroy {
 
   get showInitialLoadingOverlay() {
     return this.loadStatus.state === 'loading' && this.cliseItems.length === 0 && !this.isLoading;
+  }
+
+  get loadingPhaseLabel() {
+    return this.importStep === 'preview' ? 'Análisis completado' : 'Analizando archivo';
+  }
+
+  get importCurrentBatchLabel() {
+    if (this.importTotalBatches <= 0 || this.importProcessedItems <= 0) return '1';
+    const approxBatchSize = Math.max(1, Math.ceil(this.importTotalItems / this.importTotalBatches));
+    return String(Math.min(this.importTotalBatches, Math.max(1, Math.ceil(this.importProcessedItems / approxBatchSize))));
+  }
+
+  get importStatusLabel() {
+    if (this.importTotalBatches <= 0 || this.importProcessedItems === 0) return 'Preparando lotes...';
+    return this.importProgressPercent >= 100 ? 'Finalizando recarga...' : 'Aplicando cambios...';
   }
 
   constructor() {
@@ -1265,61 +1229,84 @@ export class InventoryCliseComponent implements AfterViewInit, OnDestroy {
   }
 
   // --- IMPORT ---
-  async handleImport(event: any) {
+  openImportModal() {
     if (!this.canManageInventory) return;
-    const input = event?.target as HTMLInputElement | undefined;
-    const file = input?.files?.[0];
-    if (!file) return;
-
-    this.isLoading = true;
-    this.loadingProgress = 4;
-    this.loadingStatusText = 'Preparando archivo para analisis...';
+    this.showImportModal = true;
+    this.importStep = 'upload';
     this.previewData = [];
     this.conflictsData = [];
+    this.discardedRowsCount = 0;
+    this.importProgressPercent = 0;
+    this.importProgressText = '';
+  }
+
+  closeImportModal() {
+    if (this.isLoading || this.isImporting) return;
+    this.resetImportFlow();
+    this.showImportModal = false;
+  }
+
+  resetImportFlow() {
+    if (this.isImporting) return;
+    this.importStep = 'upload';
     this.showImportPreviewModal = false;
+    this.previewData = [];
+    this.conflictsData = [];
+    this.discardedRowsCount = 0;
+    this.importProgressPercent = 0;
+    this.importProgressText = '';
+    this.importProcessedItems = 0;
+    this.importTotalItems = 0;
+    this.importTotalBatches = 0;
+  }
+
+  async processImportFile(file: File) {
+    if (!this.canManageInventory || !file) return;
+    this.isLoading = true;
+    this.loadingProgress = 0;
+    this.loadingStatusText = 'Preparando archivo para análisis...';
+    this.analysisProcessedItems = 0;
+    this.analysisTotalItems = 0;
+    this.previewData = [];
+    this.conflictsData = [];
+    this.discardedRowsCount = 0;
+    this.showImportPreviewModal = false;
+    this.importStep = 'upload';
     this.cdr.detectChanges();
-    this.startLoadingProgressSimulation();
     await this.waitForNextPaint();
 
-    this.ngZone.runOutsideAngular(async () => {
-      try {
-        this.ngZone.run(() => {
-          this.loadingProgress = Math.max(this.loadingProgress, 12);
-          this.loadingStatusText = 'Leyendo archivo Excel...';
+    try {
+      const result = await this.importFlow.analyzeFile<CliseItem>({
+        entityLabel: 'clisés',
+        file,
+        normalize: (rows) => this.inventoryService.normalizeCliseData(rows),
+        onProgress: (progress) => {
+          this.loadingProgress = progress.percentage;
+          this.loadingStatusText = progress.detail;
+          this.analysisProcessedItems = progress.processedItems;
+          this.analysisTotalItems = progress.totalItems;
           this.cdr.detectChanges();
-        });
+        },
+      });
 
-        await new Promise(resolve => setTimeout(resolve, 120));
-        const rawData = await this.excelService.readExcel(file);
-        const { valid, conflicts } = this.inventoryService.normalizeCliseData(rawData);
-
-        this.ngZone.run(() => {
-          this.stopLoadingProgressSimulation();
-          this.loadingProgress = 100;
-          this.loadingStatusText = 'Archivo procesado. Preparando previsualizacion...';
-          this.previewData = valid;
-          this.conflictsData = conflicts;
-          this.showImportPreviewModal = true;
-          this.isLoading = false;
-          if (input) {
-            input.value = '';
-          }
-          this.cdr.detectChanges();
-        });
-      } catch (error: any) {
-        this.ngZone.run(() => {
-          this.stopLoadingProgressSimulation();
-          alert(`Error al leer el archivo: ${error?.message || 'No se pudo procesar el archivo.'}`);
-          this.isLoading = false;
-          this.loadingProgress = 0;
-          this.loadingStatusText = 'Preparando archivo...';
-          if (input) {
-            input.value = '';
-          }
-          this.cdr.detectChanges();
-        });
-      }
-    });
+      this.loadingProgress = 100;
+      this.loadingStatusText = 'Archivo procesado. Preparando previsualización...';
+      this.analysisProcessedItems = result.totalItems;
+      this.analysisTotalItems = result.totalItems;
+      this.previewData = result.valid;
+      this.conflictsData = result.conflicts;
+      this.discardedRowsCount = result.discarded.length;
+      this.importStep = 'preview';
+      this.showImportModal = true;
+      this.showImportPreviewModal = true;
+    } catch (error: any) {
+      alert(`Error al leer el archivo: ${error?.message || 'No se pudo procesar el archivo.'}`);
+      this.loadingProgress = 0;
+      this.loadingStatusText = 'Preparando archivo...';
+    } finally {
+      this.isLoading = false;
+      this.cdr.detectChanges();
+    }
   }
 
   async confirmImport() {
@@ -1331,6 +1318,9 @@ export class InventoryCliseComponent implements AfterViewInit, OnDestroy {
      this.isImporting = true;
      this.importProgressPercent = 0;
      this.importProgressText = 'Preparando lotes de importacion...';
+     this.importProcessedItems = 0;
+     this.importTotalItems = itemsToImport.length;
+     this.importTotalBatches = Math.max(1, Math.ceil(itemsToImport.length / 200));
      this.cdr.detectChanges();
      await this.waitForNextPaint();
 
@@ -1340,15 +1330,20 @@ export class InventoryCliseComponent implements AfterViewInit, OnDestroy {
              ({ currentBatch, totalBatches, processedItems, totalItems }) => {
                  this.importProgressPercent = Math.max(5, Math.round((processedItems / Math.max(totalItems, 1)) * 100));
                  this.importProgressText = `Lote ${currentBatch} de ${totalBatches} importado (${processedItems}/${totalItems} registros).`;
+                 this.importProcessedItems = processedItems;
+                 this.importTotalItems = totalItems;
+                 this.importTotalBatches = totalBatches;
                  this.cdr.detectChanges();
              },
          );
           this.importProgressPercent = 100;
+          this.importProcessedItems = itemsToImport.length;
           const summary = result.conflicts > 0
             ? `Se importaron ${result.imported} registros.\nNuevos: ${result.created}\nActualizados: ${result.updated}\n${result.conflicts} quedaron marcados para revision.`
             : `Se importaron ${result.imported} registros.\nNuevos: ${result.created}\nActualizados: ${result.updated}`;
           alert(summary);
-          this.cancelImport();
+          this.isImporting = false;
+          this.closeImportModal();
       } catch (error: any) {
           alert(`Error al importar: ${error?.message || 'No se pudo completar la importación.'}`);
      } finally {
@@ -1360,12 +1355,7 @@ export class InventoryCliseComponent implements AfterViewInit, OnDestroy {
   }
 
   cancelImport() {
-      if (this.isImporting) return;
-      this.showImportPreviewModal = false;
-      this.importProgressPercent = 0;
-      this.importProgressText = '';
-      this.previewData = [];
-      this.conflictsData = [];
+      this.closeImportModal();
   }
 
   get previewConflictRows() {
@@ -1378,24 +1368,6 @@ export class InventoryCliseComponent implements AfterViewInit, OnDestroy {
 
   get hasHiddenPreviewRows() {
       return this.previewConflictRows.length + this.previewValidRows.length < this.previewData.length + this.conflictsData.length;
-  }
-
-  private startLoadingProgressSimulation() {
-      this.stopLoadingProgressSimulation();
-      this.loadingProgressInterval = window.setInterval(() => {
-          this.ngZone.run(() => {
-              if (!this.isLoading) {
-                  this.stopLoadingProgressSimulation();
-                  return;
-              }
-
-              this.loadingProgress = Math.min(this.loadingProgress + 4, 90);
-              this.loadingStatusText = this.loadingProgress >= 70
-                ? 'Validando columnas y preparando la previsualizacion...'
-                : 'Leyendo hojas y normalizando registros...';
-              this.cdr.detectChanges();
-          });
-      }, 180);
   }
 
   private stopLoadingProgressSimulation() {

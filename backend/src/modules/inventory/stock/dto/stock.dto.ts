@@ -141,3 +141,11 @@ export class BulkCreateStockItemsDto {
   @Type(() => CreateStockItemDto)
   items: CreateStockItemDto[];
 }
+
+export class BulkUpsertStockItemsDto {
+  @ApiProperty({ type: [CreateStockItemDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateStockItemDto)
+  items: CreateStockItemDto[];
+}
