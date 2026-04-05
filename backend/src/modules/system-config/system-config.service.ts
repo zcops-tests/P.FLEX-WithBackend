@@ -9,6 +9,7 @@ import {
   toFrontendShift,
   toFrontendSystemConfig,
 } from '../../common/utils/frontend-entity.util';
+import { presentAuditLog } from '../audit/audit-presenter.util';
 
 @Injectable()
 export class SystemConfigService {
@@ -48,7 +49,7 @@ export class SystemConfigService {
     return {
       system_config: toFrontendSystemConfig(config),
       shifts: shifts.map((shift) => toFrontendShift(shift)),
-      audit_preview: recentAudit,
+      audit_preview: recentAudit.map((item) => presentAuditLog(item)),
     };
   }
 

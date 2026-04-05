@@ -29,8 +29,8 @@ import { AuditService } from '../../services/audit.service';
                 <tr>
                   <th class="px-6 py-4">Fecha / Hora</th>
                   <th class="px-6 py-4">Usuario / Rol</th>
-                  <th class="px-6 py-4">Módulo</th>
                   <th class="px-6 py-4">Acción</th>
+                  <th class="px-6 py-4">Módulo</th>
                   <th class="px-6 py-4 text-right">IP Origen</th>
                 </tr>
               </thead>
@@ -44,13 +44,14 @@ import { AuditService } from '../../services/audit.service';
                     <div class="text-[10px] text-slate-500 uppercase">{{ log.role }}</div>
                   </td>
                   <td class="px-6 py-4">
-                    <span class="px-2 py-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold uppercase tracking-wide">
-                        {{ log.module }}
-                    </span>
+                    <div class="font-medium text-slate-100">{{ log.summary || log.action }}</div>
+                    <div class="text-xs text-slate-500 max-w-md">{{ log.target }}</div>
+                    <div class="text-xs text-slate-600 mt-1">{{ log.details }}</div>
                   </td>
                   <td class="px-6 py-4">
-                    <div class="font-medium text-slate-200">{{ log.action }}</div>
-                    <div class="text-xs text-slate-500 truncate max-w-md">{{ log.details }}</div>
+                    <span class="px-2 py-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold uppercase tracking-wide">
+                        {{ log.moduleLabel || log.module }}
+                    </span>
                   </td>
                   <td class="px-6 py-4 text-right font-mono text-xs text-slate-500">
                     {{ log.ip }}

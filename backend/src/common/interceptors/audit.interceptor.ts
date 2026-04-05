@@ -15,6 +15,11 @@ export class AuditInterceptor implements NestInterceptor {
   private readonly logger = new Logger(AuditInterceptor.name);
   private readonly ignoredPaths = [
     '/api/v1/sync',
+    '/api/v1/auth/login',
+    '/api/v1/auth/logout',
+    '/api/v1/auth/logout-all',
+    '/api/v1/auth/sessions',
+    '/api/v1/users/operator-identification',
     '/api/v1/auth/refresh',
     '/docs',
   ];
@@ -69,10 +74,10 @@ export class AuditInterceptor implements NestInterceptor {
             (user?.username as string) || (user?.name as string),
           role_code_snapshot: user?.role as string,
           entity: this.extractEntityFromUrl(url),
-          entity_id: data?.id || request.params?.id || 'unknown',
+          entity_id: this.extractEntityId(url, request, data),
           action: this.mapMethodToAction(method),
           old_values: undefined,
-          new_values: this.toJsonValue(data),
+          new_values: this.toJsonValue(this.extractPayloadForAudit(request, data)),
           ip_address: ip,
           user_agent: request.headers['user-agent'],
           correlation_id: correlationId,
@@ -94,6 +99,12 @@ export class AuditInterceptor implements NestInterceptor {
   private extractEntityFromUrl(url: string): string {
     const path = url.replace(/^\/api\/v\d+\//, '');
 
+    if (path.startsWith('system-config/contract')) {
+      return 'system_config';
+    }
+    if (path.startsWith('system-config')) {
+      return 'system_config';
+    }
     if (path.startsWith('production/printing/reports')) {
       return 'print_reports';
     }
@@ -123,7 +134,7 @@ export class AuditInterceptor implements NestInterceptor {
     }
 
     const [firstSegment] = path.split('/');
-    return firstSegment?.replace(/-/g, '_') || 'unknown';
+    return firstSegment?.replace(/-/g, '_') || 'system';
   }
 
   private mapMethodToAction(method: string): string {
@@ -142,5 +153,103 @@ export class AuditInterceptor implements NestInterceptor {
     }
 
     return JSON.parse(JSON.stringify(sanitizeForJson(data)));
+  }
+
+  private extractPayloadForAudit(request: any, data: unknown) {
+    const body = this.toPlainRecord(request?.body);
+    if (body && Object.keys(body).length > 0) {
+      return body;
+    }
+
+    const response = this.unwrapResponseData(data);
+    const responseRecord = this.toPlainRecord(response);
+    if (responseRecord && Object.keys(responseRecord).length > 0) {
+      return responseRecord;
+    }
+
+    return response;
+  }
+
+  private extractEntityId(url: string, request: any, data: unknown): string | null {
+    const path = url.replace(/^\/api\/v\d+\//, '');
+    if (path.startsWith('system-config')) {
+      return 'GLOBAL';
+    }
+
+    const response = this.unwrapResponseData(data);
+    const responseRecord = this.toPlainRecord(response);
+    const body = this.toPlainRecord(request?.body);
+    const params = this.toPlainRecord(request?.params);
+
+    const candidates = [
+      params?.id,
+      params?.userId,
+      params?.areaId,
+      params?.sessionId,
+      body?.id,
+      body?.user_id,
+      body?.userId,
+      body?.entity_id,
+      body?.entityId,
+      responseRecord?.id,
+      responseRecord?.user_id,
+      responseRecord?.userId,
+      this.findNestedId(responseRecord),
+      this.findNestedId(body),
+    ];
+
+    for (const candidate of candidates) {
+      const normalized = this.normalizeCandidateId(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private unwrapResponseData(data: unknown): unknown {
+    if (
+      data &&
+      typeof data === 'object' &&
+      'success' in (data as Record<string, unknown>) &&
+      'data' in (data as Record<string, unknown>)
+    ) {
+      return (data as Record<string, unknown>).data;
+    }
+
+    return data;
+  }
+
+  private toPlainRecord(value: unknown): Record<string, any> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, any>;
+  }
+
+  private findNestedId(value: Record<string, any> | null): string | null {
+    if (!value) {
+      return null;
+    }
+
+    const directKeys = ['system_config', 'user', 'item', 'record'];
+    for (const key of directKeys) {
+      const nested = this.toPlainRecord(value[key]);
+      const normalized = this.normalizeCandidateId(nested?.id);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeCandidateId(value: unknown): string | null {
+    const normalized = String(value ?? '').trim();
+    if (!normalized || normalized.toLowerCase() === 'unknown') {
+      return null;
+    }
+    return normalized.slice(0, 36);
   }
 }

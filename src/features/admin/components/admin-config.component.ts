@@ -269,16 +269,16 @@ import { AdminService } from '../services/admin.service';
             <div *ngIf="auditPreview().length; else emptyAudit" class="divide-y divide-white/5">
               <div *ngFor="let log of auditPreview()" class="px-4 py-3 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr_1fr] gap-3 hover:bg-white/[0.03] transition-colors">
                 <div>
-                  <p class="text-sm font-semibold text-white">{{ log.user_name_snapshot || 'Sistema' }}</p>
-                  <p class="text-xs text-slate-500 uppercase tracking-[0.18em]">{{ log.role_code_snapshot || 'N/A' }}</p>
+                  <p class="text-sm font-semibold text-white">{{ log.user || 'Sistema' }}</p>
+                  <p class="text-xs text-slate-500 uppercase tracking-[0.18em]">{{ log.role || 'N/A' }}</p>
                 </div>
                 <div>
-                  <p class="text-sm text-slate-200">{{ log.entity }} / {{ log.action }}</p>
-                  <p class="text-xs text-slate-500">{{ log.entity_id || 'Sin entidad específica' }}</p>
+                  <p class="text-sm text-slate-200">{{ log.summary }}</p>
+                  <p class="text-xs text-slate-500">{{ log.target }}</p>
                 </div>
                 <div class="lg:text-right">
-                  <p class="text-sm text-slate-300">{{ log.created_at | date:'dd/MM/yyyy HH:mm' }}</p>
-                  <p class="text-xs text-slate-500">{{ describeAuditPayload(log) }}</p>
+                  <p class="text-sm text-slate-300">{{ log.createdAt | date:'dd/MM/yyyy HH:mm' }}</p>
+                  <p class="text-xs text-slate-500">{{ log.details }}</p>
                 </div>
               </div>
             </div>
@@ -436,11 +436,5 @@ export class AdminConfigComponent {
 
   goToAudit() {
     void this.router.navigate(['/audit']);
-  }
-
-  describeAuditPayload(log: ConfigAuditPreviewItem) {
-    if (log.new_values) return 'Cambios aplicados';
-    if (log.old_values) return 'Estado previo disponible';
-    return 'Sin payload detallado';
   }
 }

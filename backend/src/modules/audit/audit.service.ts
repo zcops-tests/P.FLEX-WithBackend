@@ -6,6 +6,7 @@ import {
   resolvePagination,
 } from '../../common/utils/pagination.util';
 import { AuditQueryDto } from './dto/audit-query.dto';
+import { presentAuditLog } from './audit-presenter.util';
 
 export interface AuditLogData {
   userId?: string;
@@ -98,50 +99,9 @@ export class AuditService {
     ]);
 
     return buildPaginatedResult(
-      items.map((item) => ({
-        id: item.id.toString(),
-        timestamp: item.created_at,
-        user: item.user_name_snapshot || 'Sistema',
-        role: item.role_code_snapshot || 'N/A',
-        module: item.entity,
-        entityId: item.entity_id,
-        action: item.action,
-        details: this.buildDetails(item),
-        ip: item.ip_address || 'N/A',
-        correlationId: item.correlation_id,
-      })),
+      items.map((item) => presentAuditLog(item)),
       total,
       pagination,
     );
-  }
-
-  private buildDetails(item: {
-    entity_id?: string | null;
-    old_values?: Prisma.JsonValue | null;
-    new_values?: Prisma.JsonValue | null;
-  }) {
-    const parts: string[] = [];
-
-    if (item.entity_id) {
-      parts.push(`ID: ${item.entity_id}`);
-    }
-
-    if (item.new_values && typeof item.new_values === 'object') {
-      const keys = Object.keys(
-        item.new_values as Record<string, unknown>,
-      ).slice(0, 5);
-      if (keys.length) {
-        parts.push(`Campos: ${keys.join(', ')}`);
-      }
-    } else if (item.old_values && typeof item.old_values === 'object') {
-      const keys = Object.keys(
-        item.old_values as Record<string, unknown>,
-      ).slice(0, 5);
-      if (keys.length) {
-        parts.push(`Campos previos: ${keys.join(', ')}`);
-      }
-    }
-
-    return parts.join(' | ');
   }
 }

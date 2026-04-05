@@ -78,14 +78,17 @@ export interface ConfigShiftContract {
 
 export interface ConfigAuditPreviewItem {
   id: string | number;
-  user_name_snapshot?: string | null;
-  role_code_snapshot?: string | null;
-  entity: string;
-  entity_id?: string | null;
+  user: string;
+  role: string;
+  module: string;
+  moduleLabel?: string;
+  entityId?: string | null;
   action: string;
-  old_values?: unknown;
-  new_values?: unknown;
-  created_at: string;
+  actionLabel?: string;
+  summary: string;
+  target: string;
+  details: string;
+  createdAt: string;
 }
 
 export interface SystemConfigContract {

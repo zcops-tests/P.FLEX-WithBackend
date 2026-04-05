@@ -4,10 +4,16 @@ import { BackendApiService } from './backend-api.service';
 export interface AuditLog {
   id: string;
   timestamp: Date;
+  createdAt?: Date;
   user: string;
   role: string;
   module: string;
+  moduleLabel?: string;
   action: string;
+  actionLabel?: string;
+  summary?: string;
+  target?: string;
+  entityId?: string | null;
   details: string;
   ip: string;
 }
@@ -28,6 +34,9 @@ export class AuditService {
       role: role || '---',
       module: module.toUpperCase(),
       action,
+      actionLabel: action,
+      summary: `${action} ${module}`.trim(),
+      target: module,
       details: this.sanitize(details),
       ip: 'client',
     };
@@ -59,10 +68,16 @@ export class AuditService {
     return {
       id: String(item.id || ''),
       timestamp: item.timestamp ? new Date(item.timestamp) : new Date(),
+      createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
       user: item.user || 'Sistema',
       role: item.role || 'N/A',
       module: String(item.module || '').toUpperCase(),
+      moduleLabel: item.moduleLabel || item.module,
       action: item.action || '',
+      actionLabel: item.actionLabel || item.action || '',
+      summary: item.summary || `${item.action || ''} ${item.module || ''}`.trim(),
+      target: item.target || item.entityId || '',
+      entityId: item.entityId || null,
       details: this.sanitize(item.details || ''),
       ip: item.ip || 'N/A',
     };
