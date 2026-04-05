@@ -100,6 +100,8 @@ export class StateService {
   private apiClient = inject(ApiClientService);
   private storage = inject(BrowserStorageService);
   private readonly userSessionKey = 'pflex_user_session';
+  private sessionClock = signal(Date.now());
+  private sessionExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly config = signal<SystemConfig>({
     shiftName1: 'Turno Dia',
@@ -165,6 +167,7 @@ export class StateService {
   readonly activeOperatorDni = computed(() => this.activeOperator()?.dni || '');
   readonly activeOperatorAreas = computed(() => this.activeOperator()?.assignedAreas || []);
   readonly sessionExpired = computed(() => {
+    this.sessionClock();
     const session = this.readSession();
     if (!session?.expiresAt) return false;
     return new Date(session.expiresAt).getTime() <= Date.now();
@@ -219,6 +222,7 @@ export class StateService {
 
     this.currentUser.set(mappedUser);
     this.currentShift.set(shift);
+    this.scheduleSessionExpiry(expiresAt);
 
     this.audit.log(mappedUser.name, mappedUser.roleName || mappedUser.role, 'ACCESO', 'Inicio de Sesion', `Usuario ${username} inicio sesion en ${shift}.`);
     await this.loadBootstrapData();
@@ -240,6 +244,8 @@ export class StateService {
 
     this.clearPersistedSession();
     this.apiClient.clearSession();
+    this.clearSessionExpiryTimer();
+    this.sessionClock.set(Date.now());
 
     this.currentUser.set(null);
     this.currentShift.set(null);
@@ -490,6 +496,39 @@ export class StateService {
     this.currentUser.set(mappedUser);
     this.currentShift.set(session.shift || null);
     this.activeOperator.set(this.mapPersistedOperator(session.activeOperator || null));
+    this.scheduleSessionExpiry(session.expiresAt);
+  }
+
+  private scheduleSessionExpiry(expiresAt?: string) {
+    this.clearSessionExpiryTimer();
+    this.sessionClock.set(Date.now());
+
+    if (!expiresAt) {
+      return;
+    }
+
+    const expiresAtMs = new Date(expiresAt).getTime();
+    if (!Number.isFinite(expiresAtMs)) {
+      return;
+    }
+
+    const remainingMs = expiresAtMs - Date.now();
+    if (remainingMs <= 0) {
+      this.sessionClock.set(Date.now());
+      return;
+    }
+
+    this.sessionExpiryTimer = setTimeout(() => {
+      this.sessionExpiryTimer = null;
+      this.sessionClock.set(Date.now());
+    }, remainingMs);
+  }
+
+  private clearSessionExpiryTimer() {
+    if (this.sessionExpiryTimer) {
+      clearTimeout(this.sessionExpiryTimer);
+      this.sessionExpiryTimer = null;
+    }
   }
 
   private async loadBootstrapData() {
