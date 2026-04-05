@@ -371,6 +371,96 @@ describe('WorkOrdersService', () => {
   });
 
   describe('bulkUpsert', () => {
+    it('should return zero counts for an empty import batch', async () => {
+      await expect(service.bulkUpsert([])).resolves.toEqual({
+        created: 0,
+        updated: 0,
+        total: 0,
+      });
+      expect(mockPrisma.workOrder.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should normalize ot_number values, collapse duplicates and count creates vs updates', async () => {
+      mockPrisma.workOrder.findMany.mockResolvedValue([
+        {
+          id: 'ot-2',
+          ot_number: 'OT-2002',
+          status: WorkOrderStatus.IMPORTED,
+          fecha_ingreso_planta: null,
+          fecha_programada_produccion: null,
+          maquina_texto: 'IMP-01',
+          raw_payload: {
+            OT: 'OT-2002',
+            descripcion: 'Descripcion previa',
+          },
+          management_entries: [],
+        },
+      ]);
+      mockPrisma.workOrder.upsert.mockResolvedValue(undefined);
+
+      const result = await service.bulkUpsert([
+        {
+          ot_number: ' ot-2001 ',
+          descripcion: 'Nueva',
+          raw_payload: { OT: ' ot-2001 ' },
+        } as any,
+        {
+          ot_number: 'ot-2002',
+          descripcion: 'Primera version',
+          raw_payload: { OT: 'ot-2002', descripcion: 'Primera version' },
+        } as any,
+        {
+          ot_number: 'OT-2002',
+          descripcion: 'Ultima version',
+          raw_payload: { OT: 'OT-2002', descripcion: 'Ultima version' },
+        } as any,
+        {
+          ot_number: '   ',
+          descripcion: 'Se descarta',
+        } as any,
+      ]);
+
+      expect(result).toEqual({
+        created: 1,
+        updated: 1,
+        total: 2,
+      });
+      expect(mockPrisma.workOrder.findMany).toHaveBeenCalledWith({
+        where: { ot_number: { in: ['OT-2001', 'OT-2002'] } },
+        select: expect.any(Object),
+      });
+      expect(mockPrisma.workOrder.upsert).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: { ot_number: 'OT-2002' },
+          update: expect.objectContaining({
+            descripcion: 'Ultima version',
+          }),
+        }),
+      );
+    });
+
+    it('should process multiple chunks and aggregate totals across them', async () => {
+      mockPrisma.workOrder.findMany.mockResolvedValue([]);
+      mockPrisma.workOrder.upsert.mockResolvedValue(undefined);
+
+      const items = Array.from({ length: 401 }, (_, index) => ({
+        ot_number: `OT-${index + 1}`,
+        descripcion: `Trabajo ${index + 1}`,
+        raw_payload: { OT: `OT-${index + 1}` },
+      })) as any[];
+
+      const result = await service.bulkUpsert(items);
+
+      expect(result).toEqual({
+        created: 401,
+        updated: 0,
+        total: 401,
+      });
+      expect(mockPrisma.workOrder.findMany).toHaveBeenCalledTimes(3);
+      expect(mockPrisma.workOrder.upsert).toHaveBeenCalledTimes(401);
+    });
+
     it('should preserve the active management snapshot while importing internal database changes', async () => {
       mockPrisma.workOrder.findMany.mockResolvedValue([
         {
