@@ -23,6 +23,8 @@ export interface AuthUserRecord {
   failed_login_attempts: number;
   last_failed_login_at: Date | null;
   locked_until: Date | null;
+  password_changed_at: Date | null;
+  created_at: Date;
   role: AuthRoleRecord;
 }
 
@@ -35,6 +37,15 @@ export interface AccessUser {
   roleCode: string;
   roleName: string;
   permissionCodes: string[];
+}
+
+export interface PasswordSecurityStatus {
+  status: 'VALID' | 'WARNING' | 'EXPIRED';
+  expiresAt: string | null;
+  daysUntilExpiry: number | null;
+  policyDays: number;
+  warningDays: number;
+  warningMessage?: string;
 }
 
 export interface JwtSessionPayload {

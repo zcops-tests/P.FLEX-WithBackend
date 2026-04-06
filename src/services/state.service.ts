@@ -254,6 +254,10 @@ export class StateService {
       this.currentShift.set(shift);
       this.scheduleSessionExpiry(expiresAt);
 
+      if (response.security?.status === 'WARNING' && response.security?.warningMessage) {
+        this.notifications.showWarning(response.security.warningMessage);
+      }
+
       this.audit.log(mappedUser.name, mappedUser.roleName || mappedUser.role, 'ACCESO', 'Inicio de Sesion', `Usuario ${username} inicio sesion en ${shift}.`);
       await this.loadBootstrapData();
       return mappedUser;

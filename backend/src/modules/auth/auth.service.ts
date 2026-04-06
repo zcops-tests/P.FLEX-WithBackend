@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as uuid from 'uuid';
 import { PrismaService } from '../../database/prisma.service';
@@ -20,10 +21,13 @@ import type {
   AuthUserRecord,
   JwtSessionPayload,
   LoginFailureAuditInput,
+  PasswordSecurityStatus,
 } from './auth.types';
 
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid credentials';
 const LOGIN_LOCKED_MESSAGE = 'Too many login attempts. Try again later.';
+const PASSWORD_EXPIRED_MESSAGE =
+  'La contraseña expiró. Solicita un restablecimiento para volver a ingresar.';
 type AuthStringConfigKey =
   | 'JWT_ACCESS_SECRET'
   | 'JWT_REFRESH_SECRET'
@@ -32,6 +36,13 @@ type AuthStringConfigKey =
 type AuthNumericConfigKey =
   | 'AUTH_LOGIN_MAX_ATTEMPTS'
   | 'AUTH_LOGIN_LOCK_MINUTES';
+
+interface AuthSecurityPolicy {
+  failedLoginMaxAttempts: number;
+  passwordPolicyDays: number;
+  passwordExpiryWarningDays: number;
+  loginLockMinutes: number;
+}
 
 @Injectable()
 export class AuthService {
@@ -43,6 +54,7 @@ export class AuthService {
 
   async login(loginDto: LoginDto, ipAddress: string, userAgent: string) {
     const now = new Date();
+    const securityPolicy = await this.resolveSecurityPolicy();
     const user = await this.prisma.user.findUnique({
       where: { username: loginDto.username },
       include: {
@@ -107,6 +119,7 @@ export class AuthService {
         ipAddress,
         userAgent,
         'PASSWORD_NOT_CONFIGURED',
+        securityPolicy,
       );
       throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
     }
@@ -121,8 +134,41 @@ export class AuthService {
         ipAddress,
         userAgent,
         'INVALID_PASSWORD',
+        securityPolicy,
       );
       throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
+    }
+
+    const passwordSecurity = this.evaluatePasswordSecurity(user, securityPolicy);
+    if (passwordSecurity?.status === 'EXPIRED') {
+      await this.prisma.$transaction([
+        this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            failed_login_attempts: 0,
+            last_failed_login_at: null,
+            locked_until: null,
+          },
+        }),
+        this.prisma.auditLog.create({
+          data: {
+            user_id: user.id,
+            user_name_snapshot: user.name,
+            role_code_snapshot: user.role.code || null,
+            entity: 'users',
+            entity_id: user.id,
+            action: 'LOGIN_BLOCKED',
+            ip_address: ipAddress,
+            user_agent: userAgent,
+            new_values: {
+              username: user.username,
+              reason: 'PASSWORD_EXPIRED',
+              security: passwordSecurity,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        }),
+      ]);
+      throw new UnauthorizedException(PASSWORD_EXPIRED_MESSAGE);
     }
 
     const sessionId = uuid.v4();
@@ -185,6 +231,7 @@ export class AuthService {
       user: accessUser,
       ...tokens,
       sessionId,
+      security: passwordSecurity,
     };
   }
 
@@ -407,14 +454,6 @@ export class AuthService {
     );
   }
 
-  private getLoginMaxAttempts(): number {
-    return this.getPositiveConfigNumber('AUTH_LOGIN_MAX_ATTEMPTS', 5);
-  }
-
-  private getLoginLockMinutes(): number {
-    return this.getPositiveConfigNumber('AUTH_LOGIN_LOCK_MINUTES', 15);
-  }
-
   private getPositiveConfigNumber(
     key: AuthNumericConfigKey,
     fallback: number,
@@ -429,8 +468,8 @@ export class AuthService {
     return this.configService.get(key, { infer: true });
   }
 
-  private getLoginAttemptWindowMs(): number {
-    return this.getLoginLockMinutes() * 60 * 1000;
+  private getLoginAttemptWindowMs(lockMinutes: number): number {
+    return lockMinutes * 60 * 1000;
   }
 
   private async consumeDummyPasswordCheck(password: string) {
@@ -442,21 +481,36 @@ export class AuthService {
     ipAddress: string,
     userAgent: string,
     reason: string,
+    securityPolicy: AuthSecurityPolicy,
   ): Promise<void> {
     const now = new Date();
+    const attemptWindowMs = this.getLoginAttemptWindowMs(
+      securityPolicy.loginLockMinutes,
+    );
     const isWithinWindow =
       user.last_failed_login_at instanceof Date &&
-      now.getTime() - user.last_failed_login_at.getTime() <=
-        this.getLoginAttemptWindowMs();
+      now.getTime() - user.last_failed_login_at.getTime() <= attemptWindowMs;
     const failedAttempts = isWithinWindow
       ? Number(user.failed_login_attempts || 0) + 1
       : 1;
-    const shouldLock = failedAttempts >= this.getLoginMaxAttempts();
+    const shouldLock =
+      failedAttempts >= securityPolicy.failedLoginMaxAttempts;
     const lockedUntil = shouldLock
-      ? new Date(now.getTime() + this.getLoginAttemptWindowMs())
+      ? new Date(now.getTime() + attemptWindowMs)
       : null;
+    const auditPayload = {
+      username: user.username,
+      reason,
+      failedAttempts,
+      maxAttempts: securityPolicy.failedLoginMaxAttempts,
+      lockedUntil,
+      thresholdReached: shouldLock,
+      alertMode: 'AUDIT_AND_OUTBOX',
+      ipAddress,
+      userAgent,
+    };
 
-    await this.prisma.$transaction([
+    const operations: any[] = [
       this.prisma.user.update({
         where: { id: user.id },
         data: {
@@ -475,15 +529,37 @@ export class AuthService {
           action: shouldLock ? 'LOGIN_LOCKED' : 'LOGIN_FAILED',
           ip_address: ipAddress,
           user_agent: userAgent,
-          new_values: {
-            username: user.username,
-            reason,
-            failedAttempts,
-            lockedUntil,
-          },
+          new_values: auditPayload as Prisma.InputJsonValue,
         },
       }),
-    ]);
+    ];
+
+    if (shouldLock) {
+      operations.push(
+        this.prisma.outboxEvent.create({
+          data: {
+            event_name: 'security.failed-login-threshold-reached',
+            aggregate_type: 'users',
+            aggregate_id: user.id,
+            payload: {
+              userId: user.id,
+              username: user.username,
+              roleCode: user.role.code || null,
+              failedAttempts,
+              maxAttempts: securityPolicy.failedLoginMaxAttempts,
+              lockedUntil,
+              reason,
+              ipAddress,
+              userAgent,
+              emittedAt: now.toISOString(),
+            } as Prisma.InputJsonValue,
+            status: 'PENDING',
+          },
+        }),
+      );
+    }
+
+    await this.prisma.$transaction(operations);
   }
 
   private async auditLoginFailure({
@@ -509,7 +585,7 @@ export class AuthService {
           username,
           reason,
           ...details,
-        },
+        } as Prisma.InputJsonValue,
       },
     });
   }
@@ -566,5 +642,106 @@ export class AuthService {
     ]);
 
     return { message: 'All sessions revoked' };
+  }
+
+  private async resolveSecurityPolicy(): Promise<AuthSecurityPolicy> {
+    const persistedConfig = (await this.prisma.systemConfig.findFirst()) as
+      | {
+          failed_login_max_attempts?: number | null;
+          password_policy_days?: number | null;
+          password_expiry_warning_days?: number | null;
+        }
+      | null;
+
+    return {
+      failedLoginMaxAttempts: this.getPersistedOrFallbackNumber(
+        persistedConfig?.failed_login_max_attempts,
+        5,
+        'AUTH_LOGIN_MAX_ATTEMPTS',
+      ),
+      passwordPolicyDays: this.getPersistedOrFallbackNumber(
+        persistedConfig?.password_policy_days,
+        90,
+      ),
+      passwordExpiryWarningDays: this.getPersistedOrFallbackNumber(
+        persistedConfig?.password_expiry_warning_days,
+        7,
+      ),
+      loginLockMinutes: this.getPositiveConfigNumber(
+        'AUTH_LOGIN_LOCK_MINUTES',
+        15,
+      ),
+    };
+  }
+
+  private getPersistedOrFallbackNumber(
+    persistedValue: number | null | undefined,
+    fallback: number,
+    envKey?: AuthNumericConfigKey,
+  ): number {
+    const persisted = Number(persistedValue);
+    if (Number.isFinite(persisted) && persisted > 0) {
+      return persisted;
+    }
+
+    return envKey
+      ? this.getPositiveConfigNumber(envKey, fallback)
+      : fallback;
+  }
+
+  private evaluatePasswordSecurity(
+    user: Pick<
+      AuthUserRecord,
+      'password_changed_at' | 'created_at' | 'role'
+    >,
+    securityPolicy: AuthSecurityPolicy,
+  ): PasswordSecurityStatus | null {
+    if (!this.isPasswordLoginAllowed(user)) {
+      return null;
+    }
+
+    const baseDate = user.password_changed_at || user.created_at;
+    if (!(baseDate instanceof Date) || Number.isNaN(baseDate.getTime())) {
+      return null;
+    }
+
+    const expiresAt = new Date(baseDate.getTime());
+    expiresAt.setDate(expiresAt.getDate() + securityPolicy.passwordPolicyDays);
+    const daysUntilExpiry = Math.ceil(
+      (expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+    );
+
+    if (daysUntilExpiry < 0) {
+      return {
+        status: 'EXPIRED',
+        expiresAt: expiresAt.toISOString(),
+        daysUntilExpiry,
+        policyDays: securityPolicy.passwordPolicyDays,
+        warningDays: securityPolicy.passwordExpiryWarningDays,
+        warningMessage: PASSWORD_EXPIRED_MESSAGE,
+      };
+    }
+
+    if (daysUntilExpiry <= securityPolicy.passwordExpiryWarningDays) {
+      return {
+        status: 'WARNING',
+        expiresAt: expiresAt.toISOString(),
+        daysUntilExpiry,
+        policyDays: securityPolicy.passwordPolicyDays,
+        warningDays: securityPolicy.passwordExpiryWarningDays,
+        warningMessage:
+          daysUntilExpiry === 0
+            ? 'Tu contraseña vence hoy. Cámbiala cuanto antes.'
+            : `Tu contraseña vence en ${daysUntilExpiry} día${daysUntilExpiry === 1 ? '' : 's'}.`,
+      };
+    }
+
+    return {
+      status: 'VALID',
+      expiresAt: expiresAt.toISOString(),
+      daysUntilExpiry,
+      policyDays: securityPolicy.passwordPolicyDays,
+      warningDays: securityPolicy.passwordExpiryWarningDays,
+    };
   }
 }

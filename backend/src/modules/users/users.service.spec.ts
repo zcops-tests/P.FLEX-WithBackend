@@ -109,6 +109,13 @@ describe('UsersService', () => {
       } as any);
       expect(result.username).toBe('12345678');
       expect(bcrypt.hash).toHaveBeenCalled();
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            password_changed_at: expect.any(Date),
+          }),
+        }),
+      );
     });
 
     it('should create an operator without explicit password', async () => {
@@ -133,6 +140,13 @@ describe('UsersService', () => {
       } as any);
       expect(result.username).toBe('87654321');
       expect(bcrypt.hash).toHaveBeenCalled();
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            password_changed_at: null,
+          }),
+        }),
+      );
     });
 
     it('should require password for non-operator users', async () => {
@@ -239,6 +253,85 @@ describe('UsersService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       await expect(service.findOne('invalid')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('update', () => {
+    it('should refresh password_changed_at when a non-operator password changes', async () => {
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: '12345678',
+          name: 'Existing',
+          deleted_at: null,
+          role: { id: 'role-1', code: 'SUPERVISOR', name: 'Supervisor' },
+          assignedAreas: [],
+        })
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: '12345678',
+          deleted_at: null,
+          role: { id: 'role-1', code: 'SUPERVISOR', name: 'Supervisor' },
+        });
+      mockPrisma.user.update.mockResolvedValue({
+        id: 'user-1',
+        username: '12345678',
+        role: { permissions: [] },
+        assignedAreas: [],
+      });
+
+      await service.update('user-1', { password: 'Nueva123!' } as any);
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-1' },
+          data: expect.objectContaining({
+            password_hash: 'hashed_pass',
+            password_changed_at: expect.any(Date),
+          }),
+        }),
+      );
+    });
+
+    it('should clear password_changed_at when switching to operator access', async () => {
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: '12345678',
+          name: 'Existing',
+          deleted_at: null,
+          role: { id: 'role-1', code: 'SUPERVISOR', name: 'Supervisor' },
+          assignedAreas: [],
+        })
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: '12345678',
+          deleted_at: null,
+          role: { id: 'role-1', code: 'SUPERVISOR', name: 'Supervisor' },
+        });
+      mockPrisma.role.findUnique.mockResolvedValue({
+        id: 'role-operator',
+        code: 'OPERATOR',
+        active: true,
+        deleted_at: null,
+      });
+      mockPrisma.user.update.mockResolvedValue({
+        id: 'user-1',
+        username: '12345678',
+        role: { permissions: [] },
+        assignedAreas: [],
+      });
+
+      await service.update('user-1', { role_id: 'role-operator' } as any);
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-1' },
+          data: expect.objectContaining({
+            password_changed_at: null,
+          }),
+        }),
       );
     });
   });

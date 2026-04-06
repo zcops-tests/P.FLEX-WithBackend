@@ -47,6 +47,7 @@ export class UsersService {
       data: {
         username: normalizedUsername,
         password_hash: passwordHash,
+        password_changed_at: this.isOperatorRole(role.code) ? null : new Date(),
         name: dto.name,
         role_id: dto.role_id,
         active: dto.active ?? true,
@@ -151,9 +152,11 @@ export class UsersService {
         data.password_hash = await this.buildDisabledOperatorPasswordHash(
           nextUsername || existingUser.username,
         );
+        data.password_changed_at = null;
       }
     } else if (dto.password) {
       data.password_hash = await bcrypt.hash(dto.password, 10);
+      data.password_changed_at = new Date();
     } else if (this.isOperatorRole(existingUser.role?.code)) {
       throw new BadRequestException(
         'Debe definir una contraseña al convertir un operario en un usuario con acceso de inicio de sesion.',

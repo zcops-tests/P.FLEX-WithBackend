@@ -22,11 +22,43 @@ export class UserStatusGuard implements CanActivate {
 
     const dbUser = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { active: true },
+      select: {
+        active: true,
+        password_changed_at: true,
+        created_at: true,
+        role: {
+          select: {
+            code: true,
+          },
+        },
+      },
     });
 
     if (!dbUser || !dbUser.active) {
       throw new UnauthorizedException('User account is inactive or deleted');
+    }
+
+    const roleCode = String(dbUser.role?.code || '').toUpperCase();
+    if (roleCode !== 'OPERATOR') {
+      const config = await this.prisma.systemConfig.findFirst({
+        select: {
+          password_policy_days: true,
+        },
+      });
+      const policyDays = Math.max(
+        1,
+        Number(config?.password_policy_days || 90),
+      );
+      const baseDate = dbUser.password_changed_at || dbUser.created_at;
+      const expiresAt = new Date(
+        baseDate.getTime() + policyDays * 24 * 60 * 60 * 1000,
+      );
+
+      if (expiresAt.getTime() <= Date.now()) {
+        throw new UnauthorizedException(
+          'La contraseña expiró. Solicita un restablecimiento para volver a ingresar.',
+        );
+      }
     }
 
     return true;

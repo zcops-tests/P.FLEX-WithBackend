@@ -54,6 +54,17 @@ test('state service declares centralized maintenance computed state and enforcem
   assert.match(stateSource, /setInterval\(\(\) => \{\s*void this\.loadPublicConfig\(\);\s*\}, StateService\.publicConfigRefreshMs\)/s);
 });
 
+test('state service surfaces password expiry warnings returned by auth login', () => {
+  assert.match(
+    stateSource,
+    /response\.security\?\.status === 'WARNING' && response\.security\?\.warningMessage/,
+  );
+  assert.match(
+    stateSource,
+    /this\.notifications\.showWarning\(response\.security\.warningMessage\)/,
+  );
+});
+
 test('state service normalizes admin-like roles to Sistemas for maintenance bypass', () => {
   const harness = createStateHarness();
   assert.equal(harness.normalizeUserRole('ADMIN'), 'Sistemas');
