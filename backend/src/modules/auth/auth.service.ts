@@ -645,13 +645,7 @@ export class AuthService {
   }
 
   private async resolveSecurityPolicy(): Promise<AuthSecurityPolicy> {
-    const persistedConfig = (await this.prisma.systemConfig.findFirst()) as
-      | {
-          failed_login_max_attempts?: number | null;
-          password_policy_days?: number | null;
-          password_expiry_warning_days?: number | null;
-        }
-      | null;
+    const persistedConfig = await this.fetchSecurityConfig();
 
     return {
       failedLoginMaxAttempts: this.getPersistedOrFallbackNumber(
@@ -672,6 +666,30 @@ export class AuthService {
         15,
       ),
     };
+  }
+
+  private async fetchSecurityConfig(): Promise<{
+    failed_login_max_attempts?: number | null;
+    password_policy_days?: number | null;
+    password_expiry_warning_days?: number | null;
+  } | null> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        failed_login_max_attempts: number | null;
+        password_policy_days: number | null;
+        password_expiry_warning_days: number | null;
+      }>
+    >(Prisma.sql`
+      SELECT
+        failed_login_max_attempts,
+        password_policy_days,
+        password_expiry_warning_days
+      FROM system_config
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `);
+
+    return rows[0] ?? null;
   }
 
   private getPersistedOrFallbackNumber(

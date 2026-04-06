@@ -6,7 +6,7 @@ describe('UserStatusGuard', () => {
   let guard: UserStatusGuard;
   let prisma: {
     user: { findUnique: jest.Mock };
-    systemConfig: { findFirst: jest.Mock };
+    $queryRaw: jest.Mock;
   };
 
   function createContext(user: any): ExecutionContext {
@@ -22,11 +22,11 @@ describe('UserStatusGuard', () => {
       user: {
         findUnique: jest.fn(),
       },
-      systemConfig: {
-        findFirst: jest.fn().mockResolvedValue({
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
           password_policy_days: 90,
-        }),
-      },
+        },
+      ]),
     };
 
     guard = new UserStatusGuard(prisma as unknown as PrismaService);
@@ -59,9 +59,11 @@ describe('UserStatusGuard', () => {
   });
 
   it('blocks expired passwords for non-operator users', async () => {
-    prisma.systemConfig.findFirst.mockResolvedValue({
+    prisma.$queryRaw.mockResolvedValue([
+      {
       password_policy_days: 30,
-    });
+      },
+    ]);
     prisma.user.findUnique.mockResolvedValue({
       active: true,
       password_changed_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000),
@@ -77,9 +79,11 @@ describe('UserStatusGuard', () => {
   });
 
   it('skips password expiry enforcement for operator users', async () => {
-    prisma.systemConfig.findFirst.mockResolvedValue({
+    prisma.$queryRaw.mockResolvedValue([
+      {
       password_policy_days: 1,
-    });
+      },
+    ]);
     prisma.user.findUnique.mockResolvedValue({
       active: true,
       password_changed_at: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),

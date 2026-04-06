@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import type { AuthenticatedRequest } from '../auth.types';
 
@@ -40,11 +41,15 @@ export class UserStatusGuard implements CanActivate {
 
     const roleCode = String(dbUser.role?.code || '').toUpperCase();
     if (roleCode !== 'OPERATOR') {
-      const config = await this.prisma.systemConfig.findFirst({
-        select: {
-          password_policy_days: true,
-        },
-      });
+      const rows = await this.prisma.$queryRaw<
+        Array<{ password_policy_days: number | null }>
+      >(Prisma.sql`
+        SELECT password_policy_days
+        FROM system_config
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `);
+      const config = rows[0] ?? null;
       const policyDays = Math.max(
         1,
         Number(config?.password_policy_days || 90),

@@ -23,9 +23,7 @@ jest.mock('uuid', () => ({
 
 type PrismaServiceMock = {
   $transaction: jest.Mock<Promise<unknown[]>, [Promise<unknown>[]]>;
-  systemConfig: {
-    findFirst: jest.Mock<Promise<any>, [unknown?]>;
-  };
+  $queryRaw: jest.Mock<Promise<any[]>, [unknown]>;
   user: {
     findUnique: jest.Mock<Promise<AuthUserRecord | null>, [unknown]>;
     update: jest.Mock<Promise<unknown>, [unknown]>;
@@ -124,13 +122,13 @@ describe('AuthService', () => {
   beforeEach(() => {
     prisma = {
       $transaction: jest.fn((operations) => Promise.all(operations)),
-      systemConfig: {
-        findFirst: jest.fn().mockResolvedValue({
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
           failed_login_max_attempts: 3,
           password_policy_days: 90,
           password_expiry_warning_days: 7,
-        }),
-      },
+        },
+      ]),
       user: {
         findUnique: jest.fn<Promise<AuthUserRecord | null>, [unknown]>(),
         update: jest.fn<Promise<unknown>, [unknown]>(),
@@ -279,7 +277,7 @@ describe('AuthService', () => {
 
   it('falls back to env threshold when persistent config is unavailable', async () => {
     compareMock.mockResolvedValueOnce(false);
-    prisma.systemConfig.findFirst.mockResolvedValueOnce(null);
+    prisma.$queryRaw.mockResolvedValueOnce([]);
     prisma.user.findUnique.mockResolvedValue(
       buildUser({
         failed_login_attempts: 4,
@@ -328,11 +326,13 @@ describe('AuthService', () => {
   });
 
   it('rejects expired passwords using password_policy_days from system_config', async () => {
-    prisma.systemConfig.findFirst.mockResolvedValueOnce({
+    prisma.$queryRaw.mockResolvedValueOnce([
+      {
       failed_login_max_attempts: 5,
       password_policy_days: 30,
       password_expiry_warning_days: 5,
-    });
+      },
+    ]);
     prisma.user.findUnique.mockResolvedValue(
       buildUser({
         password_changed_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000),
