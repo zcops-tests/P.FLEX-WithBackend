@@ -12,6 +12,7 @@
     "erp:clises": "node scripts/erp-clises-xlsx.mjs",
     "erp:stock": "node scripts/erp-stock-xlsx.mjs",
     "erp:troqueles": "node scripts/erp-troqueles-xlsx.mjs",
+    "seed:machines": "node scripts/seed-machines.mjs",
     "smoke:maintenance": "node scripts/maintenance-mode-smoke.mjs",
     "preview": "ng serve --configuration=production",
     "smoke:baseline:api": "node ./scripts/smoke-baseline.mjs",
