@@ -56,4 +56,10 @@ test('admin module exposes user, role, machine and configuration functionality i
   assert.match(rolesSource, /permisos/i);
   assert.match(machinesSource, /maquina|máquina/i);
   assert.match(configSource, /Auditoría y Cierre OT/);
+  assert.doesNotMatch(configSource, /Areas Activas/i);
+  assert.doesNotMatch(configSource, /Sincronizacion solo Wi-?Fi|Sincronización solo Wi-?Fi/i);
+  assert.doesNotMatch(configSource, /2FA Obligatorio/i);
+  assert.match(configSource, /NotificationService/);
+  assert.match(configSource, /navigate\(\['\/audit'\]\)/);
+  assert.match(configSource, /solo permite ingreso al rol SISTEMAS/i);
 });

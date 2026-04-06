@@ -10,6 +10,7 @@ import {
 import { BackendApiService } from './backend-api.service';
 import { ApiClientService } from './api-client.service';
 import { BrowserStorageService } from './browser-storage.service';
+import { NotificationService } from './notification.service';
 
 export type UserRole = string;
 export type Shift = string | null;
@@ -95,13 +96,22 @@ interface PersistedUserSession {
 
 @Injectable({ providedIn: 'root' })
 export class StateService {
+  private static readonly maintenanceFallbackMessage =
+    'El sistema está en mantenimiento. Solo el rol SISTEMAS puede acceder en este momento.';
+  private static readonly publicConfigRefreshMs = 5_000;
+
   private audit = inject(AuditService);
   private backend = inject(BackendApiService);
   private apiClient = inject(ApiClientService);
   private storage = inject(BrowserStorageService);
+  private notifications = inject(NotificationService);
   private readonly userSessionKey = 'pflex_user_session';
   private sessionClock = signal(Date.now());
   private sessionExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private publicConfigRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private isAuthenticating = false;
+  private maintenanceEnforcementInFlight = false;
+  private lastMaintenanceNoticeAt = 0;
 
   readonly config = signal<SystemConfig>({
     shiftName1: 'Turno Dia',
@@ -166,6 +176,11 @@ export class StateService {
   readonly activeOperatorName = computed(() => this.activeOperator()?.name || 'Operario no identificado');
   readonly activeOperatorDni = computed(() => this.activeOperator()?.dni || '');
   readonly activeOperatorAreas = computed(() => this.activeOperator()?.assignedAreas || []);
+  readonly isMaintenanceActive = computed(() => Boolean(this.config().maintenanceModeEnabled));
+  readonly isSystemsRole = computed(() => this.isSystemsUser(this.currentUser()));
+  readonly isMaintenanceBlockingAccess = computed(
+    () => this.isMaintenanceActive() && !this.isSystemsRole(),
+  );
   readonly sessionExpired = computed(() => {
     this.sessionClock();
     const session = this.readSession();
@@ -176,6 +191,7 @@ export class StateService {
   constructor() {
     this.restoreSession();
     void this.loadPublicConfig();
+    this.startPublicConfigRefresh();
 
     effect(() => {
       const user = this.currentUser();
@@ -184,63 +200,81 @@ export class StateService {
         void this.loadBootstrapData();
       });
     });
+
+    effect(() => {
+      const user = this.currentUser();
+      const shouldBlock = this.isMaintenanceBlockingAccess();
+      if (!user || !shouldBlock || this.isAuthenticating || this.maintenanceEnforcementInFlight) {
+        return;
+      }
+
+      untracked(() => {
+        void this.rejectMaintenanceAccessIfNeeded();
+      });
+    });
   }
 
   async login(username: string, shift: Shift, password: string) {
-    const response = await this.backend.login({
-      username,
-      password,
-      deviceName: 'Web Frontend',
-      deviceType: 'DESKTOP',
-      deviceProfile: 'FRONTEND_APP',
-    });
+    this.isAuthenticating = true;
+    try {
+      const response = await this.backend.login({
+        username,
+        password,
+        deviceName: 'Web Frontend',
+        deviceType: 'DESKTOP',
+        deviceProfile: 'FRONTEND_APP',
+      });
 
-    const mappedUser = this.mapAuthUser(response.user);
-    const expiresAt = new Date(Date.now() + this.config().autoLogoutMinutes * 60_000).toISOString();
-    this.activeOperator.set(null);
+      const mappedUser = this.mapAuthUser(response.user);
+      const expiresAt = new Date(Date.now() + this.config().autoLogoutMinutes * 60_000).toISOString();
+      this.activeOperator.set(null);
 
-    this.persistSession({
-      user: mappedUser,
-      shift,
-      sessionId: response.sessionId,
-      expiresAt,
-      activeOperator: null,
-    });
-
-    this.apiClient.setSession(
-      {
-        accessToken: response.accessToken,
-        refreshToken: response.refreshToken,
-        sessionId: response.sessionId,
-      },
-      {
+      this.persistSession({
         user: mappedUser,
         shift,
+        sessionId: response.sessionId,
         expiresAt,
-      },
-    );
+        activeOperator: null,
+      });
 
-    this.currentUser.set(mappedUser);
-    this.currentShift.set(shift);
-    this.scheduleSessionExpiry(expiresAt);
+      this.apiClient.setSession(
+        {
+          accessToken: response.accessToken,
+          refreshToken: response.refreshToken,
+          sessionId: response.sessionId,
+        },
+        {
+          user: mappedUser,
+          shift,
+          expiresAt,
+        },
+      );
 
-    this.audit.log(mappedUser.name, mappedUser.roleName || mappedUser.role, 'ACCESO', 'Inicio de Sesion', `Usuario ${username} inicio sesion en ${shift}.`);
-    await this.loadBootstrapData();
-    return mappedUser;
+      this.currentUser.set(mappedUser);
+      this.currentShift.set(shift);
+      this.scheduleSessionExpiry(expiresAt);
+
+      this.audit.log(mappedUser.name, mappedUser.roleName || mappedUser.role, 'ACCESO', 'Inicio de Sesion', `Usuario ${username} inicio sesion en ${shift}.`);
+      await this.loadBootstrapData();
+      return mappedUser;
+    } finally {
+      this.isAuthenticating = false;
+    }
   }
 
-  async logout() {
-    try {
-      if (this.currentUser()) {
-        await this.backend.logout();
-      }
-    } catch {
-      // Ignore logout transport errors and clear session locally.
-    }
-
+  async logout(options: { skipAudit?: boolean } = {}) {
+    const currentUser = this.currentUser();
     const user = this.userName();
     const role = this.userRole();
-    this.audit.log(user, role, 'ACCESO', 'Cierre de Sesion', 'Usuario cerro sesion manualmente.');
+    const remoteLogoutPromise = currentUser
+      ? this.backend.logout().catch(() => {
+        // Ignore logout transport errors and clear session locally.
+      })
+      : Promise.resolve();
+
+    if (!options.skipAudit) {
+      this.audit.log(user, role, 'ACCESO', 'Cierre de Sesion', 'Usuario cerro sesion manualmente.');
+    }
 
     this.clearPersistedSession();
     this.apiClient.clearSession();
@@ -250,11 +284,49 @@ export class StateService {
     this.currentUser.set(null);
     this.currentShift.set(null);
     this.activeOperator.set(null);
+
+    await remoteLogoutPromise;
   }
 
   redirectToLogin() {
     const { origin, pathname, search } = window.location;
     window.location.replace(`${origin}${pathname}${search}#/login`);
+  }
+
+  getMaintenanceAccessMessage() {
+    const configuredMessage = String(this.config().maintenanceMessage || '').trim();
+    return configuredMessage || StateService.maintenanceFallbackMessage;
+  }
+
+  notifyMaintenanceRestriction(message?: string) {
+    const now = Date.now();
+    if (now - this.lastMaintenanceNoticeAt < 1200) {
+      return;
+    }
+
+    this.lastMaintenanceNoticeAt = now;
+    this.notifications.showWarning(message || this.getMaintenanceAccessMessage());
+  }
+
+  canAccessDuringMaintenance(user: Pick<User, 'role' | 'roleCode' | 'roleName'> | null | undefined = this.currentUser()) {
+    return !this.isMaintenanceActive() || this.isSystemsUser(user);
+  }
+
+  async rejectMaintenanceAccessIfNeeded() {
+    if (!this.currentUser() || !this.isMaintenanceBlockingAccess() || this.maintenanceEnforcementInFlight) {
+      return false;
+    }
+
+    this.maintenanceEnforcementInFlight = true;
+    try {
+      this.notifyMaintenanceRestriction();
+      const logoutPromise = this.logout({ skipAudit: true });
+      this.redirectToLogin();
+      await logoutPromise;
+      return true;
+    } finally {
+      this.maintenanceEnforcementInFlight = false;
+    }
   }
 
   toggleSidebar() {
@@ -529,6 +601,16 @@ export class StateService {
       clearTimeout(this.sessionExpiryTimer);
       this.sessionExpiryTimer = null;
     }
+  }
+
+  private startPublicConfigRefresh() {
+    if (this.publicConfigRefreshTimer || typeof window === 'undefined') {
+      return;
+    }
+
+    this.publicConfigRefreshTimer = setInterval(() => {
+      void this.loadPublicConfig();
+    }, StateService.publicConfigRefreshMs);
   }
 
   private async loadBootstrapData() {
@@ -858,6 +940,13 @@ export class StateService {
       .filter(Boolean);
 
     return !tokens.some((token) => token === 'OPERATOR' || token.includes('OPERARIO'));
+  }
+
+  private isSystemsUser(user: Pick<User, 'role' | 'roleCode' | 'roleName'> | null | undefined) {
+    const normalizedRole = this.normalizeUserRole(
+      user?.roleName || user?.role || user?.roleCode || '',
+    );
+    return normalizedRole === 'Sistemas';
   }
 
   private normalizeOperatorDni(value: string | null | undefined) {

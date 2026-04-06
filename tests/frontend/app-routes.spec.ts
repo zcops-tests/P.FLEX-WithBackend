@@ -76,3 +76,12 @@ test('inventory route preserves per-type permission mapping', () => {
     assert.match(indexSource, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   });
 });
+
+test('router applies maintenanceGuard to protected routes and keeps login public', () => {
+  assert.match(indexSource, /maintenanceGuard/);
+  assert.match(indexSource, /path: 'mode-selector'.*canActivate: \[authGuard, maintenanceGuard\]/s);
+  assert.match(indexSource, /path: 'dashboard'.*canActivate: \[authGuard, maintenanceGuard, roleGuard\]/s);
+  assert.match(indexSource, /path: 'inventory\/:type'.*canActivate: \[authGuard, maintenanceGuard, inventoryRoleGuard\]/s);
+  assert.match(indexSource, /path: 'operator'.*canActivate: \[authGuard, maintenanceGuard, roleGuard\]/s);
+  assert.match(indexSource, /path: 'login'.*canActivate: \[guestGuard\]/s);
+});

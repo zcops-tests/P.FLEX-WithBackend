@@ -50,6 +50,19 @@ export const guestGuard: CanActivateFn = () => {
   return false;
 };
 
+export const maintenanceGuard: CanActivateFn = () => {
+  const state = inject(StateService);
+  const router = inject(Router);
+
+  if (state.canAccessDuringMaintenance()) {
+    return true;
+  }
+
+  state.notifyMaintenanceRestriction();
+  void router.navigate(['/login']);
+  return false;
+};
+
 export const roleGuard: CanActivateFn = (route) => {
   const state = inject(StateService);
   const router = inject(Router);

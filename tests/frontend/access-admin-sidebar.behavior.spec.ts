@@ -23,7 +23,14 @@ function createLoginComponent(stateOverrides: Record<string, unknown> = {}) {
       shiftTime2: '14:00',
       shiftEndTime2: '22:00',
     }),
+    isMaintenanceActive: () => false,
+    isMaintenanceBlockingAccess: () => false,
+    getMaintenanceAccessMessage: () =>
+      'El sistema está en mantenimiento. Solo el rol SISTEMAS puede acceder en este momento.',
     login: async () => undefined,
+    logout: async () => undefined,
+    rejectMaintenanceAccessIfNeeded: async () => false,
+    redirectToLogin() {},
     postLoginRoute: () => '/dashboard',
     ...stateOverrides,
   };
@@ -32,6 +39,7 @@ function createLoginComponent(stateOverrides: Record<string, unknown> = {}) {
   } as any;
   component.notifications = {
     showError() {},
+    showWarning() {},
   } as any;
   component.username = '';
   component.password = '';

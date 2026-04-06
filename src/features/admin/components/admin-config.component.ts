@@ -1,11 +1,37 @@
 import { CommonModule, DatePipe } from '@angular/common';
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, effect, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { NotificationService } from '../../../services/notification.service';
 import { StateService } from '../../../services/state.service';
 import { ConfigAuditPreviewItem, SystemConfig } from '../models/admin.models';
 import { AdminService } from '../services/admin.service';
+
+const BACKUP_FREQUENCY_OPTIONS = [
+  { value: 'HOURLY', label: 'Cada 1 Hora' },
+  { value: 'EVERY_4_HOURS', label: 'Cada 4 Horas' },
+  { value: 'DAILY', label: 'Diario' },
+] as const;
+
+const CONFLICT_RESOLUTION_OPTIONS = [
+  { value: 'SERVER_WINS', label: 'Servidor gana' },
+  { value: 'CLIENT_WINS', label: 'Dispositivo gana' },
+  { value: 'MANUAL_REVIEW', label: 'Manual' },
+] as const;
+
+const FAILED_LOGIN_ALERT_OPTIONS = [
+  { value: 'AUDIT_ONLY', label: 'Solo auditoría' },
+  { value: 'NOTIFY_AND_AUDIT', label: 'Notificar y auditar' },
+] as const;
+
+type ConfigOptionValue<TOptions extends readonly { value: string }[]> =
+  TOptions[number]['value'];
+
+type BackupFrequencyValue = ConfigOptionValue<typeof BACKUP_FREQUENCY_OPTIONS>;
+type ConflictResolutionValue =
+  ConfigOptionValue<typeof CONFLICT_RESOLUTION_OPTIONS>;
+type FailedLoginAlertValue =
+  ConfigOptionValue<typeof FAILED_LOGIN_ALERT_OPTIONS>;
 
 @Component({
   selector: 'app-admin-config',
@@ -120,7 +146,7 @@ import { AdminService } from '../services/admin.service';
             <div class="flex items-center justify-between">
               <div>
                 <h4 class="text-sm font-semibold text-white">Modo Mantenimiento</h4>
-                <p class="text-xs text-slate-400">Visible en el login y preparado para el bloqueo global.</p>
+                <p class="text-xs text-slate-400">Bloquea el acceso general y solo permite ingreso al rol SISTEMAS durante mantenimiento.</p>
               </div>
               <button
                 type="button"
@@ -160,9 +186,7 @@ import { AdminService } from '../services/admin.service';
             <label class="space-y-2">
               <span class="field-label">Frecuencia de Backup</span>
               <select [(ngModel)]="tempConfig.backupFrequency" class="field-input">
-                <option value="HOURLY">Cada 1 Hora</option>
-                <option value="EVERY_4_HOURS">Cada 4 Horas</option>
-                <option value="DAILY">Diario</option>
+                <option *ngFor="let option of backupFrequencyOptions" [value]="option.value">{{ option.label }}</option>
               </select>
             </label>
             <label class="space-y-2">
@@ -177,9 +201,7 @@ import { AdminService } from '../services/admin.service';
           <label class="space-y-2">
             <span class="field-label">Política de Conflictos</span>
             <select [(ngModel)]="tempConfig.conflictResolutionPolicy" class="field-input">
-              <option value="SERVER_WINS">Servidor gana</option>
-              <option value="CLIENT_WINS">Dispositivo gana</option>
-              <option value="MANUAL_REVIEW">Manual</option>
+              <option *ngFor="let option of conflictResolutionOptions" [value]="option.value">{{ option.label }}</option>
             </select>
           </label>
 
@@ -203,8 +225,7 @@ import { AdminService } from '../services/admin.service';
           <label class="space-y-2">
             <span class="field-label">Modo de Alerta por Intentos Fallidos</span>
             <select [(ngModel)]="tempConfig.failedLoginAlertMode" class="field-input">
-              <option value="AUDIT_ONLY">Solo auditoría</option>
-              <option value="NOTIFY_AND_AUDIT">Notificar y auditar</option>
+              <option *ngFor="let option of failedLoginAlertOptions" [value]="option.value">{{ option.label }}</option>
             </select>
           </label>
 
@@ -408,24 +429,45 @@ export class AdminConfigComponent {
 
   readonly state = inject(StateService);
   readonly adminService = inject(AdminService);
+  readonly backupFrequencyOptions = BACKUP_FREQUENCY_OPTIONS;
+  readonly conflictResolutionOptions = CONFLICT_RESOLUTION_OPTIONS;
+  readonly failedLoginAlertOptions = FAILED_LOGIN_ALERT_OPTIONS;
 
-  tempConfig: SystemConfig = { ...this.adminService.config() };
+  tempConfig: SystemConfig = this.cloneConfig(this.adminService.config());
   isSaving = false;
+  private lastSyncedConfig: SystemConfig = this.cloneConfig(this.adminService.config());
 
   readonly auditPreview = computed<ConfigAuditPreviewItem[]>(() =>
     this.state.systemConfigContract()?.audit_preview || [],
   );
+  private readonly syncDraftWithContract = effect(() => {
+    const nextConfig = this.cloneConfig(this.adminService.config());
+    const shouldHydrateDraft = !this.isDraftDirty();
+
+    this.lastSyncedConfig = nextConfig;
+    if (shouldHydrateDraft) {
+      this.tempConfig = this.cloneConfig(nextConfig);
+    }
+  });
 
   async saveConfig() {
     if (this.isSaving) return;
 
+    const validationError = this.validateConfig(this.tempConfig);
+    if (validationError) {
+      this.notifications.showWarning(validationError);
+      return;
+    }
+
     this.isSaving = true;
     try {
       await this.adminService.updateConfig(this.tempConfig);
-      this.tempConfig = { ...this.adminService.config() };
+      this.tempConfig = this.cloneConfig(this.adminService.config());
+      this.lastSyncedConfig = this.cloneConfig(this.adminService.config());
       this.notifications.showSuccess('La configuración se guardó correctamente.');
     } catch (error: any) {
-      this.tempConfig = { ...this.adminService.config() };
+      this.tempConfig = this.cloneConfig(this.adminService.config());
+      this.lastSyncedConfig = this.cloneConfig(this.adminService.config());
       this.notifications.showError(
         error?.message || 'No se pudo guardar la configuración. Se recargó el estado real.',
       );
@@ -434,7 +476,137 @@ export class AdminConfigComponent {
     }
   }
 
-  goToAudit() {
-    void this.router.navigate(['/audit']);
+  async goToAudit() {
+    try {
+      const navigated = await this.router.navigate(['/audit']);
+      if (!navigated) {
+        this.notifications.showError(
+          'No fue posible abrir la pantalla de auditoría.',
+        );
+      }
+    } catch {
+      this.notifications.showError(
+        'No fue posible abrir la pantalla de auditoría.',
+      );
+    }
+  }
+
+  private isDraftDirty() {
+    return (
+      this.createConfigFingerprint(this.tempConfig) !==
+      this.createConfigFingerprint(this.lastSyncedConfig)
+    );
+  }
+
+  private cloneConfig(config: SystemConfig): SystemConfig {
+    return {
+      ...config,
+      backupFrequency: this.normalizeBackupFrequency(config.backupFrequency),
+      conflictResolutionPolicy: this.normalizeConflictResolutionPolicy(
+        config.conflictResolutionPolicy,
+      ),
+      failedLoginAlertMode: this.normalizeFailedLoginAlertMode(
+        config.failedLoginAlertMode,
+      ),
+    };
+  }
+
+  private createConfigFingerprint(config: SystemConfig) {
+    return JSON.stringify({
+      ...config,
+      plantName: String(config.plantName || '').trim(),
+      timezoneName: String(config.timezoneName || '').trim(),
+      maintenanceMessage: String(config.maintenanceMessage || '').trim(),
+      operatorMessage: String(config.operatorMessage || '').trim(),
+      productionAssistantMessage: String(
+        config.productionAssistantMessage || '',
+      ).trim(),
+      finishingManagerMessage: String(
+        config.finishingManagerMessage || '',
+      ).trim(),
+      managementMessage: String(config.managementMessage || '').trim(),
+      shiftName1: String(config.shiftName1 || '').trim(),
+      shiftName2: String(config.shiftName2 || '').trim(),
+      shiftTime1: String(config.shiftTime1 || '').trim(),
+      shiftEndTime1: String(config.shiftEndTime1 || '').trim(),
+      shiftTime2: String(config.shiftTime2 || '').trim(),
+      shiftEndTime2: String(config.shiftEndTime2 || '').trim(),
+      backupFrequency: this.normalizeBackupFrequency(config.backupFrequency),
+      conflictResolutionPolicy: this.normalizeConflictResolutionPolicy(
+        config.conflictResolutionPolicy,
+      ),
+      failedLoginAlertMode: this.normalizeFailedLoginAlertMode(
+        config.failedLoginAlertMode,
+      ),
+    });
+  }
+
+  private validateConfig(config: SystemConfig) {
+    if (!String(config.plantName || '').trim()) {
+      return 'Ingresa el nombre visible de la planta.';
+    }
+
+    if (!this.isValidTime(config.shiftTime1) || !this.isValidTime(config.shiftEndTime1)) {
+      return 'Define una hora válida para inicio y fin del turno T1.';
+    }
+
+    if (!this.isValidTime(config.shiftTime2) || !this.isValidTime(config.shiftEndTime2)) {
+      return 'Define una hora válida para inicio y fin del turno T2.';
+    }
+
+    if (!String(config.shiftName1 || '').trim() || !String(config.shiftName2 || '').trim()) {
+      return 'Asigna un nombre a los turnos T1 y T2 antes de guardar.';
+    }
+
+    if (!Number.isInteger(config.autoLogoutMinutes) || config.autoLogoutMinutes < 5 || config.autoLogoutMinutes > 1440) {
+      return 'El cierre automático debe estar entre 5 y 1440 minutos.';
+    }
+
+    if (!Number.isInteger(config.passwordExpiryWarningDays) || config.passwordExpiryWarningDays < 1) {
+      return 'La advertencia de expiración debe ser de al menos 1 día.';
+    }
+
+    if (!Number.isInteger(config.passwordPolicyDays) || config.passwordPolicyDays < 30) {
+      return 'La caducidad de contraseñas debe ser de al menos 30 días.';
+    }
+
+    if (!Number.isInteger(config.offlineRetentionDays) || config.offlineRetentionDays < 1) {
+      return 'La retención offline debe ser de al menos 1 día.';
+    }
+
+    if (!Number.isInteger(config.failedLoginMaxAttempts) || config.failedLoginMaxAttempts < 1 || config.failedLoginMaxAttempts > 20) {
+      return 'Los intentos fallidos deben estar entre 1 y 20.';
+    }
+
+    return '';
+  }
+
+  private isValidTime(value: unknown) {
+    return /^\d{2}:\d{2}$/.test(String(value || '').trim());
+  }
+
+  private normalizeBackupFrequency(value: unknown): BackupFrequencyValue {
+    const normalized = String(value || '').trim().toUpperCase();
+    return this.backupFrequencyOptions.some((option) => option.value === normalized)
+      ? (normalized as BackupFrequencyValue)
+      : 'DAILY';
+  }
+
+  private normalizeConflictResolutionPolicy(
+    value: unknown,
+  ): ConflictResolutionValue {
+    const normalized = String(value || '').trim().toUpperCase();
+    return this.conflictResolutionOptions.some(
+      (option) => option.value === normalized,
+    )
+      ? (normalized as ConflictResolutionValue)
+      : 'MANUAL_REVIEW';
+  }
+
+  private normalizeFailedLoginAlertMode(value: unknown): FailedLoginAlertValue {
+    const normalized = String(value || '').trim().toUpperCase();
+    return this.failedLoginAlertOptions.some((option) => option.value === normalized)
+      ? (normalized as FailedLoginAlertValue)
+      : 'AUDIT_ONLY';
   }
 }

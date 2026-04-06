@@ -12,6 +12,7 @@
     "erp:clises": "node scripts/erp-clises-xlsx.mjs",
     "erp:stock": "node scripts/erp-stock-xlsx.mjs",
     "erp:troqueles": "node scripts/erp-troqueles-xlsx.mjs",
+    "smoke:maintenance": "node scripts/maintenance-mode-smoke.mjs",
     "preview": "ng serve --configuration=production",
     "smoke:baseline:api": "node ./scripts/smoke-baseline.mjs",
     "regression:baseline": "npm run lint && npm run build && npm --prefix backend run build && npm --prefix backend run test:baseline"
@@ -35,6 +36,7 @@
     "@angular/cli": "21.2.3",
     "@angular/compiler-cli": "21.2.5",
     "@types/node": "^22.14.0",
+    "playwright": "^1.59.1",
     "tsx": "^4.21.0",
     "typescript": "~5.9"
   }

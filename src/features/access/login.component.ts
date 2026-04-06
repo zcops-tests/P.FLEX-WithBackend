@@ -65,12 +65,36 @@ import { NotificationService } from '../../services/notification.service';
             
             <!-- System Status Badge (Moved Inside) -->
             <div class="flex flex-col items-center gap-2 mb-8">
-              <div class="flex items-center gap-2 px-4 py-1.5 rounded-full bg-green-500/10 border border-green-500/20 backdrop-blur-sm">
-                <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-                <span class="text-xs font-semibold tracking-wider text-green-400 uppercase">Sistema: En Línea</span>
+              <div
+                class="flex items-center gap-2 px-4 py-1.5 rounded-full backdrop-blur-sm"
+                [ngClass]="isMaintenanceActive ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-green-500/10 border border-green-500/20'">
+                <span
+                  class="w-2 h-2 rounded-full animate-pulse"
+                  [ngClass]="isMaintenanceActive ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]'"></span>
+                <span
+                  class="text-xs font-semibold tracking-wider uppercase"
+                  [ngClass]="isMaintenanceActive ? 'text-amber-300' : 'text-green-400'">
+                  {{ isMaintenanceActive ? 'SISTEMA: EN MANTENIMIENTO' : 'SISTEMA: EN LÍNEA' }}
+                </span>
               </div>
-              <span class="text-[10px] uppercase tracking-widest text-slate-500 font-medium">Sincronización de datos persistente habilitada</span>
+              <span class="text-[10px] uppercase tracking-widest text-slate-500 font-medium">
+                {{ isMaintenanceActive ? 'Acceso restringido solo para SISTEMAS' : 'Sincronización de datos persistente habilitada' }}
+              </span>
             </div>
+
+            @if (isMaintenanceActive) {
+              <div class="mb-6 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-4 backdrop-blur-xl">
+                <div class="flex items-start gap-3">
+                  <div class="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl border border-amber-300/20 bg-amber-400/10">
+                    <span class="material-icons text-amber-300">engineering</span>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-amber-300">Modo mantenimiento global</p>
+                    <p class="text-sm leading-6 text-amber-50/95">{{ maintenanceMessage }}</p>
+                  </div>
+                </div>
+              </div>
+            }
 
             <div class="mb-8">
               <h2 class="text-3xl font-bold text-white mb-2">Acceso Anfitrión</h2>
@@ -229,6 +253,9 @@ import { NotificationService } from '../../services/notification.service';
   `]
 })
 export class LoginComponent {
+  private static readonly maintenanceFallbackMessage =
+    'El sistema está en mantenimiento. Solo el rol SISTEMAS puede acceder en este momento.';
+
   state = inject(StateService);
   router: Router = inject(Router);
   notifications = inject(NotificationService);
@@ -289,10 +316,22 @@ export class LoginComponent {
     return this.loginShifts.find((shift) => shift.code === this.selectedShiftCode)?.name || null;
   }
 
+  get isMaintenanceActive() {
+    return this.state.isMaintenanceActive();
+  }
+
+  get maintenanceMessage() {
+    return String(this.state.getMaintenanceAccessMessage() || LoginComponent.maintenanceFallbackMessage).trim();
+  }
+
   async onLogin() {
     if (this.username.length >= 8 && this.selectedShift && this.password) {
       try {
         await this.state.login(this.username, this.selectedShift, this.password);
+        if (this.state.isMaintenanceBlockingAccess()) {
+          await this.state.rejectMaintenanceAccessIfNeeded();
+          return;
+        }
         this.router.navigate([this.state.postLoginRoute()]);
       } catch (error: any) {
         this.notifications.showError(error?.message || 'No fue posible iniciar sesion.');
